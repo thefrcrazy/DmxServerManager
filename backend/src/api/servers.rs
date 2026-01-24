@@ -204,12 +204,38 @@ async fn create_server(
 
     info!("Generated manager configuration for server {}", id);
 
+    // Auto-download server jar if requested
+    let mut final_executable = body.executable_path.clone();
+    
+    if body.game_type == "paper" || body.game_type == "minecraft" {
+        let jar_url = "https://api.papermc.io/v2/projects/paper/versions/1.20.4/builds/496/downloads/paper-1.20.4-496.jar";
+        let jar_name = "server.jar";
+        let dest_path = server_path.join(jar_name);
+        
+        info!("Downloading server jar from {} to {:?}", jar_url, dest_path);
+        
+        let status = tokio::process::Command::new("curl")
+            .arg("-L")
+            .arg("-o")
+            .arg(&dest_path)
+            .arg(jar_url)
+            .status()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to execute curl: {}", e)))?;
+            
+        if !status.success() {
+             return Err(AppError::Internal("Failed to download server jar via curl".into()));
+        }
+        
+        final_executable = jar_name.to_string();
+    }
+
     let config_str = body.config.as_ref().map(|c| c.to_string());
 
     // Store server in database with the correct paths
     let actual_working_dir = server_base_path.to_str().unwrap_or(&body.working_dir);
-    let actual_executable = server_path.join("HytaleServer.jar");
-    let actual_executable_str = actual_executable.to_str().unwrap_or(&body.executable_path);
+    let actual_executable = server_path.join(&final_executable);
+    let actual_executable_str = actual_executable.to_str().unwrap_or(&final_executable);
 
     sqlx::query(
         "INSERT INTO servers (id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

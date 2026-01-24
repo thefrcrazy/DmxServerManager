@@ -13,6 +13,7 @@ type CreationMode = 'normal' | 'existing' | 'zip';
 
 interface ServerFormData {
     name: string;
+    game_type: 'paper' | 'hytale';
     executable_path: string;
     working_dir: string;
 
@@ -69,6 +70,7 @@ export default function CreateServer() {
     const [formData, setFormData] = useState<ServerFormData>({
         // Section 1: Informations générales
         name: '',
+        game_type: 'paper',
         executable_path: 'HytaleServer.jar',
         working_dir: '',
 
@@ -113,11 +115,39 @@ export default function CreateServer() {
     const [zipFile, setZipFile] = useState<File | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [isDocker, setIsDocker] = useState(false);
+    const [defaultServersDir, setDefaultServersDir] = useState('');
 
     const { setPageTitle } = usePageTitle();
     useEffect(() => {
         setPageTitle(t('servers.create_new'), 'Configurez votre nouveau serveur Hytale', { to: '/servers' });
+
+        // Fetch settings specifically to check for Docker env and default dir
+        fetch('/api/v1/settings', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+            .then(res => res.json())
+            .then(data => {
+                setIsDocker(data.is_docker);
+                setDefaultServersDir(data.servers_dir);
+                // Initialize working dir if empty
+                setFormData(prev => ({
+                    ...prev,
+                    working_dir: prev.working_dir || data.servers_dir
+                }));
+            })
+            .catch(console.error);
     }, [setPageTitle, t]);
+
+    // Auto-update working_dir in Docker mode when name changes
+    useEffect(() => {
+        if (isDocker && formData.name) {
+            setFormData(prev => ({
+                ...prev,
+                working_dir: defaultServersDir
+            }));
+        }
+    }, [formData.name, isDocker, defaultServersDir]);
 
     const creationModes = [
         { id: 'normal' as CreationMode, label: 'Nouveau serveur', icon: Plus, description: 'Créer un nouveau serveur vide' },
@@ -164,7 +194,7 @@ export default function CreateServer() {
                     },
                     body: JSON.stringify({
                         ...formData,
-                        game_type: 'hytale',
+                        game_type: formData.game_type,
                         java_path: formData.java_path || null,
                         extra_args: formData.extra_args || null,
                         // assets_path: fixed to Assets.zip by backend
@@ -238,11 +268,26 @@ export default function CreateServer() {
                                 type="text"
                                 value={formData.name}
                                 onChange={(e) => updateFormData('name', e.target.value)}
-                                placeholder="Mon Serveur Hytale"
+                                placeholder="Mon Serveur"
                                 required
                                 className="input"
                             />
                         </div>
+
+                        {/* Game Type */}
+                        <div className="form-group">
+                            <label>Type de jeu</label>
+                            <select
+                                value={formData.game_type}
+                                onChange={(e) => updateFormData('game_type', e.target.value as any)}
+                                className="input"
+                            >
+                                <option value="paper">PaperMC (Minecraft 1.20.4)</option>
+                                <option value="hytale" disabled>Hytale (Bientôt)</option>
+                            </select>
+                        </div>
+
+
 
                         {/* ZIP Upload or Directory */}
                         {creationMode === 'zip' ? (
@@ -294,11 +339,15 @@ export default function CreateServer() {
                                     placeholder="/home/hytale/servers/mon-serveur"
                                     required
                                     className="input font-mono"
+                                    readOnly={isDocker}
+                                    style={isDocker ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
                                 />
                                 <p className="helper-text helper-text--block">
-                                    {creationMode === 'existing'
-                                        ? 'Chemin vers le dossier contenant le serveur existant'
-                                        : 'Chemin où le serveur sera installé'}
+                                    {isDocker
+                                        ? 'Géré automatiquement par Docker (Volume Persistant)'
+                                        : creationMode === 'existing'
+                                            ? 'Chemin vers le dossier contenant le serveur existant'
+                                            : 'Chemin où le serveur sera installé'}
                                 </p>
                             </div>
                         )}

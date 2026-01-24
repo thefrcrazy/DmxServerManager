@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y \
     && wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | tee /etc/apt/keyrings/adoptium.asc \
     && echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb bookworm main" | tee /etc/apt/sources.list.d/adoptium.list \
     && apt-get update \
-    && apt-get install -y temurin-25-jdk gosu \
+    && apt-get install -y temurin-25-jdk gosu curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with explicit UID 1000 to match host user
@@ -63,6 +63,7 @@ ENV PORT=5500
 ENV DATABASE_URL=sqlite:/data/kweebec.db?mode=rwc
 ENV SERVERS_DIR=/servers
 ENV BACKUPS_DIR=/backups
+ENV UPLOADS_DIR=/data/uploads
 ENV RUST_LOG=info
 
 EXPOSE 5500

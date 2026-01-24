@@ -7,6 +7,7 @@ pub struct Settings {
     pub jwt_secret: String,
     pub servers_dir: String,
     pub backups_dir: String,
+    pub uploads_dir: String,
 }
 
 impl Settings {
@@ -23,6 +24,7 @@ impl Settings {
                 .unwrap_or_else(|_| "change-me-in-production".into()),
             servers_dir: std::env::var("SERVERS_DIR").unwrap_or_else(|_| "./data/servers".into()),
             backups_dir: std::env::var("BACKUPS_DIR").unwrap_or_else(|_| "./data/backups".into()),
+            uploads_dir: std::env::var("UPLOADS_DIR").unwrap_or_else(|_| "./data/uploads".into()),
         }
     }
 }

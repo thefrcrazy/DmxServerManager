@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_files::Files;
+use actix_files::{Files, NamedFile};
 use actix_web::{middleware, web, App, HttpServer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -44,6 +44,7 @@ async fn main() -> std::io::Result<()> {
     // Start background services
     services::scheduler::start(web::Data::new(pool.clone()), process_manager.clone());
 
+    let uploads_dir = settings.uploads_dir.clone();
     HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
@@ -73,9 +74,16 @@ async fn main() -> std::io::Result<()> {
             // WebSocket for console
             .route("/ws/console/{server_id}", web::get().to(api::console::ws_handler))
             // Serve uploaded files
-            .service(Files::new("/uploads", "./uploads"))
+            // Serve uploaded files
+            .service(Files::new("/uploads", &uploads_dir))
             // Serve frontend in production
-            .service(Files::new("/", "./static").index_file("index.html"))
+            .service(
+                Files::new("/", "./static")
+                    .index_file("index.html")
+                    .default_handler(web::get().to(|| async {
+                        NamedFile::open("./static/index.html")
+                    })),
+            )
     })
     .bind(format!("{}:{}", settings.host, settings.port))?
     .run()

@@ -15,7 +15,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
 async fn upload_image(mut payload: Multipart) -> Result<HttpResponse, AppError> {
     // Create uploads directory if it doesn't exist
-    let upload_dir = std::path::Path::new("./uploads");
+    let upload_dir_str = std::env::var("UPLOADS_DIR").unwrap_or_else(|_| "./data/uploads".into());
+    let upload_dir = std::path::Path::new(&upload_dir_str);
     if !upload_dir.exists() {
         std::fs::create_dir_all(upload_dir)
             .map_err(|e| AppError::Internal(format!("Failed to create upload directory: {}", e)))?;
