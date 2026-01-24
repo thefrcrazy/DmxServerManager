@@ -694,37 +694,6 @@ async fn restart_server(
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "restarting" })))
 }
 
-async fn kill_server(
-    pool: web::Data<DbPool>,
-    pm: web::Data<ProcessManager>,
-    path: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let id = path.into_inner();
-    
-    // Get server name for webhook
-    let server_name: Option<(String,)> = sqlx::query_as("SELECT name FROM servers WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(pool.get_ref())
-        .await?;
-    
-    pm.kill(&id).await?;
-    
-    // Send webhook notification
-    if let Some((name,)) = server_name {
-        let pool_clone = pool.get_ref().clone();
-        tokio::spawn(async move {
-            crate::services::discord_service::send_notification(
-                &pool_clone,
-                "💀 Serveur Tué",
-                &format!("Le serveur **{}** a été forcé de s'arrêter.", name),
-                crate::services::discord_service::COLOR_WARNING,
-                Some(&name),
-            ).await;
-        });
-    }
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "killed" })))
-}
 
 #[derive(Debug, Deserialize)]
 pub struct CommandRequest {

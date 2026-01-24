@@ -11,6 +11,7 @@ use regex::Regex;
 use crate::error::AppError;
 
 /// Manages game server processes
+#[derive(Clone)]
 pub struct ProcessManager {
     processes: Arc<RwLock<HashMap<String, ServerProcess>>>,
 }
