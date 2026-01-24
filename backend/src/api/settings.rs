@@ -43,12 +43,18 @@ async fn get_settings(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError>
     // Create map for easier lookup
     let settings_map: std::collections::HashMap<String, String> = settings_rows.into_iter().collect();
 
-    // Priority: DB > Env > Default
-    let servers_dir = settings_map.get("servers_dir").cloned()
-        .unwrap_or_else(|| std::env::var("SERVERS_DIR").unwrap_or_else(|_| "./data/servers".into()));
+    // Priority: Env > DB > Default
+    // We prioritize Environment variables (infrastructure config) over DB settings
+    // This fixes issues where pre-existing DB values conflict with Docker configuration
+    let servers_dir = std::env::var("SERVERS_DIR")
+        .ok()
+        .or_else(|| settings_map.get("servers_dir").cloned())
+        .unwrap_or_else(|| "./data/servers".into());
     
-    let backups_dir = settings_map.get("backups_dir").cloned()
-        .unwrap_or_else(|| std::env::var("BACKUPS_DIR").unwrap_or_else(|_| "./data/backups".into()));
+    let backups_dir = std::env::var("BACKUPS_DIR")
+        .ok()
+        .or_else(|| settings_map.get("backups_dir").cloned())
+        .unwrap_or_else(|| "./data/backups".into());
 
     let settings = SettingsResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
