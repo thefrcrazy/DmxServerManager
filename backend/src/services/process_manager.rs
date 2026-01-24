@@ -88,10 +88,9 @@ impl ProcessManager {
     }
 
     pub async fn broadcast_log(&self, server_id: &str, message: String) {
-        if let Ok(processes) = self.processes.read().await {
-            if let Some(proc) = processes.get(server_id) {
-                let _ = proc.log_tx.send(message);
-            }
+        let processes = self.processes.read().await;
+        if let Some(proc) = processes.get(server_id) {
+            let _ = proc.log_tx.send(message);
         }
     }
 
@@ -305,9 +304,11 @@ impl ProcessManager {
             .get_mut(server_id)
             .ok_or_else(|| AppError::NotFound("Server not running".into()))?;
 
-        if let Some(stdin) = proc.child.stdin.as_mut() {
-            writeln!(stdin, "{}", command)
-                .map_err(|e| AppError::Internal(format!("Failed to send command: {}", e)))?;
+        if let Some(child) = &mut proc.child {
+            if let Some(stdin) = child.stdin.as_mut() {
+                writeln!(stdin, "{}", command)
+                    .map_err(|e| AppError::Internal(format!("Failed to send command: {}", e)))?;
+            }
         }
 
         Ok(())

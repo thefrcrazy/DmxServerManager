@@ -5,7 +5,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tracing::info;
+use tracing::{info, error};
 use std::path::Path;
 
 use crate::db::DbPool;
@@ -132,6 +132,7 @@ async fn list_servers(
 
 async fn create_server(
     pool: web::Data<DbPool>,
+    pm: web::Data<ProcessManager>,
     body: web::Json<CreateServerRequest>,
 ) -> Result<HttpResponse, AppError> {
     let id = Uuid::new_v4().to_string();
@@ -377,7 +378,92 @@ fn spawn_hytale_installation(pm: ProcessManager, id: String, server_path: std::p
     });
 }
 
-async fn get_server(
+async fn reinstall_server(
+    pool: web::Data<DbPool>,
+    pm: web::Data<ProcessManager>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, AppError> {
+    let id = path.into_inner();
+
+    // 1. Check if server exists
+    let server: ServerRow = sqlx::query_as(
+        "SELECT id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at FROM servers WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(pool.get_ref())
+    .await?
+    .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
+
+    // 2. Stop server if running
+    if pm.is_running(&id) {
+        info!("Stopping server {} for reinstallation...", id);
+        pm.stop(&id).await?;
+        // Wait a bit for file release
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await; 
+    }
+
+    // 3. Clean up server directory
+    // We assume structure is {working_dir}/server for the game files
+    let server_path = Path::new(&server.working_dir).join("server");
+    
+    if server_path.exists() {
+        info!("Cleaning up server directory {:?}...", server_path);
+        // We delete contents but not the directory itself if possible, or simple delete recursive and recreate
+        if let Err(e) = fs::remove_dir_all(&server_path).await {
+             return Err(AppError::Internal(format!("Failed to delete server directory: {}", e)));
+        }
+        if let Err(e) = fs::create_dir_all(&server_path).await {
+            return Err(AppError::Internal(format!("Failed to recreate server directory: {}", e)));
+        }
+    } else {
+        // Create if missing
+        if let Err(e) = fs::create_dir_all(&server_path).await {
+            return Err(AppError::Internal(format!("Failed to create server directory: {}", e)));
+        }
+    }
+    
+    // We should probably regenerate config.json too to ensure it exists, 
+    // or rely on the spawn function downloading stuff. 
+    // BUT spawn_hytale does NOT generate config.json, create_server did that.
+    // Let's regenerate config.json here too to be safe.
+    
+    let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
+    // Use stored config or defaults? server.config has the RAW stored value. 
+    // In create_server we used body params. Here we have to infer or just use defaults.
+    // We can re-use the stored MaxPlayers if available.
+    let max_players = config_json.as_ref()
+        .and_then(|c| c.get("MaxPlayers"))
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+        .unwrap_or(100);
+        
+    // Auth mode ? We might need to query manager.json or store it in DB. 
+    // For now default to authenticated as strictly recommended.
+    
+    let hytale_config = templates::generate_config_json(
+        &server.name,
+        max_players, 
+        "authenticated" 
+    );
+    let config_json_path = server_path.join("config.json");
+    let mut config_file = fs::File::create(&config_json_path).await.map_err(|e| {
+        AppError::Internal(format!("Failed to create config.json: {}", e))
+    })?;
+    config_file.write_all(serde_json::to_string_pretty(&hytale_config).unwrap().as_bytes())
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to write config.json: {}", e)))?;
+
+
+    // 4. Trigger Installation
+    spawn_hytale_installation(pm.get_ref().clone(), id.clone(), server_path);
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ 
+        "success": true, 
+        "message": "Reinstallation started" 
+    })))
+}
+
+async fn kill_server(
     pool: web::Data<DbPool>,
     pm: web::Data<ProcessManager>,
     path: web::Path<String>,
