@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y \
     && wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | tee /etc/apt/keyrings/adoptium.asc \
     && echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb bookworm main" | tee /etc/apt/sources.list.d/adoptium.list \
     && apt-get update \
-    && apt-get install -y temurin-25-jdk gosu curl \
+    && apt-get install -y temurin-25-jdk gosu curl unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with explicit UID 1000 to match host user

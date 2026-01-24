@@ -60,6 +60,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{id}/stop", web::post().to(stop_server))
             .route("/{id}/restart", web::post().to(restart_server))
             .route("/{id}/kill", web::post().to(kill_server))
+            .route("/{id}/reinstall", web::post().to(reinstall_server))
             .route("/{id}/command", web::post().to(send_command))
             // Files API
             .route("/{id}/files", web::get().to(list_server_files))
@@ -206,69 +207,11 @@ async fn create_server(
 
     // Auto-download server jar if requested
     let mut final_executable = body.executable_path.clone();
-    
     if body.game_type == "hytale" {
-        let zip_url = "https://downloader.hytale.com/hytale-downloader.zip";
-        let zip_name = "hytale-downloader.zip";
-        let dest_path = server_path.join(zip_name);
-
-        info!("Downloading Hytale downloader from {} to {:?}", zip_url, dest_path);
-
-        // 1. Download ZIP
-        let status = tokio::process::Command::new("curl")
-            .arg("-L")
-            .arg("-o")
-            .arg(&dest_path)
-            .arg(zip_url)
-            .status()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to execute curl: {}", e)))?;
-
-        if !status.success() {
-            return Err(AppError::Internal("Failed to download Hytale downloader via curl".into()));
-        }
-
-        // 2. Unzip
-        info!("Extracting Hytale downloader...");
-        let status = tokio::process::Command::new("unzip")
-            .arg("-o") // overwrite
-            .arg(&dest_path)
-            .arg("-d")
-            .arg(&server_path)
-            .status()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to execute unzip: {}", e)))?;
-
-        if !status.success() {
-            return Err(AppError::Internal("Failed to unzip Hytale downloader".into()));
-        }
-
-        // 3. Find the executable (platform dependent name)
-        // We look for a file starting with 'hytale-downloader-'
-        let mut found_executable = String::from("hytale-downloader"); // Fallback
+        spawn_hytale_installation(pm.get_ref().clone(), id.clone(), server_path.clone());
         
-        let mut read_dir = tokio::fs::read_dir(&server_path).await
-            .map_err(|e| AppError::Internal(format!("Failed to read server dir: {}", e)))?;
-            
-        while let Ok(Some(entry)) = read_dir.next_entry().await {
-            let file_name = entry.file_name();
-            let name = file_name.to_string_lossy();
-            if name.starts_with("hytale-downloader-") && !name.ends_with(".zip") {
-                found_executable = name.to_string();
-                
-                // Ensure it is executable (chmod +x)
-                let _ = tokio::process::Command::new("chmod")
-                    .arg("+x")
-                    .arg(entry.path())
-                    .status()
-                    .await;
-                    
-                break;
-            }
-        }
-        
-        final_executable = format!("./{}", found_executable);
-        info!("Set Hytale executable to: {}", final_executable);
+        // We set executable path tentatively...
+        final_executable = "./hytale-downloader".to_string(); 
     }
 
     let config_str = body.config.as_ref().map(|c| c.to_string());
@@ -320,6 +263,118 @@ async fn create_server(
         "working_dir": actual_working_dir,
         "message": "Server directory structure created. Download the server files using hytale-downloader."
     })))
+}
+
+fn spawn_hytale_installation(pm: ProcessManager, id: String, server_path: std::path::PathBuf) {
+    tokio::spawn(async move {
+        // Register "installing" process to allowing log streaming
+        if let Err(e) = pm.register_installing(&id).await {
+            error!("Failed to register installing process: {}", e);
+            return;
+        }
+        
+        pm.broadcast_log(&id, "🚀 Initialization de l'installation du serveur...".into()).await;
+
+        let zip_url = "https://downloader.hytale.com/hytale-downloader.zip";
+        let zip_name = "hytale-downloader.zip";
+        let dest_path = server_path.join(zip_name);
+
+        pm.broadcast_log(&id, format!("⬇️ Téléchargement de Hytale Downloader depuis {}...", zip_url)).await;
+        info!("Downloading Hytale downloader from {} to {:?}", zip_url, dest_path);
+
+        // 1. Download ZIP
+        match tokio::process::Command::new("curl")
+            .arg("-L")
+            .arg("-o")
+            .arg(&dest_path)
+            .arg(zip_url)
+            .status()
+            .await 
+        {
+            Ok(status) => {
+                if !status.success() {
+                    let err = "❌ Échec du téléchargement (curl returned error)";
+                    pm.broadcast_log(&id, err.into()).await;
+                    pm.remove(&id).await;
+                    return;
+                }
+            },
+            Err(e) => {
+                let err = format!("❌ Erreur lors de l'exécution de curl: {}", e);
+                    pm.broadcast_log(&id, err).await;
+                    pm.remove(&id).await;
+                    return;
+            }
+        }
+
+        pm.broadcast_log(&id, "✅ Téléchargement terminé.".into()).await;
+        pm.broadcast_log(&id, "📦 Extraction de l'archive...".into()).await;
+        
+        // 2. Unzip
+        info!("Extracting Hytale downloader...");
+        match tokio::process::Command::new("unzip")
+            .arg("-o") // overwrite
+            .arg(&dest_path)
+            .arg("-d")
+            .arg(&server_path)
+            .status()
+            .await
+        {
+            Ok(status) => {
+                    if !status.success() {
+                    let err = "❌ Échec de l'extraction (unzip returned error)";
+                    pm.broadcast_log(&id, err.into()).await;
+                    pm.remove(&id).await;
+                    return;
+                }
+            },
+            Err(e) => {
+                    let err = format!("❌ Erreur lors de l'exécution de unzip: {}", e);
+                    pm.broadcast_log(&id, err).await;
+                    pm.remove(&id).await;
+                    return;
+            }
+        }
+        
+        pm.broadcast_log(&id, "✅ Extraction terminée.".into()).await;
+        
+        // 3. Find the executable (platform dependent name)
+        pm.broadcast_log(&id, "🔍 Recherche de l'exécutable...".into()).await;
+
+        let mut found_executable = String::from("hytale-downloader"); // Fallback
+        
+        let mut read_dir = match tokio::fs::read_dir(&server_path).await {
+            Ok(rd) => rd,
+            Err(e) => {
+                    pm.broadcast_log(&id, format!("❌ Erreur lecture dossier: {}", e)).await;
+                    pm.remove(&id).await;
+                    return;
+            }
+        };
+            
+        while let Ok(Some(entry)) = read_dir.next_entry().await {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            if name.starts_with("hytale-downloader-") && !name.ends_with(".zip") {
+                found_executable = name.to_string();
+                
+                // Ensure it is executable (chmod +x)
+                let _ = tokio::process::Command::new("chmod")
+                    .arg("+x")
+                    .arg(entry.path())
+                    .status()
+                    .await;
+                    
+                break;
+            }
+        }
+        
+        pm.broadcast_log(&id, format!("✅ Exécutable trouvé: {}", found_executable)).await;
+        pm.broadcast_log(&id, "✨ Installation terminée ! Vous pouvez lancer le serveur.".into()).await;
+        
+        // Cleanup virtual process
+        pm.remove(&id).await;
+    });
 }
 
 async fn get_server(

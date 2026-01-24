@@ -205,7 +205,9 @@ export default function CreateServer() {
                 });
 
                 if (response.ok) {
-                    navigate('/servers');
+                    const data = await response.json();
+                    // Redirect to server detail to see installation logs
+                    navigate(`/servers/${data.id}`);
                 } else {
                     const data = await response.json();
                     setError(data.error || 'Erreur lors de la création');

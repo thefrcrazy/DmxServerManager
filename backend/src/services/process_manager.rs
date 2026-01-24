@@ -16,7 +16,7 @@ pub struct ProcessManager {
 }
 
 struct ServerProcess {
-    child: Child,
+    child: Option<Child>,
     log_tx: broadcast::Sender<String>,
     players: Arc<std::sync::RwLock<HashSet<String>>>,
 }
@@ -32,22 +32,28 @@ impl ProcessManager {
         // We need to check if the process is actually alive, not just in the map
         if let Ok(mut processes) = self.processes.try_write() {
             if let Some(proc) = processes.get_mut(server_id) {
-                // Check if process is still running
-                match proc.child.try_wait() {
-                    Ok(None) => {
-                        // Process is still running
-                        return true;
+                // If child is None, it means it's a virtual process (installing/updating)
+                // So it is technically "running"
+                if let Some(child) = &mut proc.child {
+                    // Check if process is still running
+                    match child.try_wait() {
+                        Ok(None) => {
+                            // Process is still running
+                            return true;
+                        }
+                        Ok(Some(_status)) => {
+                            // Process has exited, remove from map
+                            info!("Server {} process has exited, cleaning up", server_id);
+                            processes.remove(server_id);
+                            return false;
+                        }
+                        Err(_) => {
+                            // Error checking status, assume not running
+                            return false;
+                        }
                     }
-                    Ok(Some(_status)) => {
-                        // Process has exited, remove from map
-                        info!("Server {} process has exited, cleaning up", server_id);
-                        processes.remove(server_id);
-                        return false;
-                    }
-                    Err(_) => {
-                        // Error checking status, assume not running
-                        return false;
-                    }
+                } else {
+                    return true; 
                 }
             }
         }
@@ -63,6 +69,36 @@ impl ProcessManager {
             }
         }
         rx
+    }
+
+    pub async fn register_installing(&self, server_id: &str) -> Result<(), AppError> {
+        let mut processes = self.processes.write().await;
+         if processes.contains_key(server_id) {
+             return Err(AppError::BadRequest("Server already active".into()));
+         }
+
+         let (log_tx, _) = broadcast::channel::<String>(1000);
+         let players = Arc::new(std::sync::RwLock::new(HashSet::new()));
+
+         processes.insert(
+             server_id.to_string(),
+             ServerProcess { child: None, log_tx, players },
+         );
+         Ok(())
+    }
+
+    pub async fn broadcast_log(&self, server_id: &str, message: String) {
+        if let Ok(processes) = self.processes.read().await {
+            if let Some(proc) = processes.get(server_id) {
+                let _ = proc.log_tx.send(message);
+            }
+        }
+    }
+
+    /// Remove a process from manager (used when installation finishes)
+    pub async fn remove(&self, server_id: &str) {
+        let mut processes = self.processes.write().await;
+        processes.remove(server_id);
     }
 
     pub async fn start(
@@ -175,7 +211,7 @@ impl ProcessManager {
 
         processes.insert(
             server_id.to_string(),
-            ServerProcess { child, log_tx, players },
+            ServerProcess { child: Some(child), log_tx, players },
         );
 
         Ok(())
@@ -188,21 +224,23 @@ impl ProcessManager {
             .get_mut(server_id)
             .ok_or_else(|| AppError::NotFound("Server not running".into()))?;
 
-        // Try graceful shutdown first (send quit command)
-        if let Some(stdin) = proc.child.stdin.as_mut() {
-            let _ = writeln!(stdin, "/shutdown");
+        if let Some(child) = &mut proc.child {
+             // Try graceful shutdown first (send quit command)
+            if let Some(stdin) = child.stdin.as_mut() {
+                let _ = writeln!(stdin, "/shutdown");
+            }
+
+            // Wait a bit for graceful shutdown
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+            // Force kill if still running
+            if child.try_wait().map_err(|e| AppError::Internal(e.to_string()))?.is_none() {
+                child
+                    .kill()
+                    .map_err(|e| AppError::Internal(format!("Failed to kill server: {}", e)))?;
+            }
         }
-
-        // Wait a bit for graceful shutdown
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-
-        // Force kill if still running
-        if proc.child.try_wait().map_err(|e| AppError::Internal(e.to_string()))?.is_none() {
-            proc.child
-                .kill()
-                .map_err(|e| AppError::Internal(format!("Failed to kill server: {}", e)))?;
-        }
-
+        
         processes.remove(server_id);
         info!("Stopped server {}", server_id);
 
@@ -217,10 +255,12 @@ impl ProcessManager {
             .get_mut(server_id)
             .ok_or_else(|| AppError::NotFound("Server not running".into()))?;
 
-        // Force kill immediately
-        proc.child
-            .kill()
-            .map_err(|e| AppError::Internal(format!("Failed to kill server: {}", e)))?;
+        if let Some(child) = &mut proc.child {
+            // Force kill immediately
+            child
+                .kill()
+                .map_err(|e| AppError::Internal(format!("Failed to kill server: {}", e)))?;
+        }
 
         processes.remove(server_id);
         info!("Killed server {}", server_id);
