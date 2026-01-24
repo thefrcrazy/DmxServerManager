@@ -3,9 +3,9 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
-use std::fs;
-use tracing::{info, warn};
-use serde_json::Value;
+
+use tracing::info;
+
 use regex::Regex;
 
 use crate::error::AppError;
@@ -110,7 +110,7 @@ impl ProcessManager {
         min_memory: Option<&str>,
         max_memory: Option<&str>,
         extra_args: Option<&str>,
-        config: Option<&serde_json::Value>,
+        _config: Option<&serde_json::Value>,
     ) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
 

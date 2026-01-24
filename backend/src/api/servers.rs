@@ -463,7 +463,7 @@ async fn reinstall_server(
     })))
 }
 
-async fn kill_server(
+async fn get_server(
     pool: web::Data<DbPool>,
     pm: web::Data<ProcessManager>,
     path: web::Path<String>,
@@ -519,6 +519,15 @@ async fn kill_server(
         players,
         max_players,
     }))
+}
+
+async fn kill_server(
+    pm: web::Data<ProcessManager>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, AppError> {
+    let id = path.into_inner();
+    pm.kill(&id).await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
 }
 
 async fn update_server(
