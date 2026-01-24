@@ -207,27 +207,68 @@ async fn create_server(
     // Auto-download server jar if requested
     let mut final_executable = body.executable_path.clone();
     
-    if body.game_type == "paper" || body.game_type == "minecraft" {
-        let jar_url = "https://api.papermc.io/v2/projects/paper/versions/1.20.4/builds/496/downloads/paper-1.20.4-496.jar";
-        let jar_name = "server.jar";
-        let dest_path = server_path.join(jar_name);
-        
-        info!("Downloading server jar from {} to {:?}", jar_url, dest_path);
-        
+    if body.game_type == "hytale" {
+        let zip_url = "https://downloader.hytale.com/hytale-downloader.zip";
+        let zip_name = "hytale-downloader.zip";
+        let dest_path = server_path.join(zip_name);
+
+        info!("Downloading Hytale downloader from {} to {:?}", zip_url, dest_path);
+
+        // 1. Download ZIP
         let status = tokio::process::Command::new("curl")
             .arg("-L")
             .arg("-o")
             .arg(&dest_path)
-            .arg(jar_url)
+            .arg(zip_url)
             .status()
             .await
             .map_err(|e| AppError::Internal(format!("Failed to execute curl: {}", e)))?;
-            
+
         if !status.success() {
-             return Err(AppError::Internal("Failed to download server jar via curl".into()));
+            return Err(AppError::Internal("Failed to download Hytale downloader via curl".into()));
+        }
+
+        // 2. Unzip
+        info!("Extracting Hytale downloader...");
+        let status = tokio::process::Command::new("unzip")
+            .arg("-o") // overwrite
+            .arg(&dest_path)
+            .arg("-d")
+            .arg(&server_path)
+            .status()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to execute unzip: {}", e)))?;
+
+        if !status.success() {
+            return Err(AppError::Internal("Failed to unzip Hytale downloader".into()));
+        }
+
+        // 3. Find the executable (platform dependent name)
+        // We look for a file starting with 'hytale-downloader-'
+        let mut found_executable = String::from("hytale-downloader"); // Fallback
+        
+        let mut read_dir = tokio::fs::read_dir(&server_path).await
+            .map_err(|e| AppError::Internal(format!("Failed to read server dir: {}", e)))?;
+            
+        while let Ok(Some(entry)) = read_dir.next_entry().await {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            if name.starts_with("hytale-downloader-") && !name.ends_with(".zip") {
+                found_executable = name.to_string();
+                
+                // Ensure it is executable (chmod +x)
+                let _ = tokio::process::Command::new("chmod")
+                    .arg("+x")
+                    .arg(entry.path())
+                    .status()
+                    .await;
+                    
+                break;
+            }
         }
         
-        final_executable = jar_name.to_string();
+        final_executable = format!("./{}", found_executable);
+        info!("Set Hytale executable to: {}", final_executable);
     }
 
     let config_str = body.config.as_ref().map(|c| c.to_string());
@@ -236,6 +277,24 @@ async fn create_server(
     let actual_working_dir = server_base_path.to_str().unwrap_or(&body.working_dir);
     let actual_executable = server_path.join(&final_executable);
     let actual_executable_str = actual_executable.to_str().unwrap_or(&final_executable);
+
+    // Generate and write config.json (Hytale server config)
+    // We do this to ensure defaults (like MaxPlayers) are set as desired
+    // Note: 100 is the default MaxPlayers requested
+    let hytale_config = templates::generate_config_json(
+        server_name,
+        100, 
+        auth_mode
+    );
+    let config_json_path = server_path.join("config.json");
+    let mut config_file = fs::File::create(&config_json_path).await.map_err(|e| {
+        AppError::Internal(format!("Failed to create config.json: {}", e))
+    })?;
+    config_file.write_all(serde_json::to_string_pretty(&hytale_config).unwrap().as_bytes())
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to write config.json: {}", e)))?;
+
+    info!("Generated Hytale config.json for server {}", id);
 
     sqlx::query(
         "INSERT INTO servers (id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -249,7 +308,7 @@ async fn create_server(
     .bind(&body.min_memory)
     .bind(&body.max_memory)
     .bind(&body.extra_args)
-    .bind(config_str)
+    .bind(config_str) // This stores the raw request config, but we also wrote the actual file above
     .bind(auto_start)
     .bind(&now)
     .bind(&now)

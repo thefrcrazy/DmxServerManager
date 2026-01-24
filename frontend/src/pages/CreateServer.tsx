@@ -13,7 +13,7 @@ type CreationMode = 'normal' | 'existing' | 'zip';
 
 interface ServerFormData {
     name: string;
-    game_type: 'paper' | 'hytale';
+    game_type: 'hytale';
     executable_path: string;
     working_dir: string;
 
@@ -70,7 +70,7 @@ export default function CreateServer() {
     const [formData, setFormData] = useState<ServerFormData>({
         // Section 1: Informations générales
         name: '',
-        game_type: 'paper',
+        game_type: 'hytale',
         executable_path: 'HytaleServer.jar',
         working_dir: '',
 
@@ -282,8 +282,7 @@ export default function CreateServer() {
                                 onChange={(e) => updateFormData('game_type', e.target.value as any)}
                                 className="input"
                             >
-                                <option value="paper">PaperMC (Minecraft 1.20.4)</option>
-                                <option value="hytale" disabled>Hytale (Bientôt)</option>
+                                <option value="hytale">Hytale</option>
                             </select>
                         </div>
 

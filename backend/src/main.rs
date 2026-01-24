@@ -30,6 +30,7 @@ async fn main() -> std::io::Result<()> {
 
     // Ensure data directory exists
     std::fs::create_dir_all("data").ok();
+    std::fs::create_dir_all(&settings.uploads_dir).ok();
 
     info!("🚀 Kweebec Manager v{}", env!("CARGO_PKG_VERSION"));
     info!("📡 Starting server on {}:{}", settings.host, settings.port);
