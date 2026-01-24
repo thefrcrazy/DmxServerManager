@@ -27,6 +27,7 @@ interface UseServersReturn {
     startServer: (id: string) => Promise<boolean>;
     stopServer: (id: string) => Promise<boolean>;
     restartServer: (id: string) => Promise<boolean>;
+    reinstallServer: (id: string) => Promise<boolean>;
     deleteServer: (id: string) => Promise<boolean>;
     createServer: (data: Omit<Server, 'id' | 'status' | 'created_at' | 'updated_at'>) => Promise<string | null>;
     // Computed values
@@ -97,6 +98,16 @@ export function useServers(): UseServersReturn {
         }
     }, []);
 
+    const reinstallServer = useCallback(async (id: string): Promise<boolean> => {
+        try {
+            await apiService.reinstallServer(id);
+            // Status might need update but usually it stays 'running' or 'stopped' until process manager picks it up
+            return true;
+        } catch {
+            return false;
+        }
+    }, []);
+
     const createServer = useCallback(async (data: any): Promise<string | null> => {
         try {
             const result = await apiService.createServer(data);
@@ -125,6 +136,7 @@ export function useServers(): UseServersReturn {
         startServer,
         stopServer,
         restartServer,
+        reinstallServer,
         deleteServer,
         createServer,
         onlineCount,

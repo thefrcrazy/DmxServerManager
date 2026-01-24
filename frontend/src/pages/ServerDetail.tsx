@@ -347,6 +347,54 @@ export default function ServerDetail() {
         setTimeout(fetchServer, 3000);
     };
 
+    const handleReinstall = async () => {
+        if (!confirm("Êtes-vous sûr de vouloir réinstaller ce serveur ? Cette action supprimera les fichiers du serveur et en téléchargera de nouveaux. Les mondes et configurations seront conservés si possible, mais c'est risqué.")) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/reinstall`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
+
+            if (response.ok) {
+                alert("Réinstallation lancée. Le serveur va être arrêté et réinstallé.");
+                fetchServer();
+            } else {
+                alert("Erreur lors du lancement de la réinstallation.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Erreur de connexion.");
+        }
+    };
+
+    const handleDelete = async () => {
+        const confirmName = prompt(`Pour confirmer la suppression, tapez "${server?.name}" :`);
+        if (confirmName !== server?.name) {
+            if (confirmName) alert("Nom incorrect, suppression annulée.");
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/servers/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
+
+            if (response.ok) {
+                // Redirect to servers list
+                window.location.href = '/servers'; // Simple redirect since we don't have navigate hook setup right here in this view (or we can add it)
+            } else {
+                alert("Erreur lors de la suppression.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Erreur de connexion.");
+        }
+    };
+
     const sendCommand = (e: React.FormEvent) => {
         e.preventDefault();
         if (command.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -1296,6 +1344,42 @@ export default function ServerDetail() {
                                     </div>
                                 </div>
                             </form>
+
+                            {/* Danger Zone */}
+                            <div className="card form-section p-0 border-0 shadow-none bg-transparent mt-8 border-t border-danger/20 pt-6">
+                                <h3 className="form-section-title text-danger">
+                                    <AlertCircle size={18} />
+                                    Zone de Danger
+                                </h3>
+                                <div className="danger-zone-grid grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="danger-item p-4 border border-white/5 rounded bg-white/5">
+                                        <h4 className="font-semibold mb-2">Réinstaller le serveur</h4>
+                                        <p className="text-sm text-muted mb-4">
+                                            Supprime et télécharge à nouveau les fichiers du serveur. Vos données (mondes, backups) devraient être préservées, mais une sauvegarde est recommandée.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleReinstall}
+                                            className="btn btn--secondary w-full"
+                                        >
+                                            <Download size={16} /> Réinstaller
+                                        </button>
+                                    </div>
+                                    <div className="danger-item p-4 border border-danger/20 rounded bg-danger/5">
+                                        <h4 className="font-semibold mb-2 text-danger">Supprimer le serveur</h4>
+                                        <p className="text-sm text-muted mb-4">
+                                            Cette action est irréversible. Toutes les données, fichiers et sauvegardes seront définitivement effacés.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleDelete}
+                                            className="btn btn--danger w-full"
+                                        >
+                                            <Trash2 size={16} /> Supprimer
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div >
                     </div >
                 )

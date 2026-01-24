@@ -108,6 +108,12 @@ class ApiService {
         });
     }
 
+    async reinstallServer(id: string) {
+        return this.request<{ success: boolean; message: string }>(`/servers/${id}/reinstall`, {
+            method: 'POST',
+        });
+    }
+
     async sendCommand(id: string, command: string) {
         return this.request<{ success: boolean }>(`/servers/${id}/command`, {
             method: 'POST',

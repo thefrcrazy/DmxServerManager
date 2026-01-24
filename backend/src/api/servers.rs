@@ -5,7 +5,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tracing::{info, error};
+use tracing::{info, error, warn};
 use std::path::Path;
 
 use crate::db::DbPool;
@@ -99,12 +99,22 @@ async fn list_servers(
             None
         };
 
-        // Parse max_players from config
+        // Parse max_players (DB config or file config)
         let config_json = s.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
-        let max_players = config_json.as_ref()
+        let mut max_players = config_json.as_ref()
             .and_then(|c| c.get("MaxPlayers"))
             .and_then(|v| v.as_u64())
             .map(|v| v as u32);
+
+        if max_players.is_none() {
+            // Try reading from config.json
+            let config_path = Path::new(&s.working_dir).join("server").join("config.json");
+            if let Ok(content) = fs::read_to_string(config_path).await {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    max_players = json.get("MaxPlayers").and_then(|v| v.as_u64()).map(|v| v as u32);
+                }
+            }
+        }
 
         responses.push(ServerResponse {
             id: s.id,
@@ -209,10 +219,10 @@ async fn create_server(
     // Auto-download server jar if requested
     let mut final_executable = body.executable_path.clone();
     if body.game_type == "hytale" {
-        spawn_hytale_installation(pm.get_ref().clone(), id.clone(), server_path.clone());
+        spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), server_path.clone());
         
         // We set executable path tentatively...
-        final_executable = "./hytale-downloader".to_string(); 
+        final_executable = "HytaleServer.jar".to_string(); 
     }
 
     let config_str = body.config.as_ref().map(|c| c.to_string());
@@ -266,7 +276,7 @@ async fn create_server(
     })))
 }
 
-fn spawn_hytale_installation(pm: ProcessManager, id: String, server_path: std::path::PathBuf) {
+fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, server_path: std::path::PathBuf) {
     tokio::spawn(async move {
         // Register "installing" process to allowing log streaming
         if let Err(e) = pm.register_installing(&id).await {
@@ -327,7 +337,7 @@ fn spawn_hytale_installation(pm: ProcessManager, id: String, server_path: std::p
                     pm.broadcast_log(&id, err.into()).await;
                     pm.remove(&id).await;
                     return;
-                }
+            }
             },
             Err(e) => {
                     let err = format!("❌ Erreur lors de l'exécution de unzip: {}", e);
@@ -338,41 +348,107 @@ fn spawn_hytale_installation(pm: ProcessManager, id: String, server_path: std::p
         }
         
         pm.broadcast_log(&id, "✅ Extraction terminée.".into()).await;
-        
-        // 3. Find the executable (platform dependent name)
-        pm.broadcast_log(&id, "🔍 Recherche de l'exécutable...".into()).await;
 
-        let mut found_executable = String::from("hytale-downloader"); // Fallback
+        // 3. Cleanup unused files
+        pm.broadcast_log(&id, "🧹 Nettoyage des fichiers temporaires...".into()).await;
         
-        let mut read_dir = match tokio::fs::read_dir(&server_path).await {
-            Ok(rd) => rd,
-            Err(e) => {
-                    pm.broadcast_log(&id, format!("❌ Erreur lecture dossier: {}", e)).await;
-                    pm.remove(&id).await;
-                    return;
-            }
-        };
+        // Remove .zip
+        if let Err(e) = tokio::fs::remove_file(&dest_path).await {
+            warn!("Failed to remove zip file: {}", e);
+        }
+
+        // Remove QUICKSTART.md
+        let quickstart_path = server_path.join("QUICKSTART.md");
+        if quickstart_path.exists() {
+             let _ = tokio::fs::remove_file(quickstart_path).await;
+        }
+
+        // Determine OS and remove other binary
+        let mut executable_name = "hytale-downloader-linux-amd64".to_string();
+        let windows_binary = "hytale-downloader-windows-amd64.exe";
+        let linux_binary = "hytale-downloader-linux-amd64";
+
+        if std::env::consts::OS == "linux" {
+            executable_name = linux_binary.to_string();
+            let _ = tokio::fs::remove_file(server_path.join(windows_binary)).await;
+        } else if std::env::consts::OS == "windows" {
+             executable_name = windows_binary.to_string();
+             let _ = tokio::fs::remove_file(server_path.join(linux_binary)).await;
+        } else {
+            // Mac or other - keep both or logic? 
+            // User is likely on Mac dev env but deploying to Linux.
+            // We'll optimistically keep Linux logic relative to the *server* OS.
+            // But if we are running ON Mac checking OS might return "macos".
+            // Let's assume we keep the one that matches correct OS, but user said "si sur linux garde linux".
             
-        while let Ok(Some(entry)) = read_dir.next_entry().await {
-            let file_name = entry.file_name();
-            let name = file_name.to_string_lossy();
-            if name.starts_with("hytale-downloader-") && !name.ends_with(".zip") {
-                found_executable = name.to_string();
-                
-                // Ensure it is executable (chmod +x)
-                let _ = tokio::process::Command::new("chmod")
-                    .arg("+x")
-                    .arg(entry.path())
-                    .status()
-                    .await;
-                    
-                break;
+            // Safety fallback: Check what exists if we are unsure, but standard logic:
+            if cfg!(target_os = "macos") {
+                 // Developing on Mac, probably want to keep Linux binary for Docker/prod, 
+                 // OR keep both. User said "remove unused". 
+                 // I will keep Linux binary as default for Mac dev env simulating Linux server.
+                 executable_name = linux_binary.to_string(); // Linux binary can often run on Mac via emulation or user might use that.
+                 // Actually, let's keep both if unknown, but user was specific.
+                 // Let's just remove the windows one on Mac.
+                 let _ = tokio::fs::remove_file(server_path.join(windows_binary)).await;
             }
         }
         
-        pm.broadcast_log(&id, format!("✅ Exécutable trouvé: {}", found_executable)).await;
-        pm.broadcast_log(&id, "✨ Installation terminée ! Vous pouvez lancer le serveur.".into()).await;
+        let executable_path = server_path.join(&executable_name);
         
+        // Chmod +x
+        if std::env::consts::OS != "windows" {
+            let _ = tokio::process::Command::new("chmod")
+                .arg("+x")
+                .arg(&executable_path)
+                .status()
+                .await;
+        }
+
+        // 4. Run Downloader
+        pm.broadcast_log(&id, format!("⏳ Exécution du downloader ({}) pour récupérer le serveur...", executable_name)).await;
+        
+        match tokio::process::Command::new(&executable_path)
+            .current_dir(&server_path)
+            .status() // We wait for it to finish
+            .await 
+        {
+             Ok(status) => {
+                if !status.success() {
+                     let err = "❌ Le downloader a échoué (exit code non-zero).";
+                     pm.broadcast_log(&id, err.into()).await;
+                     // We don't remove the process here, so user can see logs? 
+                     // But we are in "installing" mode.
+                } else {
+                     pm.broadcast_log(&id, "✅ Downloader terminé avec succès.".into()).await;
+                }
+             },
+             Err(e) => {
+                 let err = format!("❌ Erreur lors de l'exécution du downloader: {}", e);
+                 pm.broadcast_log(&id, err).await;
+             }
+        }
+
+        // 5. Verify HytaleServer.jar exists
+        let jar_path = server_path.join("HytaleServer.jar");
+        if jar_path.exists() {
+             pm.broadcast_log(&id, "✨ HytaleServer.jar présent. Installation terminée !".into()).await;
+             
+             // Update DB executable path to ensure it points to the jar (fixes legacy/broken paths)
+             // We need to execute a query. spawn_hytale_installation has `pool: DbPool`.
+             // DbPool is likely sqlx::Pool.
+             let update_result = sqlx::query("UPDATE servers SET executable_path = ? WHERE id = ?")
+                .bind(server_path.join("HytaleServer.jar").to_str().unwrap_or("HytaleServer.jar"))
+                .bind(&id)
+                .execute(&pool)
+                .await;
+                
+             if let Err(e) = update_result {
+                 error!("Failed to update server executable path in DB: {}", e);
+             }
+        } else {
+             pm.broadcast_log(&id, "⚠️ Attention: HytaleServer.jar non trouvé après exécution.".into()).await;
+        }
+
         // Cleanup virtual process
         pm.remove(&id).await;
     });
@@ -422,24 +498,13 @@ async fn reinstall_server(
         }
     }
     
-    // We should probably regenerate config.json too to ensure it exists, 
-    // or rely on the spawn function downloading stuff. 
-    // BUT spawn_hytale does NOT generate config.json, create_server did that.
-    // Let's regenerate config.json here too to be safe.
-    
     let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
-    // Use stored config or defaults? server.config has the RAW stored value. 
-    // In create_server we used body params. Here we have to infer or just use defaults.
-    // We can re-use the stored MaxPlayers if available.
     let max_players = config_json.as_ref()
         .and_then(|c| c.get("MaxPlayers"))
         .and_then(|v| v.as_u64())
         .map(|v| v as u32)
         .unwrap_or(100);
         
-    // Auth mode ? We might need to query manager.json or store it in DB. 
-    // For now default to authenticated as strictly recommended.
-    
     let hytale_config = templates::generate_config_json(
         &server.name,
         max_players, 
@@ -455,7 +520,7 @@ async fn reinstall_server(
 
 
     // 4. Trigger Installation
-    spawn_hytale_installation(pm.get_ref().clone(), id.clone(), server_path);
+    spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), server_path);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ 
         "success": true, 
@@ -493,12 +558,22 @@ async fn get_server(
         None
     };
 
-    // Parse max_players from config
+    // Parse max_players (DB config or file config)
     let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
-    let max_players = config_json.as_ref()
+    let mut max_players = config_json.as_ref()
         .and_then(|c| c.get("MaxPlayers"))
         .and_then(|v| v.as_u64())
         .map(|v| v as u32);
+
+    if max_players.is_none() {
+        // Try reading from config.json
+        let config_path = Path::new(&server.working_dir).join("server").join("config.json");
+        if let Ok(content) = fs::read_to_string(config_path).await {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                max_players = json.get("MaxPlayers").and_then(|v| v.as_u64()).map(|v| v as u32);
+            }
+        }
+    }
 
     Ok(HttpResponse::Ok().json(ServerResponse {
         id: server.id,

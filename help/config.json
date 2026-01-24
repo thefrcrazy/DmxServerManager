@@ -1,0 +1,31 @@
+{
+  "AuthCredentialStore": {
+    "Path": "auth.enc",
+    "Type": "Encrypted"
+  },
+  "ConnectionTimeouts": {
+    "JoinTimeouts": {}
+  },
+  "Defaults": {
+    "GameMode": "Adventure",
+    "World": "default"
+  },
+  "DisplayTmpTagsInStrings": false,
+  "LogLevels": {},
+  "MOTD": "",
+  "MaxPlayers": 100,
+  "MaxViewRadius": 12,
+  "Mods": {},
+  "Modules": {
+    "PathPlugin": {
+      "Modules": {}
+    }
+  },
+  "Password": "",
+  "PlayerStorage": {
+    "Type": "Hytale"
+  },
+  "RateLimit": {},
+  "ServerName": "Camarades",
+  "Version": 3
+}
