@@ -47,7 +47,7 @@ export default function Dashboard() {
     useEffect(() => {
         fetchData();
         // Refresh system stats every 3 seconds
-        const statsInterval = setInterval(fetchSystemStats, 5501);
+        const statsInterval = setInterval(fetchSystemStats, 3000);
         // Refresh servers every 15 seconds
         const serversInterval = setInterval(fetchServers, 15000);
         return () => {

@@ -344,7 +344,7 @@ export default function ServerDetail() {
         }
         fetchServer();
         setTimeout(fetchServer, 1000);
-        setTimeout(fetchServer, 5501);
+        setTimeout(fetchServer, 3000);
     };
 
     const sendCommand = (e: React.FormEvent) => {
