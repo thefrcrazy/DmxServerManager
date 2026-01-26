@@ -833,15 +833,34 @@ async fn start_server(
     // Send webhook notification
     let pool_clone = pool.get_ref().clone();
     let server_name = server.name.clone();
-    tokio::spawn(async move {
-        crate::services::discord_service::send_notification(
-            &pool_clone,
-            "🟢 Serveur Démarré",
-            &format!("Le serveur **{}** a été démarré.", server_name),
-            crate::services::discord_service::COLOR_SUCCESS,
-            Some(&server_name),
-        ).await;
-    });
+    // Extract webhook_url from server config
+    let config: Option<serde_json::Value> = server.config.clone()
+        .and_then(|c| serde_json::from_str(&c).ok());
+        
+    // Send webhook notification
+    let pool_clone = pool.get_ref().clone();
+    let server_name = server.name.clone();
+    // Extract webhook_url from server config
+    let config: Option<serde_json::Value> = server.config.clone()
+        .and_then(|c| serde_json::from_str(&c).ok());
+        
+    let webhook_url = config.as_ref()
+        .and_then(|c| c.get("discord_webhook_url"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+        
+    if let Some(url) = webhook_url {
+        tokio::spawn(async move {
+            crate::services::discord_service::send_notification(
+                &pool_clone,
+                "🟢 Serveur Démarré",
+                &format!("Le serveur **{}** a été démarré.", server_name),
+                crate::services::discord_service::COLOR_SUCCESS,
+                Some(&server_name),
+                Some(&url), // Explicitly pass the URL
+            ).await;
+        });
+    }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "starting" })))
 }
@@ -853,8 +872,8 @@ async fn stop_server(
 ) -> Result<HttpResponse, AppError> {
     let id = path.into_inner();
     
-    // Get server name for webhook
-    let server_name: Option<(String,)> = sqlx::query_as("SELECT name FROM servers WHERE id = ?")
+    // Get server name and config for webhook
+    let server_data: Option<(String, Option<String>)> = sqlx::query_as("SELECT name, config FROM servers WHERE id = ?")
         .bind(&id)
         .fetch_optional(pool.get_ref())
         .await?;
@@ -862,17 +881,29 @@ async fn stop_server(
     pm.stop(&id).await?;
     
     // Send webhook notification
-    if let Some((name,)) = server_name {
+    if let Some((name, config_str)) = server_data {
         let pool_clone = pool.get_ref().clone();
-        tokio::spawn(async move {
-            crate::services::discord_service::send_notification(
-                &pool_clone,
-                "🔴 Serveur Arrêté",
-                &format!("Le serveur **{}** a été arrêté.", name),
-                crate::services::discord_service::COLOR_ERROR,
-                Some(&name),
-            ).await;
-        });
+        
+        let config: Option<serde_json::Value> = config_str
+            .and_then(|c| serde_json::from_str(&c).ok());
+            
+        let webhook_url = config.as_ref()
+            .and_then(|c| c.get("discord_webhook_url"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+            
+        if let Some(url) = webhook_url {
+            tokio::spawn(async move {
+                crate::services::discord_service::send_notification(
+                    &pool_clone,
+                    "🔴 Serveur Arrêté",
+                    &format!("Le serveur **{}** a été arrêté.", name),
+                    crate::services::discord_service::COLOR_ERROR,
+                    Some(&name),
+                    Some(&url),
+                ).await;
+            });
+        }
     }
     
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "stopping" })))

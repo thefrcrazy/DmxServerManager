@@ -9,17 +9,26 @@ pub async fn send_notification(
     description: &str,
     color: u32,
     server_name: Option<&str>,
+    override_webhook_url: Option<&str>,
 ) {
-    // Get webhook URL from settings
-    let webhook_url: Option<(String,)> = 
-        sqlx::query_as("SELECT value FROM settings WHERE key = 'webhook_url'")
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
-
-    let Some((url,)) = webhook_url else {
-        return; // No webhook configured
+    // Determine which URL to use
+    let url = if let Some(u) = override_webhook_url {
+        if u.is_empty() { return; }
+        u.to_string()
+    } else {
+        // Fallback to global setting ONLY if no specific server name logic implies otherwise? 
+        // For now, standard fallback.
+        let val: Option<(String,)> = 
+            sqlx::query_as("SELECT value FROM settings WHERE key = 'webhook_url'")
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+        
+        match val {
+            Some((u,)) => u,
+            None => return,
+        }
     };
 
     if url.is_empty() {
