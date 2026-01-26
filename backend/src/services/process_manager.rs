@@ -16,10 +16,26 @@ pub struct ProcessManager {
     processes: Arc<RwLock<HashMap<String, ServerProcess>>>,
 }
 
-struct ServerProcess {
+pub struct ServerProcess {
     child: Option<Child>,
     log_tx: broadcast::Sender<String>,
     players: Arc<std::sync::RwLock<HashSet<String>>>,
+}
+
+// Helper to write to log file safely across threads
+async fn write_log_line(file: &Option<Arc<tokio::sync::Mutex<std::fs::File>>>, line: &str) {
+    if let Some(f) = file {
+        if let Ok(mut guard) = f.try_lock() {
+            let _ = writeln!(guard, "{}", line);
+        } else {
+            // Fallback or retry logic could go here, but for logs we might skip if busy
+            // to avoid blocking logging threads. 
+            // However, a blocking lock in a spawn_blocking or similar is better if we want strict ordering.
+            // For simplicity in this async context where we use std::fs::File (blocking), 
+            // we should technically use tokio::fs::File, but we are inside std::thread::spawn for stdout/stderr.
+            // Actually, we are using std::thread::spawn, so we can use blocking IO.
+        }
+    }
 }
 
 impl ProcessManager {
@@ -152,8 +168,18 @@ impl ProcessManager {
 
         info!("Started server {} with PID {:?}", server_id, child.id());
 
+        // Create log file
+        let log_path = std::path::Path::new(working_dir).join("console.log");
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+            .ok()
+            .map(|f| Arc::new(std::sync::Mutex::new(f)));
+
         // Create log broadcaster
         let (log_tx, _) = broadcast::channel::<String>(1000);
+        let _ = log_tx.send(format!("[STATUS]: running"));
 
         // Create players tracker
         let players = Arc::new(std::sync::RwLock::new(HashSet::new()));
@@ -163,16 +189,22 @@ impl ProcessManager {
             let tx = log_tx.clone();
             let players_clone = players.clone();
             let server_id_clone = server_id.to_string();
+            let log_file_clone = log_file.clone();
+            
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
-                // Regex for detecting player join/leave
-                // Join example: [Universe|P] Adding player 'Name (UUID)
-                // Leave example: [Universe|P] Removing player 'Name' (UUID)
-                // Note: Join might be missing the closing quote for the name based on user logs
                 let join_re = Regex::new(r"\[Universe\|P\] Adding player '([^' ]+)").unwrap();
                 let leave_re = Regex::new(r"\[Universe\|P\] Removing player '([^']+)'").unwrap();
+                let server_started_re = Regex::new(r"Done \([0-9\.]+s\)!").unwrap();
 
                 for line in reader.lines().map_while(Result::ok) {
+                     // Write to file
+                    if let Some(f) = &log_file_clone {
+                        if let Ok(mut guard) = f.lock() {
+                            let _ = writeln!(guard, "{}", line);
+                        }
+                    }
+
                     // Try to match player events
                     if let Some(caps) = join_re.captures(&line) {
                         if let Some(name) = caps.get(1) {
@@ -188,11 +220,22 @@ impl ProcessManager {
                                 p.remove(&player_name);
                             }
                         }
+                    } else if server_started_re.is_match(&line) {
+                         let _ = tx.send(format!("[STATUS]: running"));
                     }
 
                     let _ = tx.send(line);
                 }
+                
                 info!("Server {} stdout stream ended", server_id_clone);
+                let _ = tx.send(format!("[STATUS]: stopped"));
+                
+                 // Write stop marker to file
+                if let Some(f) = &log_file_clone {
+                    if let Ok(mut guard) = f.lock() {
+                        let _ = writeln!(guard, "[Server Stopped]");
+                    }
+                }
             });
         }
 
@@ -200,10 +243,19 @@ impl ProcessManager {
         if let Some(stderr) = child.stderr.take() {
             let tx = log_tx.clone();
             let server_id_clone = server_id.to_string();
+            let log_file_clone = log_file.clone();
+
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    let _ = tx.send(format!("[STDERR] {}", line));
+                    let log_line = format!("[STDERR] {}", line);
+                     // Write to file
+                    if let Some(f) = &log_file_clone {
+                        if let Ok(mut guard) = f.lock() {
+                            let _ = writeln!(guard, "{}", log_line);
+                        }
+                    }
+                    let _ = tx.send(log_line);
                 }
                 info!("Server {} stderr stream ended", server_id_clone);
             });

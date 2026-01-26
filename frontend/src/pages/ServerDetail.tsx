@@ -113,6 +113,80 @@ const CollapsibleSection = ({ title, icon: Icon, children, badge, defaultOpen = 
     </details>
 );
 
+const InstallationProgress = ({ logs, onClose }: { logs: string[], onClose: () => void }) => {
+    // Determine current step based on logs
+    const steps = [
+        { id: 'init', label: 'Initialisation', icon: <Terminal size={18} /> },
+        { id: 'download', label: 'Téléchargement', icon: <Download size={18} /> },
+        { id: 'extract', label: 'Installation', icon: <Folder size={18} /> },
+        { id: 'finish', label: 'Finalisation', icon: <Check size={18} /> },
+    ];
+
+    const [currentStep, setCurrentStep] = useState(0);
+
+    useEffect(() => {
+        const lastLog = logs[logs.length - 1] || '';
+        // Simple state machine based on log messages from backend
+        if (lastLog.includes('Initialization')) setCurrentStep(0);
+        else if (lastLog.includes('Téléchargement')) setCurrentStep(1);
+        else if (lastLog.includes('Extraction') || lastLog.includes('Décompression')) setCurrentStep(2);
+        else if (lastLog.includes('terminée !')) {
+            setCurrentStep(3);
+        }
+    }, [logs]);
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-[#1a1b1e] border border-white/10 rounded-xl p-6 max-w-lg w-full shadow-2xl">
+                <div className="text-center mb-6">
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+                        Installation en cours...
+                    </h2>
+                    <p className="text-gray-400 text-sm mt-1">Veuillez ne pas fermer cette fenêtre</p>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                    {steps.map((step, index) => {
+                        const isComplete = currentStep > index;
+                        const isCurrent = currentStep === index;
+
+                        return (
+                            <div key={step.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isCurrent
+                                ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                                : isComplete
+                                    ? 'bg-green-500/5 border-green-500/20 text-green-400'
+                                    : 'bg-white/5 border-transparent text-gray-500'
+                                }`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isCurrent ? 'bg-orange-500/20' : isComplete ? 'bg-green-500/20' : 'bg-white/5'
+                                    }`}>
+                                    {isComplete ? <Check size={14} /> : step.icon}
+                                </div>
+                                <div className="flex-1">
+                                    <div className="font-medium text-sm">{step.label}</div>
+                                    {isCurrent && (
+                                        <div className="mt-2 h-1 bg-white/10 rounded-full overflow-hidden">
+                                            <div className="h-full bg-orange-500 animate-pulse rounded-full w-full"></div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {currentStep === 3 && (
+                    <button
+                        onClick={onClose}
+                        className="w-full py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+                    >
+                        Terminer
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
 export default function ServerDetail() {
     const { t } = useLanguage();
     const { setPageTitle } = usePageTitle();
@@ -146,6 +220,9 @@ export default function ServerDetail() {
     const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
     const [logContent, setLogContent] = useState('');
 
+    // Installation state
+    const [isInstalling, setIsInstalling] = useState(false);
+
     // Config tab state
     const [configFormData, setConfigFormData] = useState<Partial<Server>>({});
     const [configSaving, setConfigSaving] = useState(false);
@@ -173,8 +250,8 @@ export default function ServerDetail() {
         // Reset logs on id change
         setLogs([]);
         fetchServer();
-        // Try to fetch existing install logs to restore history
-        fetchInstallLog();
+        // Try to fetch existing logs (console.log or install.log)
+        fetchConsoleLog();
         connectWebSocket();
 
         return () => {
@@ -182,26 +259,34 @@ export default function ServerDetail() {
         };
     }, [id]);
 
-    const fetchInstallLog = async () => {
+    const fetchConsoleLog = async () => {
         if (!id) return;
         try {
-            const response = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
+            // Try fetching console.log first (standard logs)
+            let res = await fetch(`/api/v1/servers/${id}/files/read?path=server/console.log`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
-            if (response.ok) {
-                const data = await response.json();
+
+            // If not found, try install.log (installation history)
+            if (!res.ok) {
+                res = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                });
+            }
+
+            if (res.ok) {
+                const data = await res.json();
                 if (data.content && data.content.length > 0) {
                     const lines = data.content.split('\n');
                     setLogs(prev => {
-                        // If we already have logs (from WS), prepend file content? 
-                        // Usually this runs fast on mount. 
-                        // We deduplicate simple assumption: if file has content, it's history.
-                        return [...lines, ...prev];
+                        // Avoid duplication if WS is already active
+                        if (prev.length > 0) return prev;
+                        return lines;
                     });
                 }
             }
         } catch (e) {
-            // File might not exist if not installing, ignore
+            // Ignore
         }
     };
 
@@ -349,7 +434,27 @@ export default function ServerDetail() {
         };
 
         ws.onmessage = (event) => {
-            setLogs((prev) => [...prev, event.data]);
+            const message = event.data;
+
+            // Handle Control Messages
+            if (message.startsWith('[STATUS]:')) {
+                const status = message.replace('[STATUS]:', '').trim();
+                // Update server status locally without full refetch
+                setServer(prev => prev ? ({ ...prev, status }) : null);
+                if (status === 'running') setStartTime(new Date());
+                else setStartTime(null);
+                return; // Don't show in logs
+            }
+
+            // Handle Installation Detection
+            if (message.includes('Initialization of installation') || message.includes('Initialization de l\'installation')) {
+                setIsInstalling(true);
+            }
+            if (message.includes('Installation terminée') || message.includes('Installation finished')) {
+                // Keep wizard open for a moment or let user close it
+            }
+
+            setLogs((prev) => [...prev, message]);
         };
 
         ws.onclose = () => {
@@ -375,18 +480,22 @@ export default function ServerDetail() {
     };
 
     const handleReinstall = async () => {
-        if (!confirm("Êtes-vous sûr de vouloir réinstaller ce serveur ? Cette action supprimera les fichiers du serveur et en téléchargera de nouveaux. Les mondes et configurations seront conservés si possible, mais c'est risqué.")) {
+        if (!confirm("Êtes-vous sûr de vouloir réinstaller ce serveur ? Cette action supprimera les fichiers binaires du serveur et en téléchargera de nouveaux. Vos mondes et configurations seront conservés.")) {
             return;
         }
 
         try {
+            // Switch to terminal immediately
+            setActiveTab('console');
+            setLogs([]); // Clear logs to prepare for new stream
+
             const response = await fetch(`/api/v1/servers/${id}/reinstall`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
 
             if (response.ok) {
-                alert("Réinstallation lancée. Le serveur va être arrêté et réinstallé.");
+                // Trigger a log refresh just in case, or wait for WS
                 fetchServer();
             } else {
                 alert("Erreur lors du lancement de la réinstallation.");
@@ -769,6 +878,17 @@ export default function ServerDetail() {
                     </button>
                 ))}
             </div>
+
+            {/* Installation Wizard Overlay */}
+            {isInstalling && (
+                <InstallationProgress
+                    logs={logs}
+                    onClose={() => {
+                        setIsInstalling(false);
+                        fetchServer(); // Refresh to get final status
+                    }}
+                />
+            )}
 
             {/* Tab Content */}
             <div className="tab-content">

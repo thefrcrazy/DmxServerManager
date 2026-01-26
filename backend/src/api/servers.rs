@@ -398,13 +398,34 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         let install_log_path = logs_dir.join("install.log");
         let _ = tokio::fs::write(&install_log_path, "Starting Hytale Server Installation...\n").await;
         
-        pm.broadcast_log(&id, "🚀 Initialization de l'installation du serveur...".into()).await;
+        let log_file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&install_log_path)
+            .await
+            .ok()
+            .map(|f| std::sync::Arc::new(tokio::sync::Mutex::new(f)));
+
+        let log_helper = |msg: String| {
+            let pm = pm.clone();
+            let id = id.clone();
+            let log_file = log_file.clone();
+            async move {
+                pm.broadcast_log(&id, msg.clone()).await;
+                if let Some(f) = log_file {
+                    let mut guard = f.lock().await;
+                    let _ = guard.write_all(format!("{}\n", msg).as_bytes()).await;
+                }
+            }
+        };
+
+        log_helper("🚀 Initialization de l'installation du serveur...".to_string()).await;
 
         let zip_url = "https://downloader.hytale.com/hytale-downloader.zip";
         let zip_name = "hytale-downloader.zip";
         let dest_path = server_path.join(zip_name);
 
-        pm.broadcast_log(&id, format!("⬇️ Téléchargement de Hytale Downloader depuis {}...", zip_url)).await;
+        log_helper(format!("⬇️ Téléchargement de Hytale Downloader depuis {}...", zip_url)).await;
         info!("Downloading Hytale downloader from {} to {:?}", zip_url, dest_path);
 
         // 1. Download ZIP
@@ -419,13 +440,13 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             "",
             Some(install_log_path.clone())
         ).await {
-            pm.broadcast_log(&id, format!("❌ {}", e)).await;
+            log_helper(format!("❌ {}", e)).await;
             pm.remove(&id).await;
             return;
         }
 
-        pm.broadcast_log(&id, "✅ Téléchargement terminé.".into()).await;
-        pm.broadcast_log(&id, "📦 Extraction de l'archive...".into()).await;
+        log_helper("✅ Téléchargement terminé.".to_string()).await;
+        log_helper("📦 Extraction de l'archive...".to_string()).await;
         
         // 2. Unzip
         info!("Extracting Hytale downloader...");
@@ -445,10 +466,10 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             return;
         }
         
-        pm.broadcast_log(&id, "✅ Extraction terminée.".into()).await;
+        log_helper("✅ Extraction terminée.".to_string()).await;
 
         // 3. Cleanup unused files
-        pm.broadcast_log(&id, "🧹 Nettoyage des fichiers temporaires...".into()).await;
+        log_helper("🧹 Nettoyage des fichiers temporaires...".to_string()).await;
         
         // Remove .zip
         if let Err(e) = tokio::fs::remove_file(&dest_path).await {
@@ -474,7 +495,12 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
              let _ = tokio::fs::remove_file(server_path.join(linux_binary)).await;
         } else {
             // Mac or other
+            // Mac or other
              if cfg!(target_os = "macos") {
+                 // Warning: Mac is not officially supported by Hytale Downloader (binary is Linux/Windows)
+                 // Users typically need to run Windows binary via Wine or Linux binary via Docker/VM.
+                 // We will try Linux binary as a fallback/placeholder but warn the user.
+                 log_helper("⚠️ Attention : macOS détecté. Le Hytale Downloader (Linux binary) peut ne pas fonctionner nativement.".to_string()).await;
                  executable_name = linux_binary.to_string(); 
                  let _ = tokio::fs::remove_file(server_path.join(windows_binary)).await;
             }
@@ -492,9 +518,9 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         }
 
         // 4. Run Downloader
-        pm.broadcast_log(&id, format!("⏳ Exécution du downloader ({}) pour récupérer le serveur...", executable_name)).await;
-        pm.broadcast_log(&id, "⚠️ IMPORTANT : Le downloader va vous demander de vous authentifier via une URL.".into()).await;
-        pm.broadcast_log(&id, "⚠️ Surveillez les logs ci-dessous :".into()).await;
+        log_helper(format!("⏳ Exécution du downloader ({}) pour récupérer le serveur...", executable_name)).await;
+        log_helper("⚠️ IMPORTANT : Le downloader va vous demander de vous authentifier via une URL.".to_string()).await;
+        log_helper("⚠️ Surveillez les logs ci-dessous :".to_string()).await;
 
         if let Err(e) = run_with_logs(
             &mut tokio::process::Command::new(&executable_path)
@@ -504,10 +530,10 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             "",
             Some(install_log_path.clone())
         ).await {
-            pm.broadcast_log(&id, format!("❌ {}", e)).await;
+            log_helper(format!("❌ {}", e)).await;
             // Don't abort immediately
         } else {
-            pm.broadcast_log(&id, "✅ Downloader terminé avec succès.".into()).await;
+            log_helper("✅ Downloader terminé avec succès.".to_string()).await;
         }
 
         // 4.5 Check for downloaded ZIP (the actual server) and unzip it
@@ -520,7 +546,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                          let file_name = path.file_name().unwrap().to_string_lossy();
                          // Exclude hytale-downloader.zip (already extracted) and Assets (keep it)
                          if file_name != "hytale-downloader.zip" && file_name != "Assets.zip" {
-                             pm.broadcast_log(&id, format!("📦 Décompression du serveur : {}...", file_name)).await;
+                             log_helper(format!("📦 Décompression du serveur : {}...", file_name)).await;
                              
                              if let Err(e) = run_with_logs(
                                 &mut tokio::process::Command::new("unzip")
@@ -531,12 +557,12 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                                 pm.clone(),
                                 id.clone(),
                                 "",
-                                Some(install_log_path.clone())
-                            ).await {
-                                pm.broadcast_log(&id, format!("❌ Erreur extraction: {}", e)).await;
-                            } else {
+                                 Some(install_log_path.clone())
+                             ).await {
+                                 log_helper(format!("❌ Erreur extraction: {}", e)).await;
+                             } else {
                                 extracted = true;
-                                pm.broadcast_log(&id, "✅ Décompression terminée.".into()).await;
+                                log_helper("✅ Décompression terminée.".to_string()).await;
                                 // cleanup the server zip
                                 let _ = tokio::fs::remove_file(&path).await;
                             }
@@ -549,7 +575,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         // 4.6 Flatten "Server" subdirectory if present (Hytale zip structure)
         let nested_server_dir = server_path.join("Server");
         if nested_server_dir.exists() && nested_server_dir.is_dir() {
-            pm.broadcast_log(&id, "📂 Réorganisation des fichiers du serveur...".into()).await;
+            log_helper("📂 Réorganisation des fichiers du serveur...".to_string()).await;
             if let Ok(mut entries) = tokio::fs::read_dir(&nested_server_dir).await {
                 while let Ok(Some(entry)) = entries.next_entry().await {
                     let path = entry.path();
@@ -570,7 +596,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         // 5. Verify HytaleServer.jar exists
         let jar_path = server_path.join("HytaleServer.jar");
         if jar_path.exists() {
-             pm.broadcast_log(&id, "✨ HytaleServer.jar présent. Installation terminée !".into()).await;
+             log_helper("✨ HytaleServer.jar présent. Installation terminée !".to_string()).await;
              
              // Update DB executable path to ensure it points to the jar (fixes legacy/broken paths)
              // We need to execute a query. spawn_hytale_installation has `pool: DbPool`.
@@ -585,7 +611,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                  error!("Failed to update server executable path in DB: {}", e);
              }
         } else {
-             pm.broadcast_log(&id, "⚠️ Attention: HytaleServer.jar non trouvé après exécution.".into()).await;
+             log_helper("⚠️ Attention: HytaleServer.jar non trouvé après exécution.".to_string()).await;
         }
 
         // Cleanup virtual process
