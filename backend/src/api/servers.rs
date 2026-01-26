@@ -5,6 +5,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncBufReadExt;
 use tracing::{info, error, warn};
 use std::path::Path;
 
@@ -276,13 +277,108 @@ async fn create_server(
     })))
 }
 
+// Helper to run a command and stream its stdout/stderr to the process manager logs
+async fn run_with_logs(
+    cmd: &mut tokio::process::Command, 
+    pm: ProcessManager, 
+    id: String, 
+    log_prefix: &str,
+    log_file_path: Option<std::path::PathBuf>
+) -> Result<(), String> {
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Failed to spawn command: {}", e)),
+    };
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let mut stdout_reader = tokio::io::BufReader::new(stdout);
+    let mut stderr_reader = tokio::io::BufReader::new(stderr);
+
+    // Create a shared writer if a path is provided
+    let file_writer = if let Some(path) = log_file_path {
+        match tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .await 
+        {
+            Ok(f) => Some(std::sync::Arc::new(tokio::sync::Mutex::new(f))),
+            Err(e) => {
+                error!("Failed to open log file: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let pm_clone1 = pm.clone();
+    let id_clone1 = id.clone();
+    let prefix1 = log_prefix.to_string();
+    let file_writer1 = file_writer.clone();
+    let stdout_task = tokio::spawn(async move {
+        let mut line = String::new();
+        while stdout_reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+            let trimmed = line.trim_end();
+            pm_clone1.broadcast_log(&id_clone1, format!("{}{}", prefix1, trimmed)).await;
+            
+            if let Some(writer) = &file_writer1 {
+                let mut guard = writer.lock().await;
+                let _ = guard.write_all(line.as_bytes()).await;
+            }
+            line.clear();
+        }
+    });
+
+    let pm_clone2 = pm.clone();
+    let id_clone2 = id.clone();
+    let prefix2 = log_prefix.to_string();
+    let file_writer2 = file_writer.clone(); 
+    let stderr_task = tokio::spawn(async move {
+        let mut line = String::new();
+        while stderr_reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+            let trimmed = line.trim_end();
+            pm_clone2.broadcast_log(&id_clone2, format!("{}[ERR] {}", prefix2, trimmed)).await;
+            
+             if let Some(writer) = &file_writer2 {
+                let mut guard = writer.lock().await;
+                let _ = guard.write_all(line.as_bytes()).await;
+            }
+            line.clear();
+        }
+    });
+
+    let status = child.wait().await;
+    let _ = stdout_task.await;
+    let _ = stderr_task.await;
+
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("Command failed with exit code: {:?}", s.code())),
+        Err(e) => Err(format!("Failed to wait for command: {}", e)),
+    }
+}
+
 fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, server_path: std::path::PathBuf) {
     tokio::spawn(async move {
-        // Register "installing" process to allowing log streaming
+        // Register "installing" process to allow log streaming
         if let Err(e) = pm.register_installing(&id).await {
             error!("Failed to register installing process: {}", e);
             return;
         }
+        
+        let logs_dir = server_path.join("logs");
+        if !logs_dir.exists() {
+             let _ = tokio::fs::create_dir_all(&logs_dir).await;
+        }
+
+        let install_log_path = logs_dir.join("install.log");
+        let _ = tokio::fs::write(&install_log_path, "Starting Hytale Server Installation...\n").await;
         
         pm.broadcast_log(&id, "🚀 Initialization de l'installation du serveur...".into()).await;
 
@@ -294,28 +390,20 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         info!("Downloading Hytale downloader from {} to {:?}", zip_url, dest_path);
 
         // 1. Download ZIP
-        match tokio::process::Command::new("curl")
-            .arg("-L")
-            .arg("-o")
-            .arg(&dest_path)
-            .arg(zip_url)
-            .status()
-            .await 
-        {
-            Ok(status) => {
-                if !status.success() {
-                    let err = "❌ Échec du téléchargement (curl returned error)";
-                    pm.broadcast_log(&id, err.into()).await;
-                    pm.remove(&id).await;
-                    return;
-                }
-            },
-            Err(e) => {
-                let err = format!("❌ Erreur lors de l'exécution de curl: {}", e);
-                    pm.broadcast_log(&id, err).await;
-                    pm.remove(&id).await;
-                    return;
-            }
+        if let Err(e) = run_with_logs(
+            &mut tokio::process::Command::new("curl")
+                .arg("-L")
+                .arg("-o")
+                .arg(&dest_path)
+                .arg(zip_url),
+            pm.clone(),
+            id.clone(),
+            "",
+            Some(install_log_path.clone())
+        ).await {
+            pm.broadcast_log(&id, format!("❌ {}", e)).await;
+            pm.remove(&id).await;
+            return;
         }
 
         pm.broadcast_log(&id, "✅ Téléchargement terminé.".into()).await;
@@ -323,28 +411,20 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         
         // 2. Unzip
         info!("Extracting Hytale downloader...");
-        match tokio::process::Command::new("unzip")
-            .arg("-o") // overwrite
-            .arg(&dest_path)
-            .arg("-d")
-            .arg(&server_path)
-            .status()
-            .await
-        {
-            Ok(status) => {
-                    if !status.success() {
-                    let err = "❌ Échec de l'extraction (unzip returned error)";
-                    pm.broadcast_log(&id, err.into()).await;
-                    pm.remove(&id).await;
-                    return;
-            }
-            },
-            Err(e) => {
-                    let err = format!("❌ Erreur lors de l'exécution de unzip: {}", e);
-                    pm.broadcast_log(&id, err).await;
-                    pm.remove(&id).await;
-                    return;
-            }
+        if let Err(e) = run_with_logs(
+            &mut tokio::process::Command::new("unzip")
+                .arg("-o")
+                .arg(&dest_path)
+                .arg("-d")
+                .arg(&server_path),
+            pm.clone(),
+            id.clone(),
+            "",
+            Some(install_log_path.clone())
+        ).await {
+            pm.broadcast_log(&id, format!("❌ {}", e)).await;
+            pm.remove(&id).await;
+            return;
         }
         
         pm.broadcast_log(&id, "✅ Extraction terminée.".into()).await;
@@ -375,20 +455,9 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
              executable_name = windows_binary.to_string();
              let _ = tokio::fs::remove_file(server_path.join(linux_binary)).await;
         } else {
-            // Mac or other - keep both or logic? 
-            // User is likely on Mac dev env but deploying to Linux.
-            // We'll optimistically keep Linux logic relative to the *server* OS.
-            // But if we are running ON Mac checking OS might return "macos".
-            // Let's assume we keep the one that matches correct OS, but user said "si sur linux garde linux".
-            
-            // Safety fallback: Check what exists if we are unsure, but standard logic:
-            if cfg!(target_os = "macos") {
-                 // Developing on Mac, probably want to keep Linux binary for Docker/prod, 
-                 // OR keep both. User said "remove unused". 
-                 // I will keep Linux binary as default for Mac dev env simulating Linux server.
-                 executable_name = linux_binary.to_string(); // Linux binary can often run on Mac via emulation or user might use that.
-                 // Actually, let's keep both if unknown, but user was specific.
-                 // Let's just remove the windows one on Mac.
+            // Mac or other
+             if cfg!(target_os = "macos") {
+                 executable_name = linux_binary.to_string(); 
                  let _ = tokio::fs::remove_file(server_path.join(windows_binary)).await;
             }
         }
@@ -406,26 +475,21 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
 
         // 4. Run Downloader
         pm.broadcast_log(&id, format!("⏳ Exécution du downloader ({}) pour récupérer le serveur...", executable_name)).await;
-        
-        match tokio::process::Command::new(&executable_path)
-            .current_dir(&server_path)
-            .status() // We wait for it to finish
-            .await 
-        {
-             Ok(status) => {
-                if !status.success() {
-                     let err = "❌ Le downloader a échoué (exit code non-zero).";
-                     pm.broadcast_log(&id, err.into()).await;
-                     // We don't remove the process here, so user can see logs? 
-                     // But we are in "installing" mode.
-                } else {
-                     pm.broadcast_log(&id, "✅ Downloader terminé avec succès.".into()).await;
-                }
-             },
-             Err(e) => {
-                 let err = format!("❌ Erreur lors de l'exécution du downloader: {}", e);
-                 pm.broadcast_log(&id, err).await;
-             }
+        pm.broadcast_log(&id, "⚠️ IMPORTANT : Le downloader va vous demander de vous authentifier via une URL.".into()).await;
+        pm.broadcast_log(&id, "⚠️ Surveillez les logs ci-dessous :".into()).await;
+
+        if let Err(e) = run_with_logs(
+            &mut tokio::process::Command::new(&executable_path)
+                .current_dir(&server_path),
+            pm.clone(),
+            id.clone(),
+            "",
+            Some(install_log_path.clone())
+        ).await {
+            pm.broadcast_log(&id, format!("❌ {}", e)).await;
+            // Don't abort immediately, as it might be a partial failure or just exit code
+        } else {
+            pm.broadcast_log(&id, "✅ Downloader terminé avec succès.".into()).await;
         }
 
         // 5. Verify HytaleServer.jar exists
@@ -478,18 +542,84 @@ async fn reinstall_server(
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await; 
     }
 
-    // 3. Clean up server directory
+    // 3. Clean up server binaries ONLY (Preserve world, config, logs)
     // We assume structure is {working_dir}/server for the game files
-    let server_path = Path::new(&server.working_dir).join("server");
+    let server_base_path = Path::new(&server.working_dir);
+    let server_path = server_base_path.join("server");
+    let backups_path = server_base_path.join("backups");
     
-    if server_path.exists() {
-        info!("Cleaning up server directory {:?}...", server_path);
-        // We delete contents but not the directory itself if possible, or simple delete recursive and recreate
-        if let Err(e) = fs::remove_dir_all(&server_path).await {
-             return Err(AppError::Internal(format!("Failed to delete server directory: {}", e)));
+    // Ensure base directories exist (Restores structure if deleted)
+    if !server_base_path.exists() {
+         let _ = fs::create_dir_all(server_base_path).await;
+    }
+    if !backups_path.exists() {
+         let _ = fs::create_dir_all(&backups_path).await;
+    }
+    
+    // Restore manager.json if missing
+    let manager_json_path = server_base_path.join("manager.json");
+    if !manager_json_path.exists() {
+        info!("Restoring missing manager.json for server {}", id);
+        
+        let config_val = server.config.as_ref()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
+            
+        let bind_address = config_val.as_ref()
+            .and_then(|c| c.get("bind_address"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("0.0.0.0");
+            
+        let port = config_val.as_ref()
+            .and_then(|c| c.get("port"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5520) as u16;
+            
+        let auth_mode = config_val.as_ref()
+            .and_then(|c| c.get("auth_mode"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("authenticated");
+
+        let manager_config = templates::generate_manager_json(
+            &id,
+            &server.name,
+            server.working_dir.as_str(),
+            bind_address,
+            port,
+            auth_mode,
+            server.java_path.as_deref(),
+            server.min_memory.as_deref(),
+            server.max_memory.as_deref(),
+        );
+
+        if let Ok(mut file) = fs::File::create(&manager_json_path).await {
+            let _ = file.write_all(serde_json::to_string_pretty(&manager_config).unwrap().as_bytes()).await;
         }
-        if let Err(e) = fs::create_dir_all(&server_path).await {
-            return Err(AppError::Internal(format!("Failed to recreate server directory: {}", e)));
+    }
+
+    if server_path.exists() {
+        info!("Cleaning up server binaries in {:?} (preserving user data)...", server_path);
+        
+        // List of files/dirs to delete for a clean "binary" reinstall
+        let files_to_delete = vec![
+            "HytaleServer.jar",
+            "HytaleServer.aot",
+            "lib", // directory
+            "Assets.zip",
+            "hytale-downloader.zip",
+            "QUICKSTART.md",
+            "hytale-downloader-linux-amd64",
+            "hytale-downloader-windows-amd64.exe"
+        ];
+        
+        for name in files_to_delete {
+            let p = server_path.join(name);
+            if p.exists() {
+                if p.is_dir() {
+                    let _ = fs::remove_dir_all(&p).await;
+                } else {
+                    let _ = fs::remove_file(&p).await;
+                }
+            }
         }
     } else {
         // Create if missing
@@ -498,25 +628,29 @@ async fn reinstall_server(
         }
     }
     
-    let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
-    let max_players = config_json.as_ref()
-        .and_then(|c| c.get("MaxPlayers"))
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u32)
-        .unwrap_or(100);
-        
-    let hytale_config = templates::generate_config_json(
-        &server.name,
-        max_players, 
-        "authenticated" 
-    );
+    // Check if config.json exists, if NOT, generate it.
     let config_json_path = server_path.join("config.json");
-    let mut config_file = fs::File::create(&config_json_path).await.map_err(|e| {
-        AppError::Internal(format!("Failed to create config.json: {}", e))
-    })?;
-    config_file.write_all(serde_json::to_string_pretty(&hytale_config).unwrap().as_bytes())
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to write config.json: {}", e)))?;
+    if !config_json_path.exists() {
+        let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
+        let max_players = config_json.as_ref()
+            .and_then(|c| c.get("MaxPlayers"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
+            .unwrap_or(100);
+            
+        let hytale_config = templates::generate_config_json(
+            &server.name,
+            max_players, 
+            "authenticated" 
+        );
+        
+        let mut config_file = fs::File::create(&config_json_path).await.map_err(|e| {
+            AppError::Internal(format!("Failed to create config.json: {}", e))
+        })?;
+        config_file.write_all(serde_json::to_string_pretty(&hytale_config).unwrap().as_bytes())
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to write config.json: {}", e)))?;
+    }
 
 
     // 4. Trigger Installation

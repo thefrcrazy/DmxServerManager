@@ -170,13 +170,40 @@ export default function ServerDetail() {
     ];
 
     useEffect(() => {
+        // Reset logs on id change
+        setLogs([]);
         fetchServer();
+        // Try to fetch existing install logs to restore history
+        fetchInstallLog();
         connectWebSocket();
 
         return () => {
             wsRef.current?.close();
         };
     }, [id]);
+
+    const fetchInstallLog = async () => {
+        if (!id) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.content && data.content.length > 0) {
+                    const lines = data.content.split('\n');
+                    setLogs(prev => {
+                        // If we already have logs (from WS), prepend file content? 
+                        // Usually this runs fast on mount. 
+                        // We deduplicate simple assumption: if file has content, it's history.
+                        return [...lines, ...prev];
+                    });
+                }
+            }
+        } catch (e) {
+            // File might not exist if not installing, ignore
+        }
+    };
 
     useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
