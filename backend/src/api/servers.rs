@@ -571,17 +571,17 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
              }
          }
         // 4.6 Flatten "server/Server" to "server"
-        let server_dir = server_path.join("server");
-        let nested_bundle_dir = server_dir.join("Server"); // The extracted "Server" folder from zip
+        // server_path is already ".../server", and zip extracts "Server" folder into it.
+        let nested_bundle_dir = server_path.join("Server"); 
         
         if nested_bundle_dir.exists() && nested_bundle_dir.is_dir() {
-            log_helper("� Aplatissement du dossier 'Server' dans 'server'...".to_string()).await;
+            log_helper("📂 Aplatissement du dossier 'Server' dans la racine du serveur...".to_string()).await;
             
             // Move everything from server/Server/* to server/*
             if let Ok(mut entries) = tokio::fs::read_dir(&nested_bundle_dir).await {
                 while let Ok(Some(entry)) = entries.next_entry().await {
                    let file_name = entry.file_name();
-                   let dest_path = server_dir.join(&file_name);
+                   let dest_path = server_path.join(&file_name);
                    let src_path = entry.path();
                    
                    if let Err(e) = tokio::fs::rename(&src_path, &dest_path).await {
@@ -599,7 +599,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         let _ = tokio::fs::remove_file(server_path.join("start.sh")).await;
 
         // 5. Verify HytaleServer.jar exists (in flattened server/)
-        let jar_path = server_dir.join("HytaleServer.jar");
+        let jar_path = server_path.join("HytaleServer.jar");
         if jar_path.exists() {
              log_helper("✨ HytaleServer.jar présent. Installation terminée !".to_string()).await;
              
