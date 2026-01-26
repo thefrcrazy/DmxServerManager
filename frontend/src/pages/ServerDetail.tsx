@@ -198,7 +198,7 @@ export default function ServerDetail() {
         try {
             // 1. Always check install.log first to see if an installation is unfinished
             // This is critical because a stale console.log might exist from a previous run
-            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
+            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=logs/install.log`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
 
@@ -213,7 +213,8 @@ export default function ServerDetail() {
                     if (hasStart && !hasEnd) {
                         // Ongoing installation detected!
                         const isFinished = lines.some((l: string) => l.includes("Installation terminée"));
-                        if (!isFinished) {
+                        // Only set installing if not finished AND server is not explicitly running (avoid false positives)
+                        if (!isFinished && server?.status !== 'running') {
                             setIsInstalling(true);
                             if (lines.some((l: string) => l.includes('IMPORTANT') && (l.includes('authentifier') || l.includes('authenticate')))) {
                                 setIsAuthRequired(true);

@@ -143,14 +143,19 @@ impl ProcessManager {
         // Legacy server.properties/world-config.json generation removed.
 
 
-        // Hytale Specific Logic: Check for Server/ subdirectory
+        // Hytale Specific Logic: Check for server-data/Server/ subdirectory
         let mut final_working_dir = std::path::PathBuf::from(working_dir);
         let mut assets_path = "Assets.zip".to_string();
 
-        if final_working_dir.join("Server").join(executable_path).exists() {
-            info!("Detected nested Server/ directory structure for Hytale");
+        if final_working_dir.join("server-data").join("Server").join(executable_path).exists() {
+            info!("Detected nested server-data/Server/ directory structure for Hytale");
+            final_working_dir.push("server-data");
             final_working_dir.push("Server");
             assets_path = "../Assets.zip".to_string();
+        } else if final_working_dir.join("Server").join(executable_path).exists() {
+             // Fallback for flat layout if rename failed
+             final_working_dir.push("Server");
+             assets_path = "../Assets.zip".to_string();
         }
 
         let mut cmd = Command::new(java);
@@ -165,6 +170,14 @@ impl ProcessManager {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        // Pass port as CLI argument if present in config
+        if let Some(cfg) = config {
+             if let Some(port) = cfg.get("Port").and_then(|v| v.as_u64()) {
+                 cmd.arg("-port");
+                 cmd.arg(port.to_string());
+             }
+        }
 
         if let Some(args) = extra_args {
             for arg in args.split_whitespace() {

@@ -19,6 +19,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
     const [currentStep, setCurrentStep] = useState(0);
     const [authUrl, setAuthUrl] = useState<string | null>(null);
     const [authCode, setAuthCode] = useState<string | null>(null);
+    const [downloadProgress, setDownloadProgress] = useState<{ percent: number; details: string } | null>(null);
 
     useEffect(() => {
         const lastLog = logs[logs.length - 1] || '';
@@ -37,7 +38,31 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         // "Please visit the following URL to authenticate:"
         // "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=XXXXXX"
         const linkMatch = fullLog.match(/(https:\/\/oauth\.accounts\.hytale\.com\/[^\s]+)/);
-        if (linkMatch) {
+
+        // Check for progress bar in recent logs (look at last few lines)
+        // Format: [==========] 27.0% (385.0 MB / 1.4 GB)
+        // Regex: \[\=*\s*\]\s*([\d\.]+)%\s*\(([^)]+)\)
+        let foundProgress = false;
+        // Search from end to find most recent progress
+        for (let i = logs.length - 1; i >= Math.max(0, logs.length - 10); i--) {
+            const line = logs[i];
+            const progressMatch = line.match(/\[=*[\s=]*\]\s*([\d\.]+)%\s*\(([^)]+)\)/);
+            if (progressMatch) {
+                setDownloadProgress({
+                    percent: parseFloat(progressMatch[1]),
+                    details: progressMatch[2]
+                });
+                foundProgress = true;
+                break;
+            }
+        }
+
+        // If we found progress, it implies Auth is passed.
+        // If NO progress found yet, check/keep auth.
+        if (foundProgress) {
+            setAuthUrl(null);
+            setAuthCode(null);
+        } else if (linkMatch) {
             setAuthUrl(linkMatch[1]);
 
             // Try to extract code from URL if present (user_code=...)
@@ -49,7 +74,12 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                 const manualCodeMatch = fullLog.match(/Authorization code:\s*([^\s]+)/);
                 if (manualCodeMatch) setAuthCode(manualCodeMatch[1]);
             }
+        } else {
+            // If no linkMatch and no progress, ensure auth states are cleared
+            setAuthUrl(null);
+            setAuthCode(null);
         }
+
     }, [logs]);
 
     // If not installing and no logs, don't show (sanity check)
@@ -92,28 +122,9 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                     })}
                 </div>
 
+
                 {/* Auth Action Required Bubble */}
-                {authUrl && currentStep < 3 && (
-                    <div className="installation-auth">
-                        <div className="installation-auth__title">
-                            <AlertTriangle size={18} /> Action Requise
-                        </div>
-                        <div className="installation-auth__content">
-                            <p className="text-sm text-yellow-100/80 mb-1">Hytale nécessite une authentification :</p>
-                            <a href={authUrl} target="_blank" rel="noopener noreferrer" className="installation-auth__link">
-                                {authUrl} <ExternalLink size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />
-                            </a>
-                            {authCode && (
-                                <div>
-                                    <span className="text-xs text-muted block mt-2">Code de vérification :</span>
-                                    <span className="installation-auth__code">{authCode}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-                {/* Auth Action Required Bubble */}
-                {authUrl && currentStep < 3 && (
+                {authUrl && currentStep < 3 && !downloadProgress && (
                     <div className="installation-auth">
                         <div className="installation-auth__title">
                             <AlertTriangle size={18} /> Action Requise
@@ -133,8 +144,27 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                     </div>
                 )}
 
-                {/* Real-time Log Status */}
-                {logs.length > 0 && currentStep < 3 && (
+                {/* Real-time Progress Bar */}
+                {downloadProgress && currentStep < 3 && (
+                    <div className="installation-download">
+                        <div className="installation-download__details">
+                            <span>Téléchargement des fichiers...</span>
+                            <span className="installation-download__percent">{downloadProgress.percent}%</span>
+                        </div>
+                        <div className="installation-download__bar-container">
+                            <div
+                                className="installation-download__bar-fill"
+                                style={{ width: `${downloadProgress.percent}%` }}
+                            ></div>
+                        </div>
+                        <div className="installation-download__details" style={{ justifyContent: 'flex-end', opacity: 0.7 }}>
+                            {downloadProgress.details}
+                        </div>
+                    </div>
+                )}
+
+                {/* Fallback Log Status (Show if no progress bar valid or if Auth needed) */}
+                {logs.length > 0 && currentStep < 3 && !downloadProgress && !authUrl && (
                     <div className="installation-status">
                         <span className="installation-status__prefix">&gt;</span>
                         {(() => {
