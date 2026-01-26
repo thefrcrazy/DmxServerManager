@@ -1007,18 +1007,13 @@ async fn start_server(
     .await?;
 
     // Send webhook notification
+    // Send webhook notification (Placeholder for now)
     let pool_clone = pool.get_ref().clone();
     let server_name = server.name.clone();
     // Extract webhook_url from server config
     let config: Option<serde_json::Value> = server.config.clone()
         .and_then(|c| serde_json::from_str(&c).ok());
-        
-    // Send webhook notification
-    let pool_clone = pool.get_ref().clone();
-    let server_name = server.name.clone();
-    // Extract webhook_url from server config
-    let config: Option<serde_json::Value> = server.config.clone()
-        .and_then(|c| serde_json::from_str(&c).ok());
+
         
     let webhook_url = config.as_ref()
         .and_then(|c| c.get("discord_webhook_url"))
