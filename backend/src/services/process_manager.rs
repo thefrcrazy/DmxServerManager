@@ -150,12 +150,23 @@ impl ProcessManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        // Pass port as CLI argument if present in config
+        // Pass port and bind address via --bind
         if let Some(cfg) = config {
-             if let Some(port) = cfg.get("Port").and_then(|v: &serde_json::Value| v.as_u64()) {
-                 cmd.arg("-port");
-                 cmd.arg(port.to_string());
-             }
+            let port = cfg.get("port")
+                .or(cfg.get("Port"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(5520);
+             
+            let bind_ip = cfg.get("bind_address")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0.0.0.0");
+
+            cmd.arg("--bind");
+            cmd.arg(format!("{}:{}", bind_ip, port));
+        } else {
+            // Default to standard port if no config
+            cmd.arg("--bind");
+            cmd.arg("0.0.0.0:5520");
         }
 
         if let Some(args) = extra_args {

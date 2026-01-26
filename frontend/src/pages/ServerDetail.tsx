@@ -194,6 +194,105 @@ export default function ServerDetail() {
         };
     }, [id]);
 
+    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const retryCountRef = useRef(0);
+    const shouldReconnectRef = useRef(true);
+
+    useEffect(() => {
+        // Reset logs on id change
+        setLogs([]);
+        fetchServer();
+        // Try to fetch existing logs (console.log or install.log)
+        fetchConsoleLog();
+
+        shouldReconnectRef.current = true;
+        connectWebSocket();
+
+        return () => {
+            shouldReconnectRef.current = false;
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+            }
+        };
+    }, [id]);
+
+    const connectWebSocket = () => {
+        // Cleanup existing connection if any
+        if (wsRef.current) {
+            // Avoid triggering onclose logic if we are manually replacing it
+            wsRef.current.onclose = null;
+            wsRef.current.close();
+        }
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}/ws/console/${id}`);
+
+        ws.onopen = () => {
+            setIsConnected(true);
+            retryCountRef.current = 0; // Reset retries on success
+        };
+
+        ws.onmessage = (event) => {
+            const message = event.data;
+
+            // Handle Control Messages
+            if (message.startsWith('[STATUS]:')) {
+                const status = message.replace('[STATUS]:', '').trim();
+                // Update server status locally without full refetch
+                setServer(prev => prev ? ({ ...prev, status }) : null);
+                if (status === 'running') setStartTime(new Date());
+                else setStartTime(null);
+
+                // If status changes to running or stopped, we might want to refresh full server data
+                // to get updated player counts or other metadata
+                fetchServer();
+                return; // Don't show in logs
+            }
+
+            // Handle Installation Detection
+            if (message.includes('Initialization of installation') || message.includes('Initialization de l\'installation')) {
+                setIsInstalling(true);
+                setIsAuthRequired(false);
+            }
+            if (message.includes('IMPORTANT') && (message.includes('authentifier') || message.includes('authenticate'))) {
+                setIsAuthRequired(true);
+            }
+            if (message.includes('Installation terminée') || message.includes('Installation finished')) {
+                // Keep wizard open for a moment or let user close it
+            }
+
+            setLogs((prev) => [...prev, message]);
+        };
+
+        ws.onclose = () => {
+            setIsConnected(false);
+            wsRef.current = null;
+
+            // Only reconnect if we are still on the page and it wasn't a clean close (1000)
+            // or if we expect the server to restart (which often closes the connection on the backend)
+            if (shouldReconnectRef.current) {
+                const retryDelay = Math.min(1000 * Math.pow(1.5, retryCountRef.current), 10000); // Cap at 10s
+                console.log(`WebSocket closed. Reconnecting in ${retryDelay}ms...`);
+
+                reconnectTimeoutRef.current = setTimeout(() => {
+                    retryCountRef.current++;
+                    connectWebSocket();
+                }, retryDelay);
+            }
+        };
+
+        ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+            // onclose will be called after onerror, so we handle reconnection there
+        };
+
+        wsRef.current = ws;
+    };
+
     const fetchConsoleLog = async () => {
         if (!id) return;
         try {
@@ -395,50 +494,6 @@ export default function ServerDetail() {
         } else if (data.status !== 'running') {
             setStartTime(null);
         }
-    };
-
-    const connectWebSocket = () => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${window.location.host}/ws/console/${id}`);
-
-        ws.onopen = () => {
-            setIsConnected(true);
-        };
-
-        ws.onmessage = (event) => {
-            const message = event.data;
-
-            // Handle Control Messages
-            if (message.startsWith('[STATUS]:')) {
-                const status = message.replace('[STATUS]:', '').trim();
-                // Update server status locally without full refetch
-                setServer(prev => prev ? ({ ...prev, status }) : null);
-                if (status === 'running') setStartTime(new Date());
-                else setStartTime(null);
-                return; // Don't show in logs
-            }
-
-            // Handle Installation Detection
-            if (message.includes('Initialization of installation') || message.includes('Initialization de l\'installation')) {
-                setIsInstalling(true);
-                setIsAuthRequired(false);
-            }
-            if (message.includes('IMPORTANT') && (message.includes('authentifier') || message.includes('authenticate'))) {
-                setIsAuthRequired(true);
-            }
-            if (message.includes('Installation terminée') || message.includes('Installation finished')) {
-                // Keep wizard open for a moment or let user close it
-                // Note: We don't auto-set installing to false to keep the success popup, but we can verify status later
-            }
-
-            setLogs((prev) => [...prev, message]);
-        };
-
-        ws.onclose = () => {
-            setIsConnected(false);
-        };
-
-        wsRef.current = ws;
     };
 
     const handleAction = async (action: 'start' | 'stop' | 'restart' | 'kill') => {
