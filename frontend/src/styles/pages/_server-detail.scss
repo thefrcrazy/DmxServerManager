@@ -3,6 +3,7 @@
 .server-detail-page {
     display: flex;
     flex-direction: column;
+    position: relative; // Ensure absolute children are contained
     gap: 1.5rem;
     width: 100%;
     max-width: 100vw;

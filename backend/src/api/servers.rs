@@ -649,21 +649,20 @@ async fn reinstall_server(
     }
 
     // 3. Clean up server binaries ONLY (Preserve world, config, logs)
-    // We assume structure is {working_dir}/server for the game files
-    let server_base_path = Path::new(&server.working_dir);
-    let server_path = server_base_path.join("server");
-    let backups_path = server_base_path.join("backups");
+    // Flattened structure: server files are directly in working_dir
+    let server_path = Path::new(&server.working_dir);
+    let backups_path = server_path.join("backups");
     
-    // Ensure base directories exist (Restores structure if deleted)
-    if !server_base_path.exists() {
-         let _ = fs::create_dir_all(server_base_path).await;
+    // Ensure base directories exist
+    if !server_path.exists() {
+         let _ = fs::create_dir_all(server_path).await;
     }
     if !backups_path.exists() {
          let _ = fs::create_dir_all(&backups_path).await;
     }
     
     // Restore manager.json if missing
-    let manager_json_path = server_base_path.join("manager.json");
+    let manager_json_path = server_path.join("manager.json");
     if !manager_json_path.exists() {
         info!("Restoring missing manager.json for server {}", id);
         
@@ -760,7 +759,7 @@ async fn reinstall_server(
 
 
     // 4. Trigger Installation
-    spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), server_path);
+    spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), server_path.to_path_buf());
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ 
         "success": true, 
@@ -970,16 +969,17 @@ async fn start_server(
     .await?
     .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
 
-    // We must run the server binary from the 'server' subdirectory to ensure it finds config.json
-    let process_working_dir = Path::new(&server.working_dir).join("server");
-    let process_working_dir_str = process_working_dir.to_str().unwrap_or(&server.working_dir);
+    // Use the working directory from the database directly. 
+    // The ProcessManager will handle legacy 'server/' subdirectories if they exist.
+    let process_working_dir = Path::new(&server.working_dir);
+    let process_working_dir_str = &server.working_dir;
 
     // Regenerate config.json to ensure latest port/settings are applied
     let config_json_path = process_working_dir.join("config.json");
     let server_config: Option<serde_json::Value> = server.config.as_ref().and_then(|c| serde_json::from_str(c).ok());
     
     let port = server_config.as_ref()
-        .and_then(|c| c.get("port"))
+        .and_then(|c| c.get("port").or(c.get("Port")))
         .and_then(|v| v.as_u64())
         .unwrap_or(5520) as u16;
         

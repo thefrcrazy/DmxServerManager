@@ -50,10 +50,21 @@ pub async fn ws_handler(
                     }
                 }
                 // Forward server logs to client
-                Ok(log_line) = log_rx.recv() => {
-                    if session.text(log_line).await.is_err() {
-                        break;
-                    }
+                // Forward server logs to client
+                result = log_rx.recv() => {
+                   match result {
+                       Ok(log_line) => {
+                           if session.text(log_line).await.is_err() {
+                               break;
+                           }
+                       }
+                       Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                           // Lagged, just skip
+                       }
+                       Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                           break; 
+                       }
+                   }
                 }
             }
         }

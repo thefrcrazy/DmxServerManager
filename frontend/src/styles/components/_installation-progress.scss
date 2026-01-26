@@ -2,11 +2,11 @@
 @use '../mixins' as *;
 
 .installation-overlay {
-    position: fixed;
+    position: absolute;
     inset: 0;
     background-color: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(4px);
-    z-index: 9999; // Increased z-index to be sure
+    z-index: 50; // Reduced z-index, 9999 was too high for absolute within page
     display: flex;
     align-items: center;
     justify-content: center;
@@ -327,9 +327,7 @@
             line-height: 1.4;
             font-feature-settings: "liga" 0;
 
-            &:last-child {
-                // Highlight last line slightly maybe? or scroll snap
-            }
+            // Removed empty last-child block
         }
     }
 }

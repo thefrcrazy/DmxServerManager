@@ -20,6 +20,14 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
     const [authUrl, setAuthUrl] = useState<string | null>(null);
     const [authCode, setAuthCode] = useState<string | null>(null);
     const [downloadProgress, setDownloadProgress] = useState<{ percent: number; details: string } | null>(null);
+    const logsContainerRef = React.useRef<HTMLDivElement>(null);
+
+    // Auto-scroll logs
+    useEffect(() => {
+        if (logsContainerRef.current) {
+            logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+        }
+    }, [logs]);
 
     useEffect(() => {
         const lastLog = logs[logs.length - 1] || '';
@@ -181,7 +189,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                     <summary className="installation-details__summary">
                         <Terminal size={12} className="mr-2" /> Voir en détails ({logs.length})
                     </summary>
-                    <div className="installation-details__content">
+                    <div className="installation-details__content" ref={logsContainerRef}>
                         {logs.length === 0 ? (
                             <div className="text-muted italic opacity-50">En attente de logs...</div>
                         ) : (
