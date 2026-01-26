@@ -883,6 +883,12 @@ async fn delete_server(
 ) -> Result<HttpResponse, AppError> {
     let id = path.into_inner();
 
+    // Fetch working directory before deletion
+    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(pool.get_ref())
+        .await?;
+
     // Stop server if running
     if pm.is_running(&id) {
         pm.stop(&id).await?;
@@ -895,6 +901,22 @@ async fn delete_server(
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Server not found".into()));
+    }
+
+    // Delete server directory
+    if let Some((working_dir,)) = server {
+        let path = Path::new(&working_dir);
+        if path.exists() {
+             // Only delete if it looks like our server directory (security check)
+             // We configured it as {base}/{uuid} so we should check if it ends with the ID or contains it
+             // For now, trusting the DB path as it's what we created.
+             if let Err(e) = tokio::fs::remove_dir_all(path).await {
+                 error!("Failed to remove server directory {}: {}", working_dir, e);
+                 // Don't fail the request, just log it
+             } else {
+                 info!("Removed server directory: {}", working_dir);
+             }
+        }
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))

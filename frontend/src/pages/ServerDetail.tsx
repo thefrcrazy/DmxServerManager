@@ -11,6 +11,8 @@ import Select from '../components/Select';
 import Checkbox from '../components/Checkbox';
 import RangeSlider from '../components/RangeSlider';
 
+// ... imports
+import InstallationProgress from '../components/InstallationProgress';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
 
@@ -113,80 +115,10 @@ const CollapsibleSection = ({ title, icon: Icon, children, badge, defaultOpen = 
     </details>
 );
 
-const InstallationProgress = ({ logs, onClose }: { logs: string[], onClose: () => void }) => {
-    // Determine current step based on logs
-    const steps = [
-        { id: 'init', label: 'Initialisation', icon: <Terminal size={18} /> },
-        { id: 'download', label: 'Téléchargement', icon: <Download size={18} /> },
-        { id: 'extract', label: 'Installation', icon: <Folder size={18} /> },
-        { id: 'finish', label: 'Finalisation', icon: <Check size={18} /> },
-    ];
+// Removed inline InstallationProgress component
 
-    const [currentStep, setCurrentStep] = useState(0);
 
-    useEffect(() => {
-        const lastLog = logs[logs.length - 1] || '';
-        // Simple state machine based on log messages from backend
-        // Match backend messages exactly or loosely
-        if (lastLog.includes('Initialization de l\'installation') || lastLog.includes('Starting Hytale Server Installation')) setCurrentStep(0);
-        else if (lastLog.includes('Téléchargement')) setCurrentStep(1);
-        else if (lastLog.includes('Extraction') || lastLog.includes('Décompression')) setCurrentStep(2);
-        else if (lastLog.includes('Installation terminée') || lastLog.includes('Installation finished')) {
-            setCurrentStep(3);
-        }
-    }, [logs]);
 
-    return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#1a1b1e] border border-white/10 rounded-xl p-6 max-w-lg w-full shadow-2xl">
-                <div className="text-center mb-6">
-                    <h2 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
-                        Installation en cours...
-                    </h2>
-                    <p className="text-gray-400 text-sm mt-1">Veuillez ne pas fermer cette fenêtre</p>
-                </div>
-
-                <div className="space-y-4 mb-6">
-                    {steps.map((step, index) => {
-                        const isComplete = currentStep > index;
-                        const isCurrent = currentStep === index;
-
-                        return (
-                            <div key={step.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isCurrent
-                                ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
-                                : isComplete
-                                    ? 'bg-green-500/5 border-green-500/20 text-green-400'
-                                    : 'bg-white/5 border-transparent text-gray-500'
-                                }`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isCurrent ? 'bg-orange-500/20' : isComplete ? 'bg-green-500/20' : 'bg-white/5'
-                                    }`}>
-                                    {isComplete ? <Check size={14} /> : step.icon}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="font-medium text-sm">{step.label}</div>
-                                    {isCurrent && (
-                                        <div className="mt-2 h-1 bg-white/10 rounded-full overflow-hidden">
-                                            <div className="h-full bg-orange-500 animate-pulse rounded-full w-full"></div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-
-                {currentStep === 3 && (
-                    <button
-                        onClick={onClose}
-                        className="w-full py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
-                    >
-                        Terminer
-                    </button>
-                )}
-            </div>
-        </div>
-    );
-};
 
 export default function ServerDetail() {
     const { t } = useLanguage();
@@ -357,6 +289,11 @@ export default function ServerDetail() {
                     if (server.config.MaxViewRadius) formData.view_distance = server.config.MaxViewRadius;
                     if (server.config.Seed) formData.seed = server.config.Seed;
                     if (server.config.ServerName) formData.name = server.config.ServerName;
+
+                    // Pull manager settings from config if missing on top level or just to be sure
+                    if (server.config.port) formData.port = server.config.port;
+                    if (server.config.bind_address) formData.bind_address = server.config.bind_address;
+                    if (server.config.auth_mode) formData.auth_mode = server.config.auth_mode;
                 }
                 setConfigFormData(formData);
             }
@@ -406,13 +343,19 @@ export default function ServerDetail() {
             // Ensure config object exists
             if (!payload.config) payload.config = server?.config || {};
 
-            // Update specific config fields
+            // Update specific config fields for Hytale (config.json)
             if (payload.max_players) payload.config.MaxPlayers = parseInt(payload.max_players.toString());
             if (payload.view_distance) payload.config.MaxViewRadius = parseInt(payload.view_distance.toString());
             if (payload.seed) payload.config.Seed = payload.seed;
-            // config.ServerName is usually handled by the main 'name' field update in backend? 
-            // The backend updates 'name' column, but we should also sync it to config if Hytale needs it there.
             if (payload.name) payload.config.ServerName = payload.name;
+
+            // IMPORTANT: Manager settings that are stored in config JSON by backend convention
+            if (payload.port) payload.config.port = parseInt(payload.port.toString());
+            if (payload.bind_address) payload.config.bind_address = payload.bind_address;
+            if (payload.auth_mode) payload.config.auth_mode = payload.auth_mode;
+            if (payload.allow_op !== undefined) payload.config.allow_op = payload.allow_op;
+            if (payload.disable_sentry !== undefined) payload.config.disable_sentry = payload.disable_sentry;
+            if (payload.accept_early_plugins !== undefined) payload.config.accept_early_plugins = payload.accept_early_plugins;
 
 
             const response = await fetch(`/api/v1/servers/${id}`, {
@@ -520,6 +463,7 @@ export default function ServerDetail() {
             // Switch to terminal immediately
             setActiveTab('console');
             setLogs([]); // Clear logs to prepare for new stream
+            setIsInstalling(true); // Force installing state immediately
 
             const response = await fetch(`/api/v1/servers/${id}/reinstall`, {
                 method: 'POST',
@@ -531,10 +475,12 @@ export default function ServerDetail() {
                 fetchServer();
             } else {
                 alert("Erreur lors du lancement de la réinstallation.");
+                setIsInstalling(false);
             }
         } catch (e) {
             console.error(e);
             alert("Erreur de connexion.");
+            setIsInstalling(false);
         }
     };
 
@@ -924,14 +870,7 @@ export default function ServerDetail() {
             </div>
 
             {/* Installation Wizard Overlay */}
-            {isInstalling && (
-                <InstallationProgress
-                    logs={logs}
-                    onClose={() => {
-                        window.location.reload();
-                    }}
-                />
-            )}
+
 
             {/* Tab Content */}
             <div className="tab-content">
@@ -1728,7 +1667,23 @@ export default function ServerDetail() {
                         </div>
                     )
                 }
-            </div >
-        </div >
+            </div>
+
+            {/* Components Overlays */}
+            {isInstalling && (
+                <InstallationProgress
+                    logs={logs}
+                    isInstalling={isInstalling}
+                    onClose={() => {
+                        setIsInstalling(false); // User can close it manually if finished or stuck
+                    }}
+                />
+            )}
+
+            {/* Quick Actions / FAB */}
+            <div className="fixed bottom-8 right-8 flex flex-col gap-3">
+                {/* ... existing FABs if any ... */}
+            </div>
+        </div>
     );
 }
