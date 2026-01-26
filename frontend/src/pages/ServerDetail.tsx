@@ -127,10 +127,11 @@ const InstallationProgress = ({ logs, onClose }: { logs: string[], onClose: () =
     useEffect(() => {
         const lastLog = logs[logs.length - 1] || '';
         // Simple state machine based on log messages from backend
-        if (lastLog.includes('Initialization')) setCurrentStep(0);
+        // Match backend messages exactly or loosely
+        if (lastLog.includes('Initialization de l\'installation') || lastLog.includes('Starting Hytale Server Installation')) setCurrentStep(0);
         else if (lastLog.includes('Téléchargement')) setCurrentStep(1);
         else if (lastLog.includes('Extraction') || lastLog.includes('Décompression')) setCurrentStep(2);
-        else if (lastLog.includes('terminée !')) {
+        else if (lastLog.includes('Installation terminée') || lastLog.includes('Installation finished')) {
             setCurrentStep(3);
         }
     }, [logs]);
@@ -222,6 +223,7 @@ export default function ServerDetail() {
 
     // Installation state
     const [isInstalling, setIsInstalling] = useState(false);
+    const [isAuthRequired, setIsAuthRequired] = useState(false);
 
     // Config tab state
     const [configFormData, setConfigFormData] = useState<Partial<Server>>({});
@@ -262,27 +264,52 @@ export default function ServerDetail() {
     const fetchConsoleLog = async () => {
         if (!id) return;
         try {
-            // Try fetching console.log first (standard logs)
-            let res = await fetch(`/api/v1/servers/${id}/files/read?path=server/console.log`, {
+            // 1. Always check install.log first to see if an installation is unfinished
+            // This is critical because a stale console.log might exist from a previous run
+            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
 
-            // If not found, try install.log (installation history)
-            if (!res.ok) {
-                res = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-                });
+            if (installRes.ok) {
+                const data = await installRes.json();
+                if (data.content) {
+                    const lines = data.content.split('\n');
+                    // Check logic: Has Start but No End
+                    const hasStart = lines.some((l: string) => l.includes("Initialization de l'installation") || l.includes("Starting Hytale Server Installation"));
+                    const hasEnd = lines.some((l: string) => l.includes("Installation terminée") || l.includes("Installation finished"));
+
+                    if (hasStart && !hasEnd) {
+                        // Ongoing installation detected!
+                        const isFinished = lines.some((l: string) => l.includes("Installation terminée"));
+                        if (!isFinished) {
+                            setIsInstalling(true);
+                            if (lines.some((l: string) => l.includes('IMPORTANT') && (l.includes('authentifier') || l.includes('authenticate')))) {
+                                setIsAuthRequired(true);
+                            }
+                        }
+                    }
+                }
             }
+
+            // 2. If no active installation, fetch standard console.log
+            let res = await fetch(`/api/v1/servers/${id}/files/read?path=server/console.log`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
 
             if (res.ok) {
                 const data = await res.json();
                 if (data.content && data.content.length > 0) {
                     const lines = data.content.split('\n');
                     setLogs(prev => {
-                        // Avoid duplication if WS is already active
                         if (prev.length > 0) return prev;
                         return lines;
                     });
+                }
+            } else if (installRes.ok) {
+                // Fallback: If no console.log but we have install.log (even if finished), show it (history)
+                const data = await installRes.json();
+                if (data.content) {
+                    setLogs(data.content.split('\n'));
                 }
             }
         } catch (e) {
@@ -449,9 +476,14 @@ export default function ServerDetail() {
             // Handle Installation Detection
             if (message.includes('Initialization of installation') || message.includes('Initialization de l\'installation')) {
                 setIsInstalling(true);
+                setIsAuthRequired(false);
+            }
+            if (message.includes('IMPORTANT') && (message.includes('authentifier') || message.includes('authenticate'))) {
+                setIsAuthRequired(true);
             }
             if (message.includes('Installation terminée') || message.includes('Installation finished')) {
                 // Keep wizard open for a moment or let user close it
+                // Note: We don't auto-set installing to false to keep the success popup, but we can verify status later
             }
 
             setLogs((prev) => [...prev, message]);
@@ -798,14 +830,26 @@ export default function ServerDetail() {
             <div className="server-stats">
                 {/* Status */}
                 <div className="stat-card">
-                    <div className={`stat-card__icon ${isRunning ? 'stat-card__icon--online' : isMissing ? 'stat-card__icon--warning' : 'stat-card__icon--offline'}`}>
-                        <Globe size={18} />
+                    <div className="stat-icon bg-blue-500/20 text-blue-400">
+                        <Globe size={24} />
                     </div>
-                    <div className="stat-card__content">
-                        <div className="stat-card__label">Status</div>
-                        <div className={`stat-card__value ${isRunning ? 'stat-card__value--success' : isMissing ? 'stat-card__value--warning' : 'stat-card__value--danger'}`}>
-                            {isRunning ? 'Online' : isMissing ? 'Missing' : 'Offline'}
-                        </div>
+                    <div>
+                        <div className="stat-label">STATUS</div>
+                        {isInstalling ? (
+                            <div className="text-xl font-bold text-orange-400 flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+                                Installing
+                            </div>
+                        ) : isAuthRequired ? (
+                            <div className="text-xl font-bold text-yellow-400 flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+                                Auth Required
+                            </div>
+                        ) : (
+                            <div className={`text-xl font-bold ${isRunning ? 'text-green-400' : isMissing ? 'text-red-400' : 'text-gray-400'}`}>
+                                {isMissing ? 'Missing' : isRunning ? 'Online' : 'Offline'}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -884,8 +928,7 @@ export default function ServerDetail() {
                 <InstallationProgress
                     logs={logs}
                     onClose={() => {
-                        setIsInstalling(false);
-                        fetchServer(); // Refresh to get final status
+                        window.location.reload();
                     }}
                 />
             )}

@@ -919,6 +919,42 @@ async fn start_server(
     let process_working_dir = Path::new(&server.working_dir).join("server");
     let process_working_dir_str = process_working_dir.to_str().unwrap_or(&server.working_dir);
 
+    // Regenerate config.json to ensure latest port/settings are applied
+    let config_json_path = process_working_dir.join("config.json");
+    let server_config: Option<serde_json::Value> = server.config.as_ref().and_then(|c| serde_json::from_str(c).ok());
+    
+    let port = server_config.as_ref()
+        .and_then(|c| c.get("port"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5520) as u16;
+        
+    let max_players = server_config.as_ref()
+        .and_then(|c| c.get("MaxPlayers"))
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+        .unwrap_or(100);
+
+    let auth_mode = server_config.as_ref()
+        .and_then(|c| c.get("auth_mode"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("authenticated");
+
+    let hytale_config = templates::generate_config_json(
+        &server.name,
+        max_players, 
+        auth_mode 
+    );
+    
+    // Inject Port manually
+    let mut hytale_config_obj = serde_json::to_value(hytale_config).unwrap();
+    if let Some(obj) = hytale_config_obj.as_object_mut() {
+        obj.insert("Port".to_string(), serde_json::json!(port));
+    }
+    
+    if let Ok(mut config_file) = fs::File::create(&config_json_path).await {
+         let _ = config_file.write_all(serde_json::to_string_pretty(&hytale_config_obj).unwrap().as_bytes()).await;
+    }
+
     pm.start(
         &server.id,
         &server.executable_path,
