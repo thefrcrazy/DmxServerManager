@@ -15,6 +15,7 @@ import Select from '../components/Select';
 import Checkbox from '../components/Checkbox';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
+import { PRESET_COLORS, LANGUAGES } from '../constants/theme';
 
 interface User {
     id: string;
@@ -34,20 +35,6 @@ interface ServerInfo {
     id: string;
     name: string;
 }
-
-const LANGUAGES = [
-    { code: 'fr', name: 'Français' },
-    { code: 'en', name: 'English' },
-];
-
-const PRESET_COLORS = [
-    '#FF591E', // Mistral Orange
-    '#6366F1', // Indigo
-    '#ec4899', // Pink
-    '#10B981', // Emerald
-    '#3B82F6', // Blue
-    '#F59E0B', // Amber
-];
 
 export default function EditUser() {
     const { id } = useParams<{ id: string }>();

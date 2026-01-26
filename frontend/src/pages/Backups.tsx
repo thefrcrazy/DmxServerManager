@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Archive, Download, Trash2, RotateCcw, Box } from 'lucide-react';
+import { formatBytes, formatDate } from '../utils/formatters';
 
 interface Backup {
     id: string;
@@ -41,7 +42,7 @@ export default function Backups() {
         }
     };
 
-    const handleRestore = async (id: string, _filename: string) => {
+    const handleRestore = async (id: string) => {
         if (!confirm(t('backups.restore_confirm'))) return;
 
         try {
@@ -63,24 +64,6 @@ export default function Backups() {
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         });
         fetchBackups();
-    };
-
-    const formatSize = (bytes: number) => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-    };
-
-    const formatDate = (dateStr: string) => {
-        return new Date(dateStr).toLocaleString('fr-FR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     };
 
     if (isLoading) {
@@ -128,7 +111,7 @@ export default function Backups() {
                                         </div>
                                     </td>
                                     <td className="table__cell table__cell--mono table__cell--muted">
-                                        {formatSize(backup.size_bytes)}
+                                        {formatBytes(backup.size_bytes)}
                                     </td>
                                     <td className="table__cell table__cell--muted">
                                         {formatDate(backup.created_at)}
@@ -139,7 +122,7 @@ export default function Backups() {
                                         </button>
                                         <button
                                             className="btn btn--secondary btn--sm btn--icon"
-                                            onClick={() => handleRestore(backup.id, backup.filename)}
+                                            onClick={() => handleRestore(backup.id)}
                                             title={t('backups.restore')}
                                         >
                                             <RotateCcw size={16} />

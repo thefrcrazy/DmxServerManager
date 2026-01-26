@@ -49,30 +49,6 @@ pub fn generate_config_json(
     })
 }
 
-/// Generate default permissions.json
-pub fn generate_permissions_json() -> Value {
-    json!({
-        "users": {},
-        "groups": {
-            "Default": [],
-            "OP": ["*"]
-        }
-    })
-}
-
-/// Generate empty bans.json
-pub fn generate_bans_json() -> Value {
-    json!([])
-}
-
-/// Generate empty whitelist.json
-pub fn generate_whitelist_json() -> Value {
-    json!({
-        "enabled": false,
-        "players": []
-    })
-}
-
 /// Generate manager.json (unified manager configuration)
 pub fn generate_manager_json(
     server_id: &str,

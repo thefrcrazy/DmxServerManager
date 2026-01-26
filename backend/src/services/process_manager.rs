@@ -22,22 +22,6 @@ pub struct ServerProcess {
     players: Arc<std::sync::RwLock<HashSet<String>>>,
 }
 
-// Helper to write to log file safely across threads
-async fn write_log_line(file: &Option<Arc<tokio::sync::Mutex<std::fs::File>>>, line: &str) {
-    if let Some(f) = file {
-        if let Ok(mut guard) = f.try_lock() {
-            let _ = writeln!(guard, "{}", line);
-        } else {
-            // Fallback or retry logic could go here, but for logs we might skip if busy
-            // to avoid blocking logging threads. 
-            // However, a blocking lock in a spawn_blocking or similar is better if we want strict ordering.
-            // For simplicity in this async context where we use std::fs::File (blocking), 
-            // we should technically use tokio::fs::File, but we are inside std::thread::spawn for stdout/stderr.
-            // Actually, we are using std::thread::spawn, so we can use blocking IO.
-        }
-    }
-}
-
 impl ProcessManager {
     pub fn new() -> Self {
         Self {

@@ -1,15 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Check, HardDrive, Palette, User, ArrowRight, ArrowLeft, FolderSearch } from 'lucide-react';
 import DirectoryPicker from '../components/DirectoryPicker';
+import { PRESET_COLORS, applyAccentColor } from '../constants/theme';
 import '../styles/pages/_login.scss';
-
-const PRESET_COLORS = [
-    '#3A82F6', // Default Blue
-    '#FF591E', // Mistral
-    '#6366F1', // Indigo
-    '#10B981', // Emerald
-    '#F59E0B', // Amber
-];
 
 const STEPS = [
     { id: 1, key: 'step1', icon: User },
@@ -36,15 +29,8 @@ export default function Setup() {
     const [showServersDirPicker, setShowServersDirPicker] = useState(false);
     const [showBackupsDirPicker, setShowBackupsDirPicker] = useState(false);
 
-    // Apply theme color in real-time when selected
     useEffect(() => {
-        const root = document.documentElement;
-        root.style.setProperty('--color-accent', formData.theme_color);
-        // Convert hex to rgb for opacity support
-        const r = parseInt(formData.theme_color.slice(1, 3), 16);
-        const g = parseInt(formData.theme_color.slice(3, 5), 16);
-        const b = parseInt(formData.theme_color.slice(5, 7), 16);
-        root.style.setProperty('--color-accent-rgb', `${r}, ${g}, ${b}`);
+        applyAccentColor(formData.theme_color);
     }, [formData.theme_color]);
 
     const nextStep = () => {

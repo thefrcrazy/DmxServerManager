@@ -8,6 +8,7 @@ import DirectoryPicker from '../components/DirectoryPicker';
 import Table from '../components/Table';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
+import { PRESET_COLORS } from '../constants/theme';
 
 interface PanelInfo {
     version: string;
@@ -42,15 +43,6 @@ interface Role {
     permissions: string[];
     color: string;
 }
-
-const PRESET_COLORS = [
-    '#3A82F6', // Default Blue
-    '#FF591E', // Mistral Orange
-    '#6366F1', // Indigo
-    '#ec4899', // Pink
-    '#10B981', // Emerald
-    '#F59E0B', // Amber
-];
 
 type ActiveTab = 'general' | 'users' | 'roles';
 

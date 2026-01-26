@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Server, Activity, HardDrive, Users, Plus, Play, Square, Cpu, MemoryStick } from 'lucide-react';
+import { formatBytes } from '../utils/formatters';
 
 interface ServerStats {
     total: number;
@@ -138,14 +139,6 @@ export default function Dashboard() {
         } catch (error) {
             console.error(`Erreur lors de ${action}:`, error);
         }
-    };
-
-    const formatBytes = (bytes: number): string => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
     const getStatColor = (value: number): string => {

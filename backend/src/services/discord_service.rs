@@ -134,10 +134,4 @@ pub async fn update_status_message(
 
 // Webhook colors
 pub const COLOR_SUCCESS: u32 = 0x10B981; // Green
-pub const COLOR_ERROR: u32 = 0xEF4444;   // Red  
-#[allow(dead_code)]
-pub const COLOR_INFO: u32 = 0x3B82F6;    // Blue
-#[allow(dead_code)]
-pub const COLOR_WARNING: u32 = 0xF59E0B; // Orange
-#[allow(dead_code)]
-pub const COLOR_ACCENT: u32 = 0xFF591E;  // Kweebec Orange
+pub const COLOR_ERROR: u32 = 0xEF4444;   // Red

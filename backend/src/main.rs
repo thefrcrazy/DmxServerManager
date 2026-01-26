@@ -75,7 +75,6 @@ async fn main() -> std::io::Result<()> {
             // WebSocket for console
             .route("/ws/console/{server_id}", web::get().to(api::console::ws_handler))
             // Serve uploaded files
-            // Serve uploaded files
             .service(Files::new("/uploads", &uploads_dir))
             // Serve frontend in production
             .service(

@@ -7,6 +7,7 @@ import {
     File, Folder, ChevronRight, Save, AlertCircle, Check,
     ChevronDown, Server as ServerIcon
 } from 'lucide-react';
+import { formatBytes } from '../utils/formatters';
 import Select from '../components/Select';
 import Checkbox from '../components/Checkbox';
 import RangeSlider from '../components/RangeSlider';
@@ -582,13 +583,7 @@ export default function ServerDetail() {
         }
     };
 
-    const formatBytes = (bytes: number) => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    };
+
 
     // Files functions
     const fetchFiles = useCallback(async (path = '') => {

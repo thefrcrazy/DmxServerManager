@@ -1,19 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Save, Palette, Check, Key, User, Link2 } from 'lucide-react';
+import { Save, Palette, Check, Key, User, Link2, Globe } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
-import { Globe } from 'lucide-react';
-
-const PRESET_COLORS = [
-    '#FF591E', // Mistral Orange
-    '#6366F1', // Indigo
-    '#ec4899', // Pink
-    '#10B981', // Emerald
-    '#3B82F6', // Blue
-    '#F59E0B', // Amber
-];
+import { PRESET_COLORS } from '../constants/theme';
 
 export default function UserSettings() {
     const { accentColor, setAccentColor } = useTheme();
