@@ -1677,7 +1677,6 @@ export default function ServerDetail() {
                     isInstalling={isInstalling}
                     onClose={() => {
                         // Check if installation was finished
-                        const lastLog = logs[logs.length - 1] || '';
                         const isFinished = logs.some(l => l.includes('Installation terminée') || l.includes('Installation finished'));
 
                         if (!isFinished) {
