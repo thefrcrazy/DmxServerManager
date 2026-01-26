@@ -119,6 +119,56 @@
     }
 }
 
+.installation-auth {
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: rgba(234, 179, 8, 0.1); // yellow-500/10
+    border: 1px solid rgba(234, 179, 8, 0.2); // yellow-500/20
+    border-radius: 0.5rem;
+    text-align: center;
+
+    &__title {
+        color: #facc15; // yellow-400
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    &__content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    &__link {
+        color: #3b82f6; // blue-500
+        text-decoration: underline;
+        word-break: break-all;
+        font-size: 0.9rem;
+
+        &:hover {
+            color: #60a5fa; // blue-400
+        }
+    }
+
+    &__code {
+        background-color: rgba(0, 0, 0, 0.3);
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        font-family: monospace;
+        font-size: 1.1rem;
+        font-weight: bold;
+        letter-spacing: 1px;
+        color: white;
+        margin-top: 0.5rem;
+        display: inline-block;
+    }
+}
+
 .installation-actions {
     .btn-finish {
         width: 100%;
@@ -133,6 +183,24 @@
 
         &:hover {
             background-color: #16a34a; // green-600
+        }
+    }
+
+    .btn-cancel {
+        width: 100%;
+        padding: 0.5rem;
+        background-color: rgba(239, 68, 68, 0.1); // red-500/10
+        color: #ef4444; // red-500
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        border-radius: 0.5rem;
+        font-weight: 500;
+        transition: all 0.2s;
+        cursor: pointer;
+        margin-top: 0.75rem;
+
+        &:hover {
+            background-color: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.3);
         }
     }
 }
