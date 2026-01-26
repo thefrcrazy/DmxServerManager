@@ -546,6 +546,27 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             }
         }
 
+        // 4.6 Flatten "Server" subdirectory if present (Hytale zip structure)
+        let nested_server_dir = server_path.join("Server");
+        if nested_server_dir.exists() && nested_server_dir.is_dir() {
+            pm.broadcast_log(&id, "📂 Réorganisation des fichiers du serveur...".into()).await;
+            if let Ok(mut entries) = tokio::fs::read_dir(&nested_server_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let path = entry.path();
+                    let file_name = entry.file_name();
+                    let dest = server_path.join(file_name);
+                    if let Err(e) = tokio::fs::rename(&path, &dest).await {
+                         error!("Failed to move file {:?} to {:?}: {}", path, dest, e);
+                    }
+                }
+            }
+            let _ = tokio::fs::remove_dir_all(&nested_server_dir).await;
+        }
+
+        // Cleanup scripts
+        let _ = tokio::fs::remove_file(server_path.join("start.bat")).await;
+        let _ = tokio::fs::remove_file(server_path.join("start.sh")).await;
+
         // 5. Verify HytaleServer.jar exists
         let jar_path = server_path.join("HytaleServer.jar");
         if jar_path.exists() {
