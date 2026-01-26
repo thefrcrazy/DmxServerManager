@@ -112,7 +112,44 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                         </div>
                     </div>
                 )}
+                {/* Auth Action Required Bubble */}
+                {authUrl && currentStep < 3 && (
+                    <div className="installation-auth">
+                        <div className="installation-auth__title">
+                            <AlertTriangle size={18} /> Action Requise
+                        </div>
+                        <div className="installation-auth__content">
+                            <p className="text-sm text-yellow-100/80 mb-1">Hytale nécessite une authentification :</p>
+                            <a href={authUrl} target="_blank" rel="noopener noreferrer" className="installation-auth__link">
+                                {authUrl} <ExternalLink size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />
+                            </a>
+                            {authCode && (
+                                <div>
+                                    <span className="text-xs text-muted block mt-2">Code de vérification :</span>
+                                    <span className="installation-auth__code">{authCode}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
+                {/* Real-time Log Status */}
+                {logs.length > 0 && currentStep < 3 && (
+                    <div className="installation-status">
+                        <span className="installation-status__prefix">&gt;</span>
+                        {(() => {
+                            // Get last non-empty log, ignoring simple newlines
+                            const lastLines = logs.filter(l => l.trim().length > 0);
+                            const lastLine = lastLines[lastLines.length - 1] || '...';
+
+                            // Clean up [ERR] prefix which comes from stderr (common in downloaders)
+                            // Clean up confusing progress bars if they are too raw, 
+                            // but generally showing the raw line is better than nothing for "movement".
+                            // If it's a progress line like "[ERR] 100 ...", we can try to format or just show it.
+                            return lastLine.replace(/^\[ERR\]\s*/, '').substring(0, 80) + (lastLine.length > 80 ? '...' : '');
+                        })()}
+                    </div>
+                )}
                 <div className="installation-actions">
                     {currentStep === 3 ? (
                         <button onClick={onClose} className="btn-finish">

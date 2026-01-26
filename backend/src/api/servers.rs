@@ -572,22 +572,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             }
         }
 
-        // 4.6 Flatten "Server" subdirectory if present (Hytale zip structure)
-        let nested_server_dir = server_path.join("Server");
-        if nested_server_dir.exists() && nested_server_dir.is_dir() {
-            log_helper("📂 Réorganisation des fichiers du serveur...".to_string()).await;
-            if let Ok(mut entries) = tokio::fs::read_dir(&nested_server_dir).await {
-                while let Ok(Some(entry)) = entries.next_entry().await {
-                    let path = entry.path();
-                    let file_name = entry.file_name();
-                    let dest = server_path.join(file_name);
-                    if let Err(e) = tokio::fs::rename(&path, &dest).await {
-                         error!("Failed to move file {:?} to {:?}: {}", path, dest, e);
-                    }
-                }
-            }
-            let _ = tokio::fs::remove_dir_all(&nested_server_dir).await;
-        }
+
 
         // Cleanup scripts
         let _ = tokio::fs::remove_file(server_path.join("start.bat")).await;
@@ -802,7 +787,7 @@ async fn get_server(
 
     if max_players.is_none() {
         // Try reading from config.json
-        let config_path = Path::new(&server.working_dir).join("server").join("config.json");
+        let config_path = Path::new(&server.working_dir).join("Server").join("config.json");
         if let Ok(content) = fs::read_to_string(config_path).await {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                 max_players = json.get("MaxPlayers").and_then(|v| v.as_u64()).map(|v| v as u32);
@@ -871,6 +856,28 @@ async fn update_server(
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Server not found".into()));
+    }
+
+    // Write config to file to ensure Hytale picks up changes (like port, seed, etc.)
+    if let Some(config_json) = &body.config {
+        let root_config_path = Path::new(&body.working_dir).join("config.json");
+        let nested_config_path = Path::new(&body.working_dir).join("Server").join("config.json");
+        
+        if let Ok(json_str) = serde_json::to_string_pretty(config_json) {
+            // Write to root
+            if let Err(e) = tokio::fs::write(&root_config_path, &json_str).await {
+                error!("Failed to write root config.json for server {}: {}", id, e);
+            }
+            
+            // Write to nested Server/ dir if it exists (which is where the process runs)
+            if Path::new(&body.working_dir).join("Server").exists() {
+                 if let Err(e) = tokio::fs::write(&nested_config_path, &json_str).await {
+                    error!("Failed to write nested Server/config.json for server {}: {}", id, e);
+                } else {
+                    info!("Updated Server/config.json for server {}", id);
+                }
+            }
+        }
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
