@@ -77,6 +77,8 @@ interface Server {
     dir_exists: boolean;
     config?: any;
     max_players?: number;
+    players?: string[];
+    started_at?: string;
 }
 
 // JVM Args Suggestions for the config form
@@ -333,10 +335,7 @@ export default function ServerDetail() {
                 const data = await res.json();
                 if (data.content && data.content.length > 0) {
                     const lines = data.content.split('\n');
-                    setLogs(prev => {
-                        if (prev.length > 0) return prev;
-                        return lines;
-                    });
+                    setLogs(lines);
                 }
             } else if (installRes.ok) {
                 // Fallback: If no console.log but we have install.log (even if finished), show it (history)
@@ -489,8 +488,8 @@ export default function ServerDetail() {
         });
         const data = await response.json();
         setServer(data);
-        if (data.status === 'running' && !startTime) {
-            setStartTime(new Date());
+        if (data.status === 'running' && data.started_at) {
+            setStartTime(new Date(data.started_at));
         } else if (data.status !== 'running') {
             setStartTime(null);
         }
@@ -502,7 +501,7 @@ export default function ServerDetail() {
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         });
         if (action === 'start') {
-            setStartTime(new Date());
+            // Optimistic update or wait for fetchServer
         } else if (action === 'stop' || action === 'kill') {
             setStartTime(null);
         }
@@ -890,7 +889,7 @@ export default function ServerDetail() {
                     </div>
                     <div className="stat-card__content">
                         <div className="stat-card__label">Joueurs</div>
-                        <div className="stat-card__value">0 / {maxPlayers}</div>
+                        <div className="stat-card__value">{server.players?.length || 0} / {maxPlayers}</div>
                     </div>
                 </div>
 

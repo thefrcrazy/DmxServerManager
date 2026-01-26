@@ -135,7 +135,9 @@ fn check_java_version(path: &std::path::Path) -> Option<JavaVersion> {
     None
 }
 
-async fn get_system_stats() -> Result<HttpResponse, AppError> {
+use crate::services::process_manager::ProcessManager;
+
+async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse, AppError> {
     let (cpu_usage, ram_percent, ram_used, ram_total) = {
         let mut sys = SYSTEM.lock().unwrap();
         sys.refresh_all();
@@ -184,9 +186,9 @@ async fn get_system_stats() -> Result<HttpResponse, AppError> {
         0.0
     };
 
-    // Players - TODO: Implement actual player counting from servers
-    let players_current = 0;
-    let players_max = 0;
+    // Players
+    let players_current = pm.get_total_online_players().await;
+    let players_max = 0; // TODO: Sum max players from all running servers? Or just leave as 0 for "unlimited" representation
 
     Ok(HttpResponse::Ok().json(SystemStatsResponse {
         cpu: cpu_usage,

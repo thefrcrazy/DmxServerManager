@@ -20,6 +20,7 @@ pub struct ServerProcess {
     child: Option<Child>,
     log_tx: broadcast::Sender<String>,
     players: Arc<std::sync::RwLock<HashSet<String>>>,
+    pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl ProcessManager {
@@ -83,7 +84,12 @@ impl ProcessManager {
 
          processes.insert(
              server_id.to_string(),
-             ServerProcess { child: None, log_tx, players },
+             ServerProcess { 
+                 child: None, 
+                 log_tx, 
+                 players,
+                 started_at: Some(chrono::Utc::now())
+             },
          );
          Ok(())
     }
@@ -276,7 +282,12 @@ impl ProcessManager {
 
         processes.insert(
             server_id.to_string(),
-            ServerProcess { child: Some(child), log_tx, players },
+            ServerProcess { 
+                child: Some(child), 
+                log_tx, 
+                players,
+                started_at: Some(chrono::Utc::now())
+            },
         );
 
         Ok(())
@@ -393,6 +404,27 @@ impl ProcessManager {
             }
         }
         None
+    }
+
+    pub async fn get_server_started_at(&self, server_id: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+        if let Ok(processes) = self.processes.try_read() {
+            if let Some(proc) = processes.get(server_id) {
+                return proc.started_at;
+            }
+        }
+        None
+    }
+
+    pub async fn get_total_online_players(&self) -> u32 {
+        let mut total = 0;
+        if let Ok(processes) = self.processes.try_read() {
+            for proc in processes.values() {
+                 if let Ok(players) = proc.players.read() {
+                     total += players.len() as u32;
+                 }
+            }
+        }
+        total
     }
 }
 

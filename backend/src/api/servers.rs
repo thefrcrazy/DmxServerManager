@@ -47,6 +47,9 @@ pub struct ServerResponse {
     pub dir_exists: bool,
     pub players: Option<Vec<String>>,
     pub max_players: Option<u32>,
+    pub port: Option<u16>,
+    pub bind_address: Option<String>,
+    pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -814,6 +817,20 @@ async fn get_server(
         }
     }
 
+    let port = config_json.as_ref()
+        .and_then(|c| c.get("port").or(c.get("Port")))
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u16)
+        .or(Some(5520));
+
+    let bind_address = config_json.as_ref()
+        .and_then(|c| c.get("bind_address"))
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+        .or(Some("0.0.0.0".to_string()));
+
+    let started_at = pm.get_server_started_at(&server.id).await;
+
     Ok(HttpResponse::Ok().json(ServerResponse {
         id: server.id,
         name: server.name,
@@ -832,6 +849,9 @@ async fn get_server(
         dir_exists,
         players,
         max_players,
+        port,
+        bind_address,
+        started_at,
     }))
 }
 

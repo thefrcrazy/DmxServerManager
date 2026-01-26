@@ -199,7 +199,7 @@ export default function Dashboard() {
                     </div>
                     <div className="stat-card__value">
                         {playersStats.current}
-                        <span className="stat-card__value--suffix">/{playersStats.max}</span>
+                        {playersStats.max > 0 && <span className="stat-card__value--suffix">/{playersStats.max}</span>}
                     </div>
                 </div>
             </div>
