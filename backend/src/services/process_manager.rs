@@ -126,7 +126,7 @@ impl ProcessManager {
         min_memory: Option<&str>,
         max_memory: Option<&str>,
         extra_args: Option<&str>,
-        _config: Option<&serde_json::Value>,
+        config: Option<&serde_json::Value>,
     ) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
 
@@ -173,7 +173,7 @@ impl ProcessManager {
 
         // Pass port as CLI argument if present in config
         if let Some(cfg) = config {
-             if let Some(port) = cfg.get("Port").and_then(|v| v.as_u64()) {
+             if let Some(port) = cfg.get("Port").and_then(|v: &serde_json::Value| v.as_u64()) {
                  cmd.arg("-port");
                  cmd.arg(port.to_string());
              }

@@ -5,7 +5,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tokio::io::AsyncBufReadExt;
+
 use tracing::{info, error, warn};
 use std::path::Path;
 
@@ -536,41 +536,39 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             log_helper("✅ Downloader terminé avec succès.".to_string()).await;
         }
 
-        // 4.5 Check for downloaded ZIP (the actual server) and unzip it
-        let mut extracted = false;
-        if let Ok(mut entries) = tokio::fs::read_dir(&server_path).await {
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                let path = entry.path();
-                if let Some(ext) = path.extension() {
-                    if ext == "zip" {
-                         let file_name = path.file_name().unwrap().to_string_lossy();
-                         // Exclude hytale-downloader.zip (already extracted) and Assets (keep it)
-                         if file_name != "hytale-downloader.zip" && file_name != "Assets.zip" {
-                             log_helper(format!("📦 Décompression du serveur : {}...", file_name)).await;
-                             
-                             if let Err(e) = run_with_logs(
-                                &mut tokio::process::Command::new("unzip")
-                                    .arg("-o")
-                                    .arg(&path)
-                                    .arg("-d")
-                                    .arg(&server_path),
-                                pm.clone(),
-                                id.clone(),
-                                "",
-                                 Some(install_log_path.clone())
-                             ).await {
-                                 log_helper(format!("❌ Erreur extraction: {}", e)).await;
-                             } else {
-                                extracted = true;
-                                log_helper("✅ Décompression terminée.".to_string()).await;
-                                // cleanup the server zip
-                                let _ = tokio::fs::remove_file(&path).await;
-                            }
-                         }
-                    }
-                }
-            }
-        }
+         // 4.5 Check for downloaded ZIP (the actual server) and unzip it
+         if let Ok(mut entries) = tokio::fs::read_dir(&server_path).await {
+             while let Ok(Some(entry)) = entries.next_entry().await {
+                 let path = entry.path();
+                 if let Some(ext) = path.extension() {
+                     if ext == "zip" {
+                          let file_name = path.file_name().unwrap().to_string_lossy();
+                          // Exclude hytale-downloader.zip (already extracted) and Assets (keep it)
+                          if file_name != "hytale-downloader.zip" && file_name != "Assets.zip" {
+                              log_helper(format!("📦 Décompression du serveur : {}...", file_name)).await;
+                              
+                              if let Err(e) = run_with_logs(
+                                 &mut tokio::process::Command::new("unzip")
+                                     .arg("-o")
+                                     .arg(&path)
+                                     .arg("-d")
+                                     .arg(&server_path),
+                                 pm.clone(),
+                                 id.clone(),
+                                 "",
+                                  Some(install_log_path.clone())
+                              ).await {
+                                  log_helper(format!("❌ Erreur extraction: {}", e)).await;
+                              } else {
+                                 log_helper("✅ Décompression terminée.".to_string()).await;
+                                 // cleanup the server zip
+                                 let _ = tokio::fs::remove_file(&path).await;
+                             }
+                          }
+                     }
+                 }
+             }
+         }
         // 4.6 Rename "server" subdirectory to "server-data"
         let nested_server_dir = server_path.join("server");
         let target_data_dir = server_path.join("server-data");
