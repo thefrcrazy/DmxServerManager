@@ -121,6 +121,8 @@ async fn list_servers(
             }
         }
 
+        let started_at = pm.get_server_started_at(&s.id).await;
+
         responses.push(ServerResponse {
             id: s.id,
             name: s.name,
@@ -132,13 +134,22 @@ async fn list_servers(
             min_memory: s.min_memory,
             max_memory: s.max_memory,
             extra_args: s.extra_args,
-            config: config_json,
+            config: config_json.clone(),
             auto_start: s.auto_start != 0,
             created_at: s.created_at,
             updated_at: s.updated_at,
             dir_exists,
             players,
             max_players,
+            port: config_json.as_ref()
+                .and_then(|c| c.get("port").or(c.get("Port")))
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u16),
+            bind_address: config_json.as_ref()
+                .and_then(|c| c.get("bind_address"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string()),
+            started_at,
         });
     }
 
