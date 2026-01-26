@@ -66,7 +66,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             // Files API
             .route("/{id}/files", web::get().to(list_server_files))
             .route("/{id}/files/read", web::get().to(read_server_file))
-            .route("/{id}/files/write", web::post().to(write_server_file)),
+            .route("/{id}/files/write", web::post().to(write_server_file))
+            .route("/{id}/files/delete", web::post().to(delete_server_file)),
     );
 }
 
@@ -569,27 +570,36 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                  }
              }
          }
-        // 4.6 Rename "server" subdirectory to "server-data"
-        let nested_server_dir = server_path.join("server");
-        let target_data_dir = server_path.join("server-data");
+        // 4.6 Flatten "server/Server" to "server"
+        let server_dir = server_path.join("server");
+        let nested_bundle_dir = server_dir.join("Server"); // The extracted "Server" folder from zip
         
-        if nested_server_dir.exists() && nested_server_dir.is_dir() {
-            log_helper("📂 Renommage du dossier 'server' en 'server-data'...".to_string()).await;
-            // Remove existing server-data if it exists (fresh install logic)
-            if target_data_dir.exists() {
-                 let _ = tokio::fs::remove_dir_all(&target_data_dir).await;
+        if nested_bundle_dir.exists() && nested_bundle_dir.is_dir() {
+            log_helper("� Aplatissement du dossier 'Server' dans 'server'...".to_string()).await;
+            
+            // Move everything from server/Server/* to server/*
+            if let Ok(mut entries) = tokio::fs::read_dir(&nested_bundle_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                   let file_name = entry.file_name();
+                   let dest_path = server_dir.join(&file_name);
+                   let src_path = entry.path();
+                   
+                   if let Err(e) = tokio::fs::rename(&src_path, &dest_path).await {
+                        // If rename fails (e.g. cross-device), try copy+delete (rare on same containerfs)
+                        log_helper(format!("⚠️ Echec déplacement {:?}: {}", file_name, e)).await;
+                   }
+                }
             }
-            if let Err(e) = tokio::fs::rename(&nested_server_dir, &target_data_dir).await {
-                 log_helper(format!("⚠️ Erreur renommage: {}", e)).await;
-            }
+            // Remove empty nested Server dir
+            let _ = tokio::fs::remove_dir_all(&nested_bundle_dir).await;
         }
 
         // Cleanup scripts
         let _ = tokio::fs::remove_file(server_path.join("start.bat")).await;
         let _ = tokio::fs::remove_file(server_path.join("start.sh")).await;
 
-        // 5. Verify HytaleServer.jar exists (in server-data/Server)
-        let jar_path = target_data_dir.join("Server").join("HytaleServer.jar");
+        // 5. Verify HytaleServer.jar exists (in flattened server/)
+        let jar_path = server_dir.join("HytaleServer.jar");
         if jar_path.exists() {
              log_helper("✨ HytaleServer.jar présent. Installation terminée !".to_string()).await;
              
@@ -796,8 +806,8 @@ async fn get_server(
         .map(|v| v as u32);
 
     if max_players.is_none() {
-        // Try reading from config.json
-        let config_path = Path::new(&server.working_dir).join("server-data").join("Server").join("config.json");
+        // Try reading from config.json (universe)
+        let config_path = Path::new(&server.working_dir).join("server").join("universe").join("config.json");
         if let Ok(content) = fs::read_to_string(config_path).await {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                 max_players = json.get("MaxPlayers").and_then(|v| v.as_u64()).map(|v| v as u32);
@@ -871,7 +881,9 @@ async fn update_server(
     // Write config to file to ensure Hytale picks up changes (like port, seed, etc.)
     if let Some(config_json) = &body.config {
         let root_config_path = Path::new(&body.working_dir).join("config.json");
-        let nested_config_path = Path::new(&body.working_dir).join("server-data").join("Server").join("config.json");
+        let server_dir = Path::new(&body.working_dir).join("server");
+        let universe_dir = server_dir.join("universe");
+        let nested_config_path = universe_dir.join("config.json");
         
         if let Ok(json_str) = serde_json::to_string_pretty(config_json) {
             // Write to root
@@ -879,12 +891,16 @@ async fn update_server(
                 error!("Failed to write root config.json for server {}: {}", id, e);
             }
             
-            // Write to nested server-data/Server/ dir if it exists
-            if Path::new(&body.working_dir).join("server-data").join("Server").exists() {
+            // Check if server directory exists (flattened)
+            if server_dir.exists() {
+                 if !universe_dir.exists() {
+                     let _ = tokio::fs::create_dir_all(&universe_dir).await;
+                 }
+                 
                  if let Err(e) = tokio::fs::write(&nested_config_path, &json_str).await {
-                    error!("Failed to write nested server-data/Server/config.json for server {}: {}", id, e);
+                    error!("Failed to write nested server/universe/config.json for server {}: {}", id, e);
                 } else {
-                    info!("Updated server-data/Server/config.json for server {}", id);
+                    info!("Updated server/universe/config.json for server {}", id);
                 }
             }
         }
@@ -1345,6 +1361,55 @@ async fn write_server_file(
         .map_err(|e| AppError::Internal(format!("Failed to write file: {}", e)))?;
     
     info!("File written: {:?}", full_path);
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "path": body.path
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteFileRequest {
+    path: String,
+}
+
+async fn delete_server_file(
+    pool: web::Data<DbPool>,
+    path_param: web::Path<String>,
+    body: web::Json<DeleteFileRequest>,
+) -> Result<HttpResponse, AppError> {
+    let server_id = path_param.into_inner();
+    
+    // Get server working directory
+    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+        .bind(&server_id)
+        .fetch_optional(pool.get_ref())
+        .await?;
+    
+    let working_dir = server
+        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
+        .0;
+    
+    let base_path = Path::new(&working_dir);
+    let full_path = base_path.join(&body.path);
+    
+    // Security check
+    if !full_path.starts_with(&base_path) {
+        return Err(AppError::BadRequest("Invalid path".into()));
+    }
+    
+    if !full_path.exists() {
+        return Err(AppError::NotFound("File not found".into()));
+    }
+    
+    if full_path.is_dir() {
+         return Err(AppError::BadRequest("Cannot delete a directory with this endpoint".into()));
+    }
+    
+    std::fs::remove_file(&full_path)
+        .map_err(|e| AppError::Internal(format!("Failed to delete file: {}", e)))?;
+    
+    info!("File deleted: {:?}", full_path);
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "success": true,

@@ -171,15 +171,26 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                             // Get last non-empty log, ignoring simple newlines
                             const lastLines = logs.filter(l => l.trim().length > 0);
                             const lastLine = lastLines[lastLines.length - 1] || '...';
-
-                            // Clean up [ERR] prefix which comes from stderr (common in downloaders)
-                            // Clean up confusing progress bars if they are too raw, 
-                            // but generally showing the raw line is better than nothing for "movement".
-                            // If it's a progress line like "[ERR] 100 ...", we can try to format or just show it.
                             return lastLine.replace(/^\[ERR\]\s*/, '').substring(0, 80) + (lastLine.length > 80 ? '...' : '');
                         })()}
                     </div>
                 )}
+
+                {/* Detailed Logs Collapsible - Always shown to user request */}
+                <details className="installation-details">
+                    <summary className="installation-details__summary">
+                        <Terminal size={12} className="mr-2" /> Voir en détails ({logs.length})
+                    </summary>
+                    <div className="installation-details__content">
+                        {logs.length === 0 ? (
+                            <div className="text-muted italic opacity-50">En attente de logs...</div>
+                        ) : (
+                            logs.map((log, i) => (
+                                <div key={i} className="log-line">{log}</div>
+                            ))
+                        )}
+                    </div>
+                </details>
                 <div className="installation-actions">
                     {currentStep === 3 ? (
                         <button onClick={onClose} className="btn-finish">

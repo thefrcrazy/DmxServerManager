@@ -198,7 +198,7 @@ export default function ServerDetail() {
         try {
             // 1. Always check install.log first to see if an installation is unfinished
             // This is critical because a stale console.log might exist from a previous run
-            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=logs/install.log`, {
+            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
 
@@ -1676,7 +1676,22 @@ export default function ServerDetail() {
                     logs={logs}
                     isInstalling={isInstalling}
                     onClose={() => {
-                        setIsInstalling(false); // User can close it manually if finished or stuck
+                        // Check if installation was finished
+                        const lastLog = logs[logs.length - 1] || '';
+                        const isFinished = logs.some(l => l.includes('Installation terminée') || l.includes('Installation finished'));
+
+                        if (!isFinished) {
+                            // User cancelled or closed before finish -> Delete install.log to prevent persistent popup
+                            fetch(`/api/v1/servers/${id}/files/delete`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                                },
+                                body: JSON.stringify({ path: 'server/logs/install.log' })
+                            }).catch(err => console.error("Failed to cleanup install.log", err));
+                        }
+                        setIsInstalling(false);
                     }}
                 />
             )}
