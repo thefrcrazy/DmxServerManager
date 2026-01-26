@@ -285,6 +285,8 @@ async fn run_with_logs(
     log_prefix: &str,
     log_file_path: Option<std::path::PathBuf>
 ) -> Result<(), String> {
+    use tokio::io::AsyncReadExt;
+
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
     
@@ -322,16 +324,25 @@ async fn run_with_logs(
     let prefix1 = log_prefix.to_string();
     let file_writer1 = file_writer.clone();
     let stdout_task = tokio::spawn(async move {
-        let mut line = String::new();
-        while stdout_reader.read_line(&mut line).await.unwrap_or(0) > 0 {
-            let trimmed = line.trim_end();
-            pm_clone1.broadcast_log(&id_clone1, format!("{}{}", prefix1, trimmed)).await;
-            
-            if let Some(writer) = &file_writer1 {
-                let mut guard = writer.lock().await;
-                let _ = guard.write_all(line.as_bytes()).await;
+        let mut buffer = Vec::new();
+        while let Ok(byte) = stdout_reader.read_u8().await {
+            if byte == b'\n' || byte == b'\r' {
+                if !buffer.is_empty() {
+                    let line = String::from_utf8_lossy(&buffer).to_string();
+                    // Basic broadcast
+                    pm_clone1.broadcast_log(&id_clone1, format!("{}{}", prefix1, line)).await;
+                    
+                    if let Some(writer) = &file_writer1 {
+                        let mut guard = writer.lock().await;
+                        // Write the line + newline to file for readability
+                        let _ = guard.write_all(line.as_bytes()).await;
+                        let _ = guard.write_all(b"\n").await;
+                    }
+                    buffer.clear();
+                }
+            } else {
+                buffer.push(byte);
             }
-            line.clear();
         }
     });
 
@@ -340,16 +351,23 @@ async fn run_with_logs(
     let prefix2 = log_prefix.to_string();
     let file_writer2 = file_writer.clone(); 
     let stderr_task = tokio::spawn(async move {
-        let mut line = String::new();
-        while stderr_reader.read_line(&mut line).await.unwrap_or(0) > 0 {
-            let trimmed = line.trim_end();
-            pm_clone2.broadcast_log(&id_clone2, format!("{}[ERR] {}", prefix2, trimmed)).await;
-            
-             if let Some(writer) = &file_writer2 {
-                let mut guard = writer.lock().await;
-                let _ = guard.write_all(line.as_bytes()).await;
+        let mut buffer = Vec::new();
+        while let Ok(byte) = stderr_reader.read_u8().await {
+             if byte == b'\n' || byte == b'\r' {
+                if !buffer.is_empty() {
+                    let line = String::from_utf8_lossy(&buffer).to_string();
+                    pm_clone2.broadcast_log(&id_clone2, format!("{}[ERR] {}", prefix2, line)).await;
+                    
+                    if let Some(writer) = &file_writer2 {
+                        let mut guard = writer.lock().await;
+                        let _ = guard.write_all(line.as_bytes()).await;
+                        let _ = guard.write_all(b"\n").await;
+                    }
+                    buffer.clear();
+                }
+            } else {
+                buffer.push(byte);
             }
-            line.clear();
         }
     });
 
@@ -487,9 +505,45 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             Some(install_log_path.clone())
         ).await {
             pm.broadcast_log(&id, format!("❌ {}", e)).await;
-            // Don't abort immediately, as it might be a partial failure or just exit code
+            // Don't abort immediately
         } else {
             pm.broadcast_log(&id, "✅ Downloader terminé avec succès.".into()).await;
+        }
+
+        // 4.5 Check for downloaded ZIP (the actual server) and unzip it
+        let mut extracted = false;
+        if let Ok(mut entries) = tokio::fs::read_dir(&server_path).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let path = entry.path();
+                if let Some(ext) = path.extension() {
+                    if ext == "zip" {
+                         let file_name = path.file_name().unwrap().to_string_lossy();
+                         // Exclude hytale-downloader.zip (already extracted) and Assets (keep it)
+                         if file_name != "hytale-downloader.zip" && file_name != "Assets.zip" {
+                             pm.broadcast_log(&id, format!("📦 Décompression du serveur : {}...", file_name)).await;
+                             
+                             if let Err(e) = run_with_logs(
+                                &mut tokio::process::Command::new("unzip")
+                                    .arg("-o")
+                                    .arg(&path)
+                                    .arg("-d")
+                                    .arg(&server_path),
+                                pm.clone(),
+                                id.clone(),
+                                "",
+                                Some(install_log_path.clone())
+                            ).await {
+                                pm.broadcast_log(&id, format!("❌ Erreur extraction: {}", e)).await;
+                            } else {
+                                extracted = true;
+                                pm.broadcast_log(&id, "✅ Décompression terminée.".into()).await;
+                                // cleanup the server zip
+                                let _ = tokio::fs::remove_file(&path).await;
+                            }
+                         }
+                    }
+                }
+            }
         }
 
         // 5. Verify HytaleServer.jar exists
