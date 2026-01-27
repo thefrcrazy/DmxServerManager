@@ -153,7 +153,17 @@ impl ProcessManager {
     pub fn is_auth_required(&self, server_id: &str) -> bool {
         if let Ok(processes) = self.processes.try_read() {
             if let Some(proc) = processes.get(server_id) {
-                if let Ok(auth) = proc.auth_required.read() {
+                if let Ok(mut auth) = proc.auth_required.write() {
+                    if *auth {
+                        // Check if auth.enc exists in working dir
+                        // If it exists, it means we are authenticated
+                        let auth_file = std::path::Path::new(&proc.working_dir).join("auth.enc");
+                        if auth_file.exists() {
+                             // Update state to false since we found the file
+                            *auth = false;
+                            return false;
+                        }
+                    }
                     return *auth;
                 }
             }

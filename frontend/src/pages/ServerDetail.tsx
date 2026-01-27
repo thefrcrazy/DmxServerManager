@@ -312,6 +312,11 @@ export default function ServerDetail() {
                     setIsAuthRequired(true);
                 }
             }
+
+            // Auto-close auth popup on success
+            if (message.includes('Authentication successful!') || message.includes('Success!')) {
+                setIsAuthRequired(false);
+            }
             if (message.includes('Installation terminée') || message.includes('Installation finished')) {
                 // Refresh server state to unlock UI
                 setIsInstalling(false);
@@ -583,6 +588,8 @@ export default function ServerDetail() {
 
             if (action === 'start') {
                 // Optimistic update or wait for fetchServer
+                setLogs([]); // Clear logs visually to avoid stale auth codes
+                setIsAuthRequired(false); // Reset auth state on new start
             } else if (action === 'stop' || action === 'kill') {
                 setStartTime(null);
                 setIsAuthRequired(false); // Immediate local reset
