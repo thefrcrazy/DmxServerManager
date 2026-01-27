@@ -10,6 +10,8 @@ use regex::Regex;
 
 use crate::error::AppError;
 
+
+
 /// Manages game server processes
 use crate::db::DbPool;
 
@@ -29,8 +31,40 @@ pub struct ServerProcess {
 
 impl ProcessManager {
     pub fn new(pool: Option<DbPool>) -> Self {
+        let processes = Arc::new(RwLock::new(HashMap::<String, ServerProcess>::new()));
+        
+        // Spawn metrics loop
+        let processes_clone = processes.clone();
+        tokio::spawn(async move {
+            let mut system = sysinfo::System::new_all();
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                
+                {
+                    let procs = processes_clone.read().await;
+                    for (id, server_proc) in procs.iter() {
+                        if let Some(child) = &server_proc.child {
+                            let pid = sysinfo::Pid::from_u32(child.id());
+                            if let Some(process) = system.process(pid) {
+                                let cpu = process.cpu_usage();
+                                let memory = process.memory(); // in bytes
+                                
+                                let metrics_json = serde_json::json!({
+                                    "cpu": cpu,
+                                    "memory": memory
+                                });
+                                
+                                let _ = server_proc.log_tx.send(format!("[METRICS]: {}", metrics_json));
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
         Self {
-            processes: Arc::new(RwLock::new(HashMap::new())),
+            processes,
             pool,
         }
     }

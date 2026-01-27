@@ -141,6 +141,8 @@ export default function ServerDetail() {
     const [isConnected, setIsConnected] = useState(false);
     const [startTime, setStartTime] = useState<Date | null>(null);
     const [uptime, setUptime] = useState('--:--:--');
+    const [cpuUsage, setCpuUsage] = useState<number>(0);
+    const [ramUsage, setRamUsage] = useState<number>(0);
     const wsRef = useRef<WebSocket | null>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -259,6 +261,18 @@ export default function ServerDetail() {
                 // to get updated player counts or other metadata
                 fetchServer();
                 return; // Don't show in logs
+            }
+
+            // Handle Metrics
+            if (message.startsWith('[METRICS]:')) {
+                try {
+                    const metrics = JSON.parse(message.substring(10));
+                    setCpuUsage(metrics.cpu || 0);
+                    setRamUsage(metrics.memory || 0);
+                } catch (e) {
+                    console.error('Failed to parse metrics', e);
+                }
+                return;
             }
 
             // Handle Installation Detection
@@ -880,7 +894,7 @@ export default function ServerDetail() {
                     </div>
                     <div className="stat-card__content">
                         <div className="stat-card__label">Processeur (CPU)</div>
-                        <div className="stat-card__value">{isRunning ? '--' : '0'}%</div>
+                        <div className="stat-card__value">{isRunning ? `${cpuUsage.toFixed(1)}` : '0'}%</div>
                     </div>
                 </div>
 
@@ -891,7 +905,7 @@ export default function ServerDetail() {
                     </div>
                     <div className="stat-card__content">
                         <div className="stat-card__label">Mémoire (RAM)</div>
-                        <div className="stat-card__value">{isRunning ? '--' : '0'} / {server.max_memory || '4G'}</div>
+                        <div className="stat-card__value">{isRunning ? formatBytes(ramUsage) : '0 B'} / {server.max_memory || '4G'}</div>
                     </div>
                 </div>
 
@@ -902,7 +916,7 @@ export default function ServerDetail() {
                     </div>
                     <div className="stat-card__content">
                         <div className="stat-card__label">Joueurs</div>
-                        <div className="stat-card__value">{server.players?.length || 0} / {maxPlayers}</div>
+                        <div className="stat-card__value">{server.players?.filter(p => p.is_online).length || 0} / {maxPlayers}</div>
                     </div>
                 </div>
 
@@ -1626,69 +1640,72 @@ export default function ServerDetail() {
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {server.players.map((player, idx) => (
-                                                            <tr key={idx}>
-                                                                <td>
-                                                                    <div className="player-info">
-                                                                        <div className="avatar">
-                                                                            {player.name.charAt(0).toUpperCase()}
+                                                        {server.players.filter(p => !p.is_online ? false : true).length === 0 ? (
+                                                            <tr><td colSpan={4} className="p-4 text-center text-muted">Aucun joueur en ligne</td></tr>
+                                                        ) : (
+                                                            server.players.filter(p => p.is_online).map((player, idx) => (
+                                                                <tr key={idx}>
+                                                                    <td>
+                                                                        <div className="player-info">
+                                                                            <div className="avatar">
+                                                                                {player.name.charAt(0).toUpperCase()}
+                                                                            </div>
+                                                                            <span className="name">{player.name}</span>
                                                                         </div>
-                                                                        <span className="name">{player.name}</span>
-                                                                    </div>
-                                                                </td>
-                                                                <td>
-                                                                    {player.is_online ? (
-                                                                        <div className="status-badge">
-                                                                            En ligne
+                                                                    </td>
+                                                                    <td>
+                                                                        {player.is_online ? (
+                                                                            <div className="status-badge">
+                                                                                En ligne
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Hors ligne</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td>
+                                                                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                                                                            {player.is_online ? '-' : new Date(player.last_seen).toLocaleString()}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="text-right">
+                                                                        <div className="player-actions">
+                                                                            <button
+                                                                                className="btn btn--icon btn--secondary btn--sm"
+                                                                                onClick={() => {
+                                                                                    if (confirm(`Donner les droits d'administration à ${player.name} ?`)) {
+                                                                                        sendServerCommand(`op add ${player.name}`);
+                                                                                    }
+                                                                                }}
+                                                                                title="OP"
+                                                                            >
+                                                                                <Shield size={14} />
+                                                                            </button>
+                                                                            <button
+                                                                                className="btn btn--icon btn--danger btn--sm"
+                                                                                onClick={() => {
+                                                                                    if (confirm(`Bannir ${player.name} ?`)) {
+                                                                                        sendServerCommand(`ban ${player.name}`);
+                                                                                    }
+                                                                                }}
+                                                                                title="Ban"
+                                                                            >
+                                                                                <Ban size={14} />
+                                                                            </button>
+                                                                            <button
+                                                                                className="btn btn--icon btn--danger btn--sm"
+                                                                                onClick={() => {
+                                                                                    if (confirm(`Kicker ${player.name} ?`)) {
+                                                                                        sendServerCommand(`kick ${player.name}`);
+                                                                                    }
+                                                                                }}
+                                                                                title="Kick"
+                                                                            >
+                                                                                <LogOut size={14} />
+                                                                            </button>
                                                                         </div>
-                                                                    ) : (
-                                                                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Hors ligne</span>
-                                                                    )}
-                                                                </td>
-                                                                <td>
-                                                                    <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                                                                        {player.is_online ? '-' : new Date(player.last_seen).toLocaleString()}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="text-right">
-                                                                    <div className="player-actions">
-                                                                        <button
-                                                                            className="btn btn--icon btn--secondary btn--sm"
-                                                                            onClick={() => {
-                                                                                if (confirm(`Donner les droits d'administration à ${player.name} ?`)) {
-                                                                                    sendServerCommand(`op add ${player.name}`);
-                                                                                }
-                                                                            }}
-                                                                            title="OP"
-                                                                        >
-                                                                            <Shield size={14} />
-                                                                        </button>
-                                                                        <button
-                                                                            className="btn btn--icon btn--danger btn--sm"
-                                                                            onClick={() => {
-                                                                                if (confirm(`Bannir ${player.name} ?`)) {
-                                                                                    sendServerCommand(`ban ${player.name}`);
-                                                                                }
-                                                                            }}
-                                                                            title="Ban"
-                                                                        >
-                                                                            <Ban size={14} />
-                                                                        </button>
-                                                                        <button
-                                                                            className="btn btn--icon btn--danger btn--sm"
-                                                                            onClick={() => {
-                                                                                if (confirm(`Kicker ${player.name} ?`)) {
-                                                                                    sendServerCommand(`kick ${player.name}`);
-                                                                                }
-                                                                            }}
-                                                                            title="Kick"
-                                                                        >
-                                                                            <LogOut size={14} />
-                                                                        </button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
+                                                                    </td>
+                                                                </tr>
+                                                            )))}
                                                     </tbody>
                                                 </table>
                                             </div>
