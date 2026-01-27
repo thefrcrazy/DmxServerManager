@@ -53,11 +53,23 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         const fullLogClean = stripAnsi(logs.join('\n'));
 
         // Pattern: https://oauth.accounts.hytale.com/...
-        // The log usually lines are:
-        // "Please visit the following URL to authenticate:"
-        // "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=XXXXXX"
-        // Improved regex to stop at whitespace or ANSI-like leftovers if any
-        const linkMatch = fullLogClean.match(/(https:\/\/oauth\.accounts\.hytale\.com\/[^\s\u001b]+)/);
+        // The logs provide two URLs usually:
+        // 1. "Visit: https://.../verify"
+        // 2. "Or visit: https://.../verify?user_code=..."
+        // We want to prioritize the second one if it exists.
+
+        // Find ALL matches
+        const allLinkMatches = fullLogClean.match(/(https:\/\/oauth\.accounts\.hytale\.com\/[^\s\u001b]+)/g);
+
+        let bestUrl: string | null = null;
+        if (allLinkMatches && allLinkMatches.length > 0) {
+            // Prefer the one with user_code
+            const urlWithCode = allLinkMatches.find(u => u.includes('user_code='));
+            bestUrl = urlWithCode || allLinkMatches[0];
+
+            // Clean punctuation
+            bestUrl = bestUrl.replace(/[).\]]+$/, '');
+        }
 
         // Check for progress bar in recent logs (look at last few lines)
         // Format: [==========] 27.0% (385.0 MB / 1.4 GB)
@@ -82,23 +94,25 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         if (foundProgress) {
             setAuthUrl(null);
             setAuthCode(null);
-        } else if (linkMatch) {
-            // Further clean the URL if it dragged in any trailing punctuation
-            // (Though [^\s]+ usually handles it, sometimes logs have closing chars)
-            let url = linkMatch[1];
-            // Remove trailing dot or closing bracket/parenthesis if matched by mistake
-            url = url.replace(/[).\]]+$/, '');
-            setAuthUrl(url);
+        } else if (bestUrl) {
+            setAuthUrl(bestUrl);
 
             // Try to extract code from URL if present (user_code=...)
-            const codeMatch = url.match(/user_code=([^&]+)/);
+            const codeMatch = bestUrl.match(/user_code=([^&]+)/);
             if (codeMatch) {
                 setAuthCode(codeMatch[1]);
             } else {
-                // Fallback: Check for "Authorization code: XXXXXX"
-                // uses fullLogClean
-                const manualCodeMatch = fullLogClean.match(/Authorization code:\s*([^\s]+)/);
-                if (manualCodeMatch) setAuthCode(manualCodeMatch[1]);
+                // Fallback: Check for "Enter code: XXXXXX" or "Authorization code: XXXXXX"
+                // Log example: "Enter code: RJNt7CLJ"
+                const manualCodeMatch = fullLogClean.match(/(?:Authorization|Enter) code:\s*([^\s]+)/i);
+                if (manualCodeMatch) {
+                    const code = manualCodeMatch[1];
+                    setAuthCode(code);
+                    // Construct full URL if missing
+                    if (!bestUrl.includes('?')) {
+                        setAuthUrl(`${bestUrl}?user_code=${code}`);
+                    }
+                }
             }
         } else {
             // If no linkMatch and no progress, ensure auth states are cleared
