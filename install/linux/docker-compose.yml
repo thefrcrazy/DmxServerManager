@@ -1,18 +1,18 @@
 version: '3.8'
 
 services:
-  kweebec:
-    image: kweebec/manager:latest
+  draveur:
+    image: draveur/manager:latest
     build:
       context: ../..
       dockerfile: install/linux/Dockerfile
-    container_name: kweebec-manager
+    container_name: draveur-manager
     restart: unless-stopped
     network_mode: host
     environment:
       - HOST=0.0.0.0
       - PORT=5500
-      - DATABASE_URL=sqlite:/data/kweebec.db?mode=rwc
+      - DATABASE_URL=sqlite:/data/draveur.db?mode=rwc
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - SERVERS_DIR=/servers
       - BACKUPS_DIR=/backups
@@ -30,4 +30,4 @@ services:
 
 networks:
   default:
-    name: kweebec-network
+    name: draveur-network

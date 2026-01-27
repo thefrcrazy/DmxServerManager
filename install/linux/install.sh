@@ -1,6 +1,6 @@
 #!/bin/bash
 # ========================================
-# Kweebec Manager - Script d'installation Linux
+# Draveur Manager - Script d'installation Linux
 # ========================================
 
 set -e
@@ -14,14 +14,14 @@ PURPLE='\033[0;35m'
 NC='\033[0m'
 
 # Variables
-INSTALL_DIR="${KWEEBEC_INSTALL_DIR:-/opt/kweebec-manager}"
-DATA_DIR="${KWEEBEC_DATA_DIR:-/var/lib/kweebec}"
-USER="${KWEEBEC_USER:-kweebec}"
-REPO_URL="https://github.com/thefrcrazy/kweebec-manager"
+INSTALL_DIR="${DRAVEUR_INSTALL_DIR:-/opt/draveur-manager}"
+DATA_DIR="${DRAVEUR_DATA_DIR:-/var/lib/draveur}"
+USER="${DRAVEUR_USER:-draveur}"
+REPO_URL="https://github.com/thefrcrazy/draveur-manager"
 
 echo -e "${PURPLE}"
 echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║              🎮 Kweebec Manager Installer                 ║"
+echo "║              🎮 Draveur Manager Installer                 ║"
 echo "║           Gestionnaire de serveurs Hytale                 ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
@@ -164,7 +164,7 @@ create_env_file() {
     cat > "$DATA_DIR/.env" << EOF
 HOST=0.0.0.0
 PORT=5500
-DATABASE_URL=sqlite:$DATA_DIR/data/kweebec.db?mode=rwc
+DATABASE_URL=sqlite:$DATA_DIR/data/draveur.db?mode=rwc
 JWT_SECRET=$(openssl rand -base64 32)
 SERVERS_DIR=$DATA_DIR/servers
 BACKUPS_DIR=$DATA_DIR/backups
@@ -179,9 +179,9 @@ EOF
 create_systemd_service() {
     echo -e "${BLUE}🔧 Configuration du service systemd...${NC}"
     
-    cat > /etc/systemd/system/kweebec.service << EOF
+    cat > /etc/systemd/system/draveur.service << EOF
 [Unit]
-Description=Kweebec Manager - Game Server Manager
+Description=Draveur Manager - Game Server Manager
 After=network.target
 
 [Service]
@@ -189,7 +189,7 @@ Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR/backend
 EnvironmentFile=$DATA_DIR/.env
-ExecStart=$INSTALL_DIR/backend/target/release/kweebec
+ExecStart=$INSTALL_DIR/backend/target/release/draveur
 Restart=always
 RestartSec=10
 
@@ -198,7 +198,7 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable kweebec
+    systemctl enable draveur
 }
 
 # Affichage des informations finales
@@ -214,13 +214,13 @@ print_success() {
     echo -e "  ${BLUE}📡 Interface web:${NC} http://$IP:5500"
     echo ""
     echo -e "  ${YELLOW}Commandes utiles:${NC}"
-    echo "    sudo systemctl start kweebec    # Démarrer"
-    echo "    sudo systemctl stop kweebec     # Arrêter"
-    echo "    sudo systemctl status kweebec   # Status"
-    echo "    sudo journalctl -u kweebec -f   # Logs"
+    echo "    sudo systemctl start draveur    # Démarrer"
+    echo "    sudo systemctl stop draveur     # Arrêter"
+    echo "    sudo systemctl status draveur   # Status"
+    echo "    sudo journalctl -u draveur -f   # Logs"
     echo ""
     echo -e "  ${PURPLE}Premier démarrage:${NC}"
-    echo "    1. Démarrez le service: sudo systemctl start kweebec"
+    echo "    1. Démarrez le service: sudo systemctl start draveur"
     echo "    2. Accédez à http://$IP:5500"
     echo "    3. Créez votre compte admin"
     echo ""

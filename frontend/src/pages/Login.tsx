@@ -139,8 +139,8 @@ export default function Login() {
       <div className="card login-card">
         <div className="login-header">
           <img
-            src="/kweebec-manager-logo.png"
-            alt="Kweebec Manager"
+            src="/draveur-manager-logo.png"
+            alt="Draveur Manager"
             className="login-header__logo"
           />
           <p className="text-muted">
@@ -224,7 +224,7 @@ export default function Login() {
 
         {!needsSetup && (
           <div className="login-footer">
-            <p>Kweebec Manager v0.1.0</p>
+            <p>Draveur Manager v0.1.0</p>
           </div>
         )}
       </div>

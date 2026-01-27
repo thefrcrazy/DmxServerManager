@@ -106,7 +106,7 @@ async fn test_webhook(
     let now = chrono::Local::now();
     let embed = serde_json::json!({
         "author": {
-            "name": "Kweebec Manager",
+            "name": "Draveur Manager",
             "icon_url": "https://cdn.discordapp.com/emojis/1199040367842689154.webp"
         },
         "title": "📊 État du Système",

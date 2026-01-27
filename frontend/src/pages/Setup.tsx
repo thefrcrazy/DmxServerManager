@@ -79,8 +79,8 @@ export default function Setup() {
                 {/* Logo centré et plus gros */}
                 <div className="setup-wizard__header">
                     <img
-                        src="/kweebec-manager-logo.png"
-                        alt="Kweebec Manager"
+                        src="/draveur-manager-logo.png"
+                        alt="Draveur Manager"
                         className="setup-wizard__logo"
                     />
                     <h1 className="setup-wizard__title">

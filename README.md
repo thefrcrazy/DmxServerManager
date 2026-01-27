@@ -1,4 +1,4 @@
-# 🎮 Kweebec Manager
+# 🎮 Draveur Manager
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Backend-Rust-orange.svg)](https://www.rust-lang.org/)
@@ -34,14 +34,14 @@ Des **fichiers de release** (binaires/archives) seront mis à disposition une fo
 ### Linux (Docker) — Recommandé
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thefrcrazy/kweebec-manager/main/install/linux/quick-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/linux/quick-install.sh | bash
 ```
 
 ### Linux (Sans Docker)
 
 ```bash
-git clone https://github.com/thefrcrazy/kweebec-manager.git
-cd kweebec-manager
+git clone https://github.com/thefrcrazy/draveur-manager.git
+cd draveur-manager
 ./install/linux/install.sh
 ```
 
@@ -49,7 +49,7 @@ cd kweebec-manager
 
 ```powershell
 # Exécuter PowerShell en Administrateur
-irm https://raw.githubusercontent.com/thefrcrazy/kweebec-manager/main/install/windows/install.ps1 | iex
+irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/windows/install.ps1 | iex
 ```
 
 ---

@@ -72,7 +72,7 @@ export default function PanelSettings() {
         version: '0.1.0',
         servers_dir: './servers',
         backups_dir: './backups',
-        database_path: 'kweebec.db',
+        database_path: 'draveur.db',
         is_docker: false
     });
     const [loginCustomization, setLoginCustomization] = useState<LoginCustomization>({
@@ -190,7 +190,7 @@ export default function PanelSettings() {
                     version: data.version || '0.1.0',
                     servers_dir: data.servers_dir || './servers',
                     backups_dir: data.backups_dir || './backups',
-                    database_path: data.database_path || 'kweebec.db',
+                    database_path: data.database_path || 'draveur.db',
                     is_docker: data.is_docker || false
                 });
                 setServersDir(data.servers_dir || './data/servers');

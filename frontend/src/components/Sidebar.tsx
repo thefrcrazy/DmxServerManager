@@ -62,14 +62,14 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 <Link to="/" className="sidebar__logo-link">
                     {isCollapsed ? (
                         <img
-                            src="/kweebec-manager-logo.png"
-                            alt="Kweebec"
+                            src="/draveur-manager-logo.png"
+                            alt="Draveur"
                             className="sidebar__logo sidebar__logo--small"
                         />
                     ) : (
                         <img
-                            src="/kweebec-manager-logo.png"
-                            alt="Kweebec Manager"
+                            src="/draveur-manager-logo.png"
+                            alt="Draveur Manager"
                             className="sidebar__logo sidebar__logo--full"
                         />
                     )}

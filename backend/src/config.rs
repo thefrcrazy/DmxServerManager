@@ -15,7 +15,7 @@ impl Settings {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(5500),
             database_url: std::env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "sqlite:data/kweebec.db?mode=rwc".into()),
+                .unwrap_or_else(|_| "sqlite:data/draveur.db?mode=rwc".into()),
             uploads_dir: std::env::var("UPLOADS_DIR").unwrap_or_else(|_| "./data/uploads".into()),
         }
     }

@@ -173,8 +173,8 @@ async fn run_status_update(pool: &DbPool, sys: &mut System, pm: &ProcessManager)
     let now = chrono::Local::now();
     let embed = serde_json::json!({
         "author": {
-            "name": "Kweebec Manager",
-            "icon_url": "https://raw.githubusercontent.com/thefrcrazy/Kweebec-Manager/refs/heads/main/frontend/public/kweebec-manager-logo.png"
+            "name": "Draveur Manager",
+            "icon_url": "https://raw.githubusercontent.com/thefrcrazy/Draveur-Manager/refs/heads/main/frontend/public/draveur-manager-logo.png"
         },
         "title": "📊 État du Système",
         "color": 0x3A82F6,

@@ -155,7 +155,7 @@ export const en: TranslationType = {
     },
     panel_settings: {
         title: "Panel Settings",
-        subtitle: "Global configuration for Kweebec Manager",
+        subtitle: "Global configuration for Draveur Manager",
         save_success: "Settings saved",
         general_title: "General",
         app_url: "Application URL",
@@ -231,7 +231,7 @@ export const en: TranslationType = {
         }
     },
     setup: {
-        title: "Welcome to Kweebec Manager",
+        title: "Welcome to Draveur Manager",
         subtitle: "Let's start by configuring your environment.",
         create_admin: "Create Administrator",
         username: "Username",

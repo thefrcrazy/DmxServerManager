@@ -60,7 +60,7 @@ async fn get_settings(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError>
         version: env!("CARGO_PKG_VERSION").to_string(),
         servers_dir,
         backups_dir,
-        database_path: std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:data/kweebec.db".into()),
+        database_path: std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:data/draveur.db".into()),
         webhook_url: settings_map.get("webhook_url").cloned(),
         is_docker: std::env::var("IS_DOCKER").is_ok(),
         login_default_color: settings_map.get("login_default_color").cloned(),

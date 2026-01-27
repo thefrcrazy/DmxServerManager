@@ -42,7 +42,7 @@ pub async fn send_notification(
         "color": color,
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "footer": {
-            "text": format!("Kweebec Manager v{}", env!("CARGO_PKG_VERSION"))
+            "text": format!("Draveur Manager v{}", env!("CARGO_PKG_VERSION"))
         }
     });
 

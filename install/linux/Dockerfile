@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y \
     && dbus-uuidgen --ensure=/etc/machine-id
 
 # Create non-root user with explicit UID 1000 to match host user
-RUN useradd -u 1000 -m -d /home/kweebec -s /bin/bash kweebec
+RUN useradd -u 1000 -m -d /home/draveur -s /bin/bash draveur
 
 WORKDIR /app
 
@@ -50,7 +50,7 @@ COPY install/linux/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
 # Copy backend binary
-COPY --from=backend-builder /app/backend/target/release/kweebec ./kweebec
+COPY --from=backend-builder /app/backend/target/release/draveur ./draveur
 
 # Copy frontend static files
 COPY --from=frontend-builder /app/frontend/dist ./static
@@ -61,7 +61,7 @@ RUN mkdir -p /data /servers /backups
 # Environment
 ENV HOST=0.0.0.0
 ENV PORT=5500
-ENV DATABASE_URL=sqlite:/data/kweebec.db?mode=rwc
+ENV DATABASE_URL=sqlite:/data/draveur.db?mode=rwc
 ENV SERVERS_DIR=/servers
 ENV BACKUPS_DIR=/backups
 ENV UPLOADS_DIR=/data/uploads
@@ -70,4 +70,4 @@ ENV RUST_LOG=info
 EXPOSE 5500
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["./kweebec"]
+CMD ["./draveur"]

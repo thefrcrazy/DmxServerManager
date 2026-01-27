@@ -2,10 +2,10 @@
 set -e
 
 # ID of the internal user
-USER=kweebec
+USER=draveur
 USER_ID=$(id -u $USER)
 
-echo "🚀 Kweebec Manager Entrypoint"
+echo "🚀 Draveur Manager Entrypoint"
 
 # Function to fix permissions
 fix_permissions() {
@@ -27,12 +27,12 @@ fix_permissions "/backups"
 
 # If the command starts with '-', assume it's an argument to the app
 if [ "${1:0:1}" = '-' ]; then
-    set -- ./kweebec "$@"
+    set -- ./draveur "$@"
 fi
 
 # Drop privileges and execute the command
-if [ "$1" = './kweebec' ] || [ "$1" = '/app/kweebec' ]; then
-    echo "✅ Starting Kweebec Manager as $USER..."
+if [ "$1" = './draveur' ] || [ "$1" = '/app/draveur' ]; then
+    echo "✅ Starting Draveur Manager as $USER..."
     exec gosu $USER "$@"
 else
     # Execute other commands as is (useful for debugging)

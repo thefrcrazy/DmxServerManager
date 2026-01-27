@@ -33,7 +33,7 @@ async fn main() -> std::io::Result<()> {
     std::fs::create_dir_all("data").ok();
     std::fs::create_dir_all(&settings.uploads_dir).ok();
 
-    info!("🚀 Kweebec Manager v{}", env!("CARGO_PKG_VERSION"));
+    info!("🚀 Draveur Manager v{}", env!("CARGO_PKG_VERSION"));
     info!("📡 Starting server on {}:{}", settings.host, settings.port);
 
     // Initialize database

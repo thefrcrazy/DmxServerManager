@@ -24,7 +24,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
                 // Ignore parse errors
             }
         }
-        return localStorage.getItem('kweebec_accent_color') || DEFAULT_ACCENT;
+        return localStorage.getItem('draveur_accent_color') || DEFAULT_ACCENT;
     });
 
     useEffect(() => {
@@ -41,7 +41,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         root.style.setProperty('--color-accent-rgb', `${r}, ${g}, ${b}`);
 
         // Persist
-        localStorage.setItem('kweebec_accent_color', accentColor);
+        localStorage.setItem('draveur_accent_color', accentColor);
     }, [accentColor]);
 
     // Prevent flash of unstyled theme

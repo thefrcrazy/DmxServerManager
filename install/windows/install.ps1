@@ -1,5 +1,5 @@
 # ========================================
-# Kweebec Manager - Installation Windows
+# Draveur Manager - Installation Windows
 # ========================================
 
 #Requires -RunAsAdministrator
@@ -7,9 +7,9 @@
 $ErrorActionPreference = "Stop"
 
 # Variables
-$InstallDir = "$env:ProgramFiles\KweebecManager"
-$DataDir = "$env:ProgramData\KweebecManager"
-$RepoUrl = "https://github.com/thefrcrazy/kweebec-manager"
+$InstallDir = "$env:ProgramFiles\DraveurManager"
+$DataDir = "$env:ProgramData\DraveurManager"
+$RepoUrl = "https://github.com/thefrcrazy/draveur-manager"
 
 # Couleurs
 function Write-ColorOutput($ForegroundColor, $Message) {
@@ -21,7 +21,7 @@ function Write-ColorOutput($ForegroundColor, $Message) {
 
 Write-Host ""
 Write-ColorOutput Magenta "╔═══════════════════════════════════════════════════════════╗"
-Write-ColorOutput Magenta "║              🎮 Kweebec Manager Installer                 ║"
+Write-ColorOutput Magenta "║              🎮 Draveur Manager Installer                 ║"
 Write-ColorOutput Magenta "║           Gestionnaire de serveurs Hytale                 ║"
 Write-ColorOutput Magenta "╚═══════════════════════════════════════════════════════════╝"
 Write-Host ""
@@ -126,7 +126,7 @@ function Setup-Config {
     @"
 HOST=0.0.0.0
 PORT=5500
-DATABASE_URL=sqlite:$DataDir\data\kweebec.db?mode=rwc
+DATABASE_URL=sqlite:$DataDir\data\draveur.db?mode=rwc
 JWT_SECRET=$jwtSecret
 SERVERS_DIR=$DataDir\servers
 BACKUPS_DIR=$DataDir\backups
@@ -138,7 +138,7 @@ RUST_LOG=info
 function Create-WindowsService {
     Write-ColorOutput Cyan "🔧 Configuration du service Windows..."
     
-    $serviceName = "KweebecManager"
+    $serviceName = "DraveurManager"
     $serviceExists = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     
     if ($serviceExists) {
@@ -152,10 +152,10 @@ function Create-WindowsService {
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine")
     }
     
-    nssm install $serviceName "$InstallDir\backend\target\release\kweebec.exe"
+    nssm install $serviceName "$InstallDir\backend\target\release\draveur.exe"
     nssm set $serviceName AppDirectory "$InstallDir\backend"
-    nssm set $serviceName AppEnvironmentExtra "HOST=0.0.0.0" "PORT=5500" "DATABASE_URL=sqlite:$DataDir\data\kweebec.db?mode=rwc"
-    nssm set $serviceName DisplayName "Kweebec Manager"
+    nssm set $serviceName AppEnvironmentExtra "HOST=0.0.0.0" "PORT=5500" "DATABASE_URL=sqlite:$DataDir\data\draveur.db?mode=rwc"
+    nssm set $serviceName DisplayName "Draveur Manager"
     nssm set $serviceName Description "Game Server Manager for Hytale"
     nssm set $serviceName Start SERVICE_AUTO_START
 }
@@ -164,7 +164,7 @@ function Create-WindowsService {
 function Configure-Firewall {
     Write-ColorOutput Cyan "🔥 Configuration du pare-feu..."
     
-    $ruleName = "Kweebec Manager"
+    $ruleName = "Draveur Manager"
     $ruleExists = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
     
     if (-not $ruleExists) {
@@ -184,12 +184,12 @@ function Show-Success {
     Write-Host "  📡 Interface web: http://${ip}:5500"
     Write-Host ""
     Write-ColorOutput Yellow "  Commandes utiles:"
-    Write-Host "    Start-Service KweebecManager    # Démarrer"
-    Write-Host "    Stop-Service KweebecManager     # Arrêter"
-    Write-Host "    Get-Service KweebecManager      # Status"
+    Write-Host "    Start-Service DraveurManager    # Démarrer"
+    Write-Host "    Stop-Service DraveurManager     # Arrêter"
+    Write-Host "    Get-Service DraveurManager      # Status"
     Write-Host ""
     Write-ColorOutput Magenta "  Premier démarrage:"
-    Write-Host "    1. Démarrez le service: Start-Service KweebecManager"
+    Write-Host "    1. Démarrez le service: Start-Service DraveurManager"
     Write-Host "    2. Accédez à http://${ip}:5500"
     Write-Host "    3. Créez votre compte admin"
     Write-Host ""

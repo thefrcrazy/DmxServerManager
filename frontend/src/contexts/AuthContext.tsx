@@ -29,7 +29,7 @@ const applyUserAccentColor = (color: string | undefined | null) => {
         const g = parseInt(color.slice(3, 5), 16);
         const b = parseInt(color.slice(5, 7), 16);
         root.style.setProperty('--color-accent-rgb', `${r}, ${g}, ${b}`);
-        localStorage.setItem('kweebec_accent_color', color);
+        localStorage.setItem('draveur_accent_color', color);
     }
 };
 

@@ -23,13 +23,13 @@ const getNestedValue = (obj: any, path: string): string => {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
     const [language, setLanguageState] = useState<Language>(() => {
-        const saved = localStorage.getItem('kweebec_language');
+        const saved = localStorage.getItem('draveur_language');
         return (saved === 'fr' || saved === 'en') ? saved : 'fr';
     });
 
     const setLanguage = (lang: Language) => {
         setLanguageState(lang);
-        localStorage.setItem('kweebec_language', lang);
+        localStorage.setItem('draveur_language', lang);
         document.documentElement.lang = lang;
     };
 

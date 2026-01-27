@@ -132,7 +132,7 @@ export const fr = {
     },
     panel_settings: {
         title: "Paramètres Panel",
-        subtitle: "Configuration globale de Kweebec Manager",
+        subtitle: "Configuration globale de Draveur Manager",
         save_success: "Paramètres sauvegardés",
         general_title: "Général",
         app_url: "URL de l'application",
@@ -230,7 +230,7 @@ export const fr = {
         delete_success: "Utilisateur supprimé avec succès"
     },
     setup: {
-        title: "Bienvenue sur Kweebec Manager",
+        title: "Bienvenue sur Draveur Manager",
         subtitle: "Commençons par configurer votre environnement.",
         create_admin: "Créer un administrateur",
         username: "Nom d'utilisateur",
