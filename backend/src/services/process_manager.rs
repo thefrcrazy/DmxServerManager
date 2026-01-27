@@ -276,7 +276,11 @@ impl ProcessManager {
         info!("Started server {} with PID {:?}", server_id, child.id());
 
         // Create log file
-        let log_path = std::path::Path::new(working_dir).join("console.log");
+        let logs_dir = std::path::Path::new(working_dir).join("logs");
+        if !logs_dir.exists() {
+             let _ = std::fs::create_dir_all(&logs_dir);
+        }
+        let log_path = logs_dir.join("console.log");
         let log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)

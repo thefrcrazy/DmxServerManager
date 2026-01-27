@@ -337,7 +337,7 @@ export default function ServerDetail() {
         try {
             // 1. Always check install.log first to see if an installation is unfinished
             // This is critical because a stale console.log might exist from a previous run
-            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=server/logs/install.log`, {
+            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=logs/install.log`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
 
@@ -364,7 +364,7 @@ export default function ServerDetail() {
             }
 
             // 2. If no active installation, fetch standard console.log
-            let res = await fetch(`/api/v1/servers/${id}/files/read?path=console.log`, {
+            let res = await fetch(`/api/v1/servers/${id}/files/read?path=logs/console.log`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
 

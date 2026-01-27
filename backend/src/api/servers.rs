@@ -270,12 +270,9 @@ async fn create_server(
     //   {uuid}/universe/         - World data
     //   {uuid}/config.json       - Hytale config
     let server_base_path = Path::new(&body.working_dir).join(&id);
-    let backups_path = server_base_path.join("backups");
-    
     // Create base directories
     let directories = [
         &server_base_path,
-        &backups_path,
     ];
 
     for dir in directories {
@@ -747,7 +744,6 @@ async fn reinstall_server(
     // We need to handle both legacy (root) and new ({uuid}/server) structures
     let base_path = Path::new(&server.working_dir);
     let server_path = base_path.join("server");
-    let backups_path = base_path.join("backups");
     
     // Ensure base directories exist
     if !base_path.exists() {
@@ -755,9 +751,6 @@ async fn reinstall_server(
     }
     if !server_path.exists() {
          let _ = fs::create_dir_all(&server_path).await;
-    }
-    if !backups_path.exists() {
-         let _ = fs::create_dir_all(&backups_path).await;
     }
     
     // Restore manager.json if missing (always in base path)
