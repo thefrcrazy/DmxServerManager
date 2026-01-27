@@ -40,7 +40,7 @@ async fn main() -> std::io::Result<()> {
     db::run_migrations(&pool).await?;
 
     // Initialize services
-    let process_manager = web::Data::new(services::ProcessManager::new());
+    let process_manager = web::Data::new(services::ProcessManager::new(Some(pool.clone())));
 
     // Start background services
     services::scheduler::start(web::Data::new(pool.clone()), process_manager.clone());

@@ -29,6 +29,13 @@ pub struct CreateServerRequest {
 }
 
 #[derive(Debug, Serialize)]
+pub struct Player {
+    pub name: String,
+    pub is_online: bool,
+    pub last_seen: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ServerResponse {
     pub id: String,
     pub name: String,
@@ -45,11 +52,18 @@ pub struct ServerResponse {
     pub created_at: String,
     pub updated_at: String,
     pub dir_exists: bool,
-    pub players: Option<Vec<String>>,
+    pub players: Option<Vec<Player>>,
     pub max_players: Option<u32>,
     pub port: Option<u16>,
     pub bind_address: Option<String>,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(FromRow)]
+struct PlayerRow {
+    player_name: String,
+    is_online: i32,
+    last_seen: String,
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -98,11 +112,20 @@ async fn list_servers(
             "stopped"
         };
 
-        let players = if is_running {
-            pm.get_online_players(&s.id).await
-        } else {
-            None
-        };
+        // For list view, we just return currently online players as simple Player objects
+        let mut players_vec = Vec::new();
+        if is_running {
+            if let Some(online) = pm.get_online_players(&s.id).await {
+                for p_name in online {
+                     players_vec.push(Player {
+                         name: p_name,
+                         is_online: true,
+                         last_seen: Utc::now().to_rfc3339()
+                     });
+                }
+            }
+        }
+        let players = if players_vec.is_empty() { None } else { Some(players_vec) };
 
         // Parse max_players (DB config or file config)
         let config_json = s.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
@@ -805,10 +828,23 @@ async fn get_server(
 
     let dir_exists = Path::new(&server.working_dir).exists();
     
-    let players = if is_running {
-        pm.get_online_players(&server.id).await
-    } else {
+    // Fetch persistent players from DB
+    let player_rows: Vec<PlayerRow> = sqlx::query_as(
+        "SELECT player_name, is_online, last_seen FROM server_players WHERE server_id = ? ORDER BY is_online DESC, last_seen DESC"
+    )
+    .bind(&id)
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+
+    let players: Option<Vec<Player>> = if player_rows.is_empty() {
         None
+    } else {
+        Some(player_rows.into_iter().map(|row| Player {
+            name: row.player_name,
+            is_online: row.is_online != 0,
+            last_seen: row.last_seen,
+        }).collect())
     };
 
     // Parse max_players (DB config or file config)

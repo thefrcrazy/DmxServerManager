@@ -32,6 +32,12 @@ interface FileEntry {
     size?: number;
 }
 
+interface Player {
+    name: string;
+    is_online: boolean;
+    last_seen: string;
+}
+
 interface Server {
     id: string;
     name: string;
@@ -77,7 +83,7 @@ interface Server {
     dir_exists: boolean;
     config?: any;
     max_players?: number;
-    players?: string[];
+    players?: Player[];
     started_at?: string;
 }
 
@@ -1613,7 +1619,9 @@ export default function ServerDetail() {
                                                 <table className="data-table">
                                                     <thead>
                                                         <tr>
-                                                            <th>Pseudo</th>
+                                                            <th style={{ width: '35%' }}>Pseudo</th>
+                                                            <th style={{ width: '25%' }}>Statut</th>
+                                                            <th style={{ width: '20%' }}>Dernière connexion</th>
                                                             <th className="text-right">Actions</th>
                                                         </tr>
                                                     </thead>
@@ -1623,18 +1631,32 @@ export default function ServerDetail() {
                                                                 <td>
                                                                     <div className="player-info">
                                                                         <div className="avatar">
-                                                                            {player.charAt(0).toUpperCase()}
+                                                                            {player.name.charAt(0).toUpperCase()}
                                                                         </div>
-                                                                        <span className="name">{player}</span>
+                                                                        <span className="name">{player.name}</span>
                                                                     </div>
                                                                 </td>
+                                                                <td>
+                                                                    {player.is_online ? (
+                                                                        <div className="status-badge">
+                                                                            En ligne
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Hors ligne</span>
+                                                                    )}
+                                                                </td>
+                                                                <td>
+                                                                    <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                                                                        {player.is_online ? '-' : new Date(player.last_seen).toLocaleString()}
+                                                                    </span>
+                                                                </td>
                                                                 <td className="text-right">
-                                                                    <div className="flex justify-end gap-1">
+                                                                    <div className="player-actions">
                                                                         <button
                                                                             className="btn btn--icon btn--secondary btn--sm"
                                                                             onClick={() => {
-                                                                                if (confirm(`Donner les droits d'administration à ${player} ?`)) {
-                                                                                    sendServerCommand(`op ${player}`);
+                                                                                if (confirm(`Donner les droits d'administration à ${player.name} ?`)) {
+                                                                                    sendServerCommand(`op add ${player.name}`);
                                                                                 }
                                                                             }}
                                                                             title="OP"
@@ -1644,8 +1666,8 @@ export default function ServerDetail() {
                                                                         <button
                                                                             className="btn btn--icon btn--danger btn--sm"
                                                                             onClick={() => {
-                                                                                if (confirm(`Bannir ${player} ?`)) {
-                                                                                    sendServerCommand(`ban ${player}`);
+                                                                                if (confirm(`Bannir ${player.name} ?`)) {
+                                                                                    sendServerCommand(`ban ${player.name}`);
                                                                                 }
                                                                             }}
                                                                             title="Ban"
@@ -1655,8 +1677,8 @@ export default function ServerDetail() {
                                                                         <button
                                                                             className="btn btn--icon btn--danger btn--sm"
                                                                             onClick={() => {
-                                                                                if (confirm(`Kicker ${player} ?`)) {
-                                                                                    sendServerCommand(`kick ${player}`);
+                                                                                if (confirm(`Kicker ${player.name} ?`)) {
+                                                                                    sendServerCommand(`kick ${player.name}`);
                                                                                 }
                                                                             }}
                                                                             title="Kick"
@@ -1791,34 +1813,36 @@ export default function ServerDetail() {
             </div>
 
             {/* Components Overlays */}
-            {isInstalling && (
-                <InstallationProgress
-                    logs={logs}
-                    isInstalling={isInstalling}
-                    onClose={() => {
-                        // Check if installation was finished
-                        const isFinished = logs.some(l => l.includes('Installation terminée') || l.includes('Installation finished'));
+            {
+                isInstalling && (
+                    <InstallationProgress
+                        logs={logs}
+                        isInstalling={isInstalling}
+                        onClose={() => {
+                            // Check if installation was finished
+                            const isFinished = logs.some(l => l.includes('Installation terminée') || l.includes('Installation finished'));
 
-                        if (!isFinished) {
-                            // User cancelled or closed before finish -> Delete install.log to prevent persistent popup
-                            fetch(`/api/v1/servers/${id}/files/delete`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    Authorization: `Bearer ${localStorage.getItem('token')}`,
-                                },
-                                body: JSON.stringify({ path: 'server/logs/install.log' })
-                            }).catch(err => console.error("Failed to cleanup install.log", err));
-                        }
-                        setIsInstalling(false);
-                    }}
-                />
-            )}
+                            if (!isFinished) {
+                                // User cancelled or closed before finish -> Delete install.log to prevent persistent popup
+                                fetch(`/api/v1/servers/${id}/files/delete`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        Authorization: `Bearer ${localStorage.getItem('token')}`,
+                                    },
+                                    body: JSON.stringify({ path: 'server/logs/install.log' })
+                                }).catch(err => console.error("Failed to cleanup install.log", err));
+                            }
+                            setIsInstalling(false);
+                        }}
+                    />
+                )
+            }
 
             {/* Quick Actions / FAB */}
             <div className="fixed bottom-8 right-8 flex flex-col gap-3">
                 {/* ... existing FABs if any ... */}
             </div>
-        </div>
+        </div >
     );
 }

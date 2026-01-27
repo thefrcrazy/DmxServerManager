@@ -11,9 +11,13 @@ use regex::Regex;
 use crate::error::AppError;
 
 /// Manages game server processes
+use crate::db::DbPool;
+
+/// Manages game server processes
 #[derive(Clone)]
 pub struct ProcessManager {
     processes: Arc<RwLock<HashMap<String, ServerProcess>>>,
+    pool: Option<DbPool>,
 }
 
 pub struct ServerProcess {
@@ -24,9 +28,10 @@ pub struct ServerProcess {
 }
 
 impl ProcessManager {
-    pub fn new() -> Self {
+    pub fn new(pool: Option<DbPool>) -> Self {
         Self {
             processes: Arc::new(RwLock::new(HashMap::new())),
+            pool,
         }
     }
 
@@ -209,6 +214,7 @@ impl ProcessManager {
             let players_clone = players.clone();
             let server_id_clone = server_id.to_string();
             let log_file_clone = log_file.clone();
+            let pool_clone_opt = self.pool.clone();
             
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
@@ -216,6 +222,8 @@ impl ProcessManager {
                 let join_re = Regex::new(r"Adding player '([^']+)'").unwrap();
                 let leave_re = Regex::new(r"Removing player '([^']+)'").unwrap();
                 let server_started_re = Regex::new(r"Done \([0-9\.]+s\)!").unwrap();
+
+                let pool_clone = pool_clone_opt; // Capture optional pool
 
                 for line in reader.lines().map_while(Result::ok) {
                      // Write to file
@@ -230,7 +238,30 @@ impl ProcessManager {
                         if let Some(name) = caps.get(1) {
                             let player_name = name.as_str().to_string();
                             if let Ok(mut p) = players_clone.write() {
-                                p.insert(player_name);
+                                p.insert(player_name.clone());
+                            }
+                            
+                            // DB Update: Connect
+                            if let Some(pool) = &pool_clone {
+                                let pool = pool.clone();
+                                let s_id = server_id_clone.clone();
+                                let p_name = player_name.clone();
+                                tokio::spawn(async move {
+                                    let now = chrono::Utc::now().to_rfc3339();
+                                    let _ = sqlx::query(
+                                        "INSERT INTO server_players (server_id, player_name, first_seen, last_seen, is_online) 
+                                         VALUES (?, ?, ?, ?, 1)
+                                         ON CONFLICT(server_id, player_name) DO UPDATE SET 
+                                         last_seen = excluded.last_seen, 
+                                         is_online = 1"
+                                    )
+                                    .bind(s_id)
+                                    .bind(p_name)
+                                    .bind(&now) // first_seen
+                                    .bind(&now) // last_seen
+                                    .execute(&pool)
+                                    .await;
+                                });
                             }
                         }
                     } else if let Some(caps) = leave_re.captures(&line) {
@@ -238,6 +269,24 @@ impl ProcessManager {
                             let player_name = name.as_str().to_string();
                             if let Ok(mut p) = players_clone.write() {
                                 p.remove(&player_name);
+                            }
+
+                            // DB Update: Disconnect
+                            if let Some(pool) = &pool_clone {
+                                let pool = pool.clone();
+                                let s_id = server_id_clone.clone();
+                                let p_name = player_name.clone();
+                                tokio::spawn(async move {
+                                    let now = chrono::Utc::now().to_rfc3339();
+                                    let _ = sqlx::query(
+                                        "UPDATE server_players SET is_online = 0, last_seen = ? WHERE server_id = ? AND player_name = ?"
+                                    )
+                                    .bind(now)
+                                    .bind(s_id)
+                                    .bind(p_name)
+                                    .execute(&pool)
+                                    .await;
+                                });
                             }
                         }
                     } else if server_started_re.is_match(&line) {
@@ -442,7 +491,7 @@ impl ProcessManager {
 
 impl Default for ProcessManager {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 

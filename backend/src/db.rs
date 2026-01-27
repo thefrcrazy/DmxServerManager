@@ -77,6 +77,16 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
             FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS server_players (
+            server_id TEXT NOT NULL,
+            player_name TEXT NOT NULL,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            is_online INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (server_id, player_name),
+            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
