@@ -201,18 +201,7 @@ export default function ServerDetail() {
         { id: 'webhooks', label: 'Webhooks', icon: <Webhook size={18} /> },
     ];
 
-    useEffect(() => {
-        // Reset logs on id change
-        setLogs([]);
-        fetchServer();
-        // Try to fetch existing logs (console.log or install.log)
-        fetchConsoleLog();
-        connectWebSocket();
 
-        return () => {
-            wsRef.current?.close();
-        };
-    }, [id]);
 
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const retryCountRef = useRef(0);
