@@ -228,16 +228,25 @@ impl ProcessManager {
         cmd.current_dir(&final_working_dir)
             .arg(format!("-Xms{}", min_mem))
             .arg(format!("-Xmx{}", max_mem))
-            .arg("-XX:AOTCache=HytaleServer.aot")
-            .arg("-jar")
-            .arg(executable_path)
-            .arg("--assets")
-            .arg(assets_path) 
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .arg("-XX:AOTCache=HytaleServer.aot");
 
         // Pass port and bind address via --bind
+        // Note: These are program arguments, but we'll put them before -jar as well 
+        // to keep logic clean, Or better: move them after.
+        // Actually, JVM flags MUST be before -jar. Program args MUST be after.
+        // Hytale's --bind and --assets are program args.
+        
+        if let Some(args) = extra_args {
+            for arg in args.split_whitespace() {
+                cmd.arg(arg);
+            }
+        }
+
+        cmd.arg("-jar")
+            .arg(executable_path)
+            .arg("--assets")
+            .arg(assets_path);
+
         if let Some(cfg) = config {
             let port = cfg.get("port")
                 .or(cfg.get("Port"))
@@ -256,11 +265,9 @@ impl ProcessManager {
             cmd.arg("0.0.0.0:5520");
         }
 
-        if let Some(args) = extra_args {
-            for arg in args.split_whitespace() {
-                cmd.arg(arg);
-            }
-        }
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         let mut child = cmd
             .spawn()
