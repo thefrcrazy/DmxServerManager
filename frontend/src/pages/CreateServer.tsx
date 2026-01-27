@@ -339,9 +339,8 @@ export default function CreateServer() {
                                     onChange={(e) => updateFormData('working_dir', e.target.value)}
                                     placeholder="/home/hytale/servers/mon-serveur"
                                     required
-                                    className="input font-mono"
+                                    className={`input font-mono ${isDocker ? 'server-config-item--disabled' : ''}`}
                                     readOnly={isDocker}
-                                    style={isDocker ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
                                 />
                                 <p className="helper-text helper-text--block">
                                     {isDocker

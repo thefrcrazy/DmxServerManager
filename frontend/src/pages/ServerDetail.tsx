@@ -1114,7 +1114,7 @@ export default function ServerDetail() {
                                     </div>
                                 ) : files.length === 0 ? (
                                     <div className="empty-state">
-                                        <FolderOpen size={32} style={{ opacity: 0.3 }} />
+                                        <FolderOpen size={32} className="icon-faded" />
                                         <p>Dossier vide</p>
                                     </div>
                                 ) : (
@@ -1602,7 +1602,7 @@ export default function ServerDetail() {
                                 <div className="tab-content p-6">
                                     {activePlayerTab === 'online' && (
                                         <div className="empty-state">
-                                            <Users size={32} style={{ opacity: 0.3 }} />
+                                            <Users size={32} className="icon-faded" />
                                             <p>Aucun joueur connecté.</p>
                                         </div>
                                     )}
@@ -1689,7 +1689,7 @@ export default function ServerDetail() {
                                 <h3 className="panel-header__title"><Webhook size={20} /> Webhooks Discord</h3>
                             </div>
                             <div className="empty-state">
-                                <Webhook size={48} className="empty-state-icon" style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                                <Webhook size={48} className="empty-state-icon" />
                                 <p className="font-medium">Configurez les notifications Discord</p>
                                 <p className="text-sm text-muted mb-4">
                                     Les webhooks sont stockés dans <code className="font-mono bg-dark px-1 rounded">manager.json</code>
@@ -1709,7 +1709,7 @@ export default function ServerDetail() {
                 {
                     !['console', 'backups', 'files', 'logs', 'config', 'webhooks', 'players'].includes(activeTab) && (
                         <div className="card empty-state">
-                            <div style={{ marginBottom: '1.5rem', opacity: 0.3 }}>
+                            <div className="coming-soon-placeholder">
                                 {tabs.find(t => t.id === activeTab)?.icon}
                             </div>
                             <h3 className="text-xl mb-2 text-muted">Coming Soon</h3>

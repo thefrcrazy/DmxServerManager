@@ -289,6 +289,14 @@
         color: var(--color-text-muted);
     }
 
+    &__players {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--color-danger);
+        font-weight: 700;
+    }
+
     &__status {
         &--running {
             color: #10b981;

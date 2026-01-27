@@ -317,7 +317,7 @@ export default function Dashboard() {
                                         </span>
 
                                         <>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'red', fontWeight: 'bold' }}>
+                                            <span className="server-item__players">
                                                 <Users size={14} />
                                                 Joueur(s): {server.players ? server.players.length : 0}
                                             </span>

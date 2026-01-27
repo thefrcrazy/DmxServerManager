@@ -428,6 +428,17 @@
         margin-bottom: 1rem;
     }
 
+    .icon-faded {
+        opacity: 0.3;
+    }
+
+    .coming-soon-placeholder {
+        margin-bottom: 1.5rem;
+        opacity: 0.3;
+        display: flex;
+        justify-content: center;
+    }
+
     .panel-header--start {
         justify-content: flex-start;
     }
