@@ -216,9 +216,15 @@ export default function ServerDetail() {
         setIsInstalling(server?.status === 'installing');
         setIsAuthRequired(server?.status === 'auth_required');
 
-        if ((server?.status === 'running' || server?.status === 'installing') && !wsRef.current) {
+        if ((server?.status === 'running' || server?.status === 'installing' || server?.status === 'auth_required') && !wsRef.current) {
             shouldReconnectRef.current = true;
             connectWebSocket();
+        }
+
+        // Force reset auth required if server is stopped
+        if (server?.status === 'stopped' || server?.status === 'offline') {
+            setIsAuthRequired(false);
+            setIsInstalling(false);
         }
     }, [server?.status]);
 
@@ -301,7 +307,10 @@ export default function ServerDetail() {
                 setIsAuthRequired(false);
             }
             if (message.includes('IMPORTANT') && (message.includes('authentifier') || message.includes('authenticate'))) {
-                setIsAuthRequired(true);
+                // Only enable auth requirement if server is actually running/starting
+                if (server?.status === 'running' || server?.status === 'starting') {
+                    setIsAuthRequired(true);
+                }
             }
             if (message.includes('Installation terminée') || message.includes('Installation finished')) {
                 // Refresh server state to unlock UI
@@ -318,7 +327,7 @@ export default function ServerDetail() {
 
             // Only reconnect if we are still on the page AND the server is supposed to be running
             const shouldRetry = shouldReconnectRef.current
-                && (serverStatusRef.current === 'running' || serverStatusRef.current === 'installing');
+                && (serverStatusRef.current === 'running' || serverStatusRef.current === 'installing' || serverStatusRef.current === 'auth_required');
 
             if (shouldRetry) {
                 const retryDelay = Math.min(1000 * Math.pow(1.5, retryCountRef.current), 10000); // Cap at 10s
@@ -549,18 +558,42 @@ export default function ServerDetail() {
     };
 
     const handleAction = async (action: 'start' | 'stop' | 'restart' | 'kill') => {
-        await fetch(`/api/v1/servers/${id}/${action}`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        if (action === 'start') {
-            // Optimistic update or wait for fetchServer
-        } else if (action === 'stop' || action === 'kill') {
-            setStartTime(null);
+        // Optimistic checks
+        if (action === 'start' && server?.status === 'running') {
+            alert(t('server_detail.messages.already_running') || "Server is already running");
+            return;
         }
-        fetchServer();
-        setTimeout(fetchServer, 1000);
-        setTimeout(fetchServer, 3000);
+
+        try {
+            const res = await fetch(`/api/v1/servers/${id}/${action}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                if (res.status === 400 && action === 'start' && data.error === 'Server already running') {
+                    // Gracefully handle "Server already running"
+                    fetchServer(); // Just refresh state
+                    return;
+                }
+                alert(t('server_detail.messages.action_error') || `Error: ${data.error || res.statusText}`);
+                return;
+            }
+
+            if (action === 'start') {
+                // Optimistic update or wait for fetchServer
+            } else if (action === 'stop' || action === 'kill') {
+                setStartTime(null);
+                setIsAuthRequired(false); // Immediate local reset
+            }
+            fetchServer();
+            setTimeout(fetchServer, 1000);
+            setTimeout(fetchServer, 3000);
+        } catch (e) {
+            console.error(e);
+            alert(t('server_detail.messages.connection_error'));
+        }
     };
 
     const handleReinstall = async () => {
@@ -872,7 +905,7 @@ export default function ServerDetail() {
         );
     }
 
-    const isRunning = server.status === 'running';
+    const isRunning = server.status === 'running' || server.status === 'auth_required';
     const isMissing = server.status === 'missing';
     // Fix: Removed server.config usage as fields are now on root or removed
     const maxPlayers = 100; // Default or fetched from metrics/query if implemented

@@ -191,7 +191,9 @@ export const fr = {
             item_deleted: "Supprimé !",
             backup_created: "Backup créé !",
             backup_restored: "Backup restauré avec succès !",
-            file_saved: "Fichier sauvegardé !"
+            file_saved: "Fichier sauvegardé !",
+            already_running: "Le serveur est déjà en cours d'exécution",
+            action_error: "L'action a échoué"
         },
         jvm: {
             aot: "Accélère considérablement le démarrage (AOT)",

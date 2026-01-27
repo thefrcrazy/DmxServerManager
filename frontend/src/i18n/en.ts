@@ -183,10 +183,10 @@ export const en: TranslationType = {
         uptime: "Uptime",
         java_version: "Java Version",
         memory: "Memory",
-        reinstall_confirm: "Are you sure you want to reinstall this server? This will delete the server binaries and download new ones. Your worlds and configurations will be kept.",
-        delete_confirm: "To confirm deletion, type",
-        delete_backup_confirm: "Delete this backup?",
-        restore_backup_confirm: "Restore this backup? Current data will be overwritten.",
+        reinstall_confirm: "Are you sure you want to reinstall this server? This will delete all current files.",
+        delete_confirm: "To confirm deletion, please type the server name:",
+        delete_backup_confirm: "Are you sure you want to delete this backup?",
+        restore_backup_confirm: "Are you sure you want to restore this backup? Current data will be overwritten.",
         save_success: "File saved!",
         headers: {
             general: "General Information (Manager)",
@@ -214,7 +214,9 @@ export const en: TranslationType = {
             item_deleted: "Deleted!",
             backup_created: "Backup created!",
             backup_restored: "Backup restored successfully!",
-            file_saved: "File saved!"
+            file_saved: "File saved!",
+            already_running: "Server is already running",
+            action_error: "Action failed"
         },
         jvm: {
             aot: "Significantly speeds up startup (AOT)",
