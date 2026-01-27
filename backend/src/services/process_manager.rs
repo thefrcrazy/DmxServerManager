@@ -31,6 +31,7 @@ pub struct ServerProcess {
     pub last_cpu: Arc<std::sync::RwLock<f32>>,
     pub last_memory: Arc<std::sync::RwLock<u64>>,
     pub last_disk: Arc<std::sync::RwLock<u64>>,
+    pub working_dir: String,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -49,7 +50,7 @@ impl ProcessManager {
                 
                 {
                     let procs = processes_clone.read().await;
-                    for (id, server_proc) in procs.iter() {
+                    for (_id, server_proc) in procs.iter() {
                         if let Some(child) = &server_proc.child {
                             let pid = sysinfo::Pid::from_u32(child.id());
                             if let Some(process) = system.process(pid) {
@@ -63,8 +64,8 @@ impl ProcessManager {
 
                                 // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
                                 if tick_count % 15 == 0 {
-                                    let server_path = format!("db/servers/{}", id);
-                                    let size: u64 = WalkDir::new(&server_path)
+                                    let server_path = &server_proc.working_dir;
+                                    let size: u64 = WalkDir::new(server_path)
                                         .into_iter()
                                         .filter_map(|entry| entry.ok())
                                         .filter_map(|entry| entry.metadata().ok())
@@ -150,7 +151,7 @@ impl ProcessManager {
         rx
     }
 
-    pub async fn register_installing(&self, server_id: &str) -> Result<(), AppError> {
+    pub async fn register_installing(&self, server_id: &str, working_dir: &str) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
          if processes.contains_key(server_id) {
              return Err(AppError::BadRequest("Server already active".into()));
@@ -169,6 +170,7 @@ impl ProcessManager {
                  last_cpu: Arc::new(std::sync::RwLock::new(0.0)),
                  last_memory: Arc::new(std::sync::RwLock::new(0)),
                  last_disk: Arc::new(std::sync::RwLock::new(0)),
+                 working_dir: working_dir.to_string(),
                  started_at: Some(chrono::Utc::now())
              },
          );
@@ -431,6 +433,7 @@ impl ProcessManager {
                 last_cpu: Arc::new(std::sync::RwLock::new(0.0)),
                 last_memory: Arc::new(std::sync::RwLock::new(0)),
                 last_disk: Arc::new(std::sync::RwLock::new(0)),
+                working_dir: working_dir.to_string(),
                 started_at: Some(chrono::Utc::now())
             },
         );

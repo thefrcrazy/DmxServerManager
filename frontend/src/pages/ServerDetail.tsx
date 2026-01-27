@@ -521,6 +521,9 @@ export default function ServerDetail() {
         });
         const data = await response.json();
         setServer(data);
+        if (data.disk_usage_bytes !== undefined) {
+            setDiskUsage(data.disk_usage_bytes);
+        }
         if (data.status === 'running' && data.started_at) {
             setStartTime(new Date(data.started_at));
         } else if (data.status !== 'running') {

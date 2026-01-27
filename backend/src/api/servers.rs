@@ -10,6 +10,7 @@ use tracing::{info, error, warn};
 use std::path::Path;
 
 use crate::db::DbPool;
+use walkdir::WalkDir;
 use crate::utils::memory::{parse_memory_to_bytes, calculate_heap_bytes};
 use crate::error::AppError;
 use crate::services::ProcessManager;
@@ -157,7 +158,18 @@ async fn list_servers(
         }
 
         let started_at = pm.get_server_started_at(&s.id).await;
-        let (cpu, mem, disk) = pm.get_metrics_data(&s.id).await;
+        let (cpu, mem, mut disk) = pm.get_metrics_data(&s.id).await;
+
+        // Fallback for offline disk usage
+        if disk == 0 {
+            disk = WalkDir::new(&s.working_dir)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter_map(|e| e.metadata().ok())
+                .filter(|m| m.is_file())
+                .map(|m| m.len())
+                .sum();
+        }
 
         let total_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
         let max_heap_bytes = calculate_heap_bytes(total_bytes);
@@ -444,7 +456,8 @@ async fn run_with_logs(
 fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, server_path: std::path::PathBuf) {
     tokio::spawn(async move {
         // Register "installing" process to allow log streaming
-        if let Err(e) = pm.register_installing(&id).await {
+        let working_dir_str = server_path.to_string_lossy().to_string();
+        if let Err(e) = pm.register_installing(&id, &working_dir_str).await {
             error!("Failed to register installing process: {}", e);
             return;
         }
@@ -951,7 +964,18 @@ async fn get_server(
         .or(Some("0.0.0.0".to_string()));
 
     let started_at = pm.get_server_started_at(&server.id).await;
-    let (cpu, mem, disk) = pm.get_metrics_data(&server.id).await;
+    let (cpu, mem, mut disk) = pm.get_metrics_data(&server.id).await;
+
+    // Fallback for offline disk usage
+    if disk == 0 {
+        disk = WalkDir::new(&server.working_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.metadata().ok())
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+            .sum();
+    }
 
     let total_bytes = parse_memory_to_bytes(server.max_memory.as_deref().unwrap_or("4G"));
     let max_heap_bytes = calculate_heap_bytes(total_bytes);
