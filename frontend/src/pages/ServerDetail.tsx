@@ -206,6 +206,16 @@ export default function ServerDetail() {
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const retryCountRef = useRef(0);
     const shouldReconnectRef = useRef(true);
+    const serverStatusRef = useRef(server?.status);
+
+    useEffect(() => {
+        serverStatusRef.current = server?.status;
+
+        if ((server?.status === 'running' || server?.status === 'installing') && !wsRef.current) {
+            shouldReconnectRef.current = true;
+            connectWebSocket();
+        }
+    }, [server?.status]);
 
     useEffect(() => {
         // Reset logs on id change
@@ -214,8 +224,7 @@ export default function ServerDetail() {
         // Try to fetch existing logs (console.log or install.log)
         fetchConsoleLog();
 
-        shouldReconnectRef.current = true;
-        connectWebSocket();
+        // Note: Connection is now handled by the status effect above
 
         return () => {
             shouldReconnectRef.current = false;
@@ -232,6 +241,9 @@ export default function ServerDetail() {
     const connectWebSocket = () => {
         // Cleanup existing connection if any
         if (wsRef.current) {
+            if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+                return; // Already connected or connecting
+            }
             // Avoid triggering onclose logic if we are manually replacing it
             wsRef.current.onclose = null;
             wsRef.current.close();
@@ -253,11 +265,12 @@ export default function ServerDetail() {
                 const status = message.replace('[STATUS]:', '').trim();
                 // Update server status locally without full refetch
                 setServer(prev => prev ? ({ ...prev, status }) : null);
+
+                // If stopped, we don't expect more messages, but let socket close naturally
                 if (status === 'running') setStartTime(new Date());
                 else setStartTime(null);
 
                 // If status changes to running or stopped, we might want to refresh full server data
-                // to get updated player counts or other metadata
                 fetchServer();
                 return; // Don't show in logs
             }
@@ -296,9 +309,11 @@ export default function ServerDetail() {
             setIsConnected(false);
             wsRef.current = null;
 
-            // Only reconnect if we are still on the page and it wasn't a clean close (1000)
-            // or if we expect the server to restart (which often closes the connection on the backend)
-            if (shouldReconnectRef.current) {
+            // Only reconnect if we are still on the page AND the server is supposed to be running
+            const shouldRetry = shouldReconnectRef.current
+                && (serverStatusRef.current === 'running' || serverStatusRef.current === 'installing');
+
+            if (shouldRetry) {
                 const retryDelay = Math.min(1000 * Math.pow(1.5, retryCountRef.current), 10000); // Cap at 10s
                 console.log(`WebSocket closed. Reconnecting in ${retryDelay}ms...`);
 
