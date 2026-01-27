@@ -720,20 +720,25 @@ async fn reinstall_server(
     }
 
     // 3. Clean up server binaries ONLY (Preserve world, config, logs)
-    // Flattened structure: server files are directly in working_dir
-    let server_path = Path::new(&server.working_dir);
-    let backups_path = server_path.join("backups");
+    // Flattened structure: server files are directly in working_dir/server/
+    // We need to handle both legacy (root) and new ({uuid}/server) structures
+    let base_path = Path::new(&server.working_dir);
+    let server_path = base_path.join("server");
+    let backups_path = base_path.join("backups");
     
     // Ensure base directories exist
+    if !base_path.exists() {
+         let _ = fs::create_dir_all(base_path).await;
+    }
     if !server_path.exists() {
-         let _ = fs::create_dir_all(server_path).await;
+         let _ = fs::create_dir_all(&server_path).await;
     }
     if !backups_path.exists() {
          let _ = fs::create_dir_all(&backups_path).await;
     }
     
-    // Restore manager.json if missing
-    let manager_json_path = server_path.join("manager.json");
+    // Restore manager.json if missing (always in base path)
+    let manager_json_path = base_path.join("manager.json");
     if !manager_json_path.exists() {
         info!("Restoring missing manager.json for server {}", id);
         
@@ -1145,8 +1150,14 @@ async fn start_server(
 
     // Use the working directory from the database directly. 
     // The ProcessManager will handle legacy 'server/' subdirectories if they exist.
-    let process_working_dir = Path::new(&server.working_dir);
-    let process_working_dir_str = &server.working_dir;
+    let mut process_working_dir = Path::new(&server.working_dir).to_path_buf();
+    
+    // Check if we should use the "server" subdirectory (Hytale standard)
+    if server.game_type == "hytale" || process_working_dir.join("server").exists() {
+         process_working_dir = process_working_dir.join("server");
+    }
+    
+    let process_working_dir_str = process_working_dir.to_str().unwrap_or(&server.working_dir);
 
     // Regenerate config.json to ensure latest port/settings are applied
     let config_json_path = process_working_dir.join("config.json");

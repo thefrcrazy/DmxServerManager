@@ -215,15 +215,8 @@ impl ProcessManager {
         // Legacy server.properties/world-config.json generation removed.
 
 
-        // Hytale Specific Logic: Check for server/ subdirectory (flattened)
-        let mut final_working_dir = std::path::PathBuf::from(working_dir);
-        let mut assets_path = "Assets.zip".to_string();
-
-        if final_working_dir.join("server").join(executable_path).exists() {
-            info!("Detected server/ directory structure for Hytale");
-            final_working_dir.push("server");
-            assets_path = "Assets.zip".to_string(); // Assets are next to jar in flattened layout
-        }
+        let final_working_dir = std::path::PathBuf::from(working_dir);
+        let assets_path = "Assets.zip".to_string();
 
         let mut cmd = Command::new(java);
         cmd.current_dir(&final_working_dir);
