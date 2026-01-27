@@ -28,6 +28,23 @@ pub struct CreateServerRequest {
     pub extra_args: Option<String>,
     pub config: Option<serde_json::Value>,
     pub auto_start: Option<bool>,
+    
+    // New fields
+    pub backup_enabled: Option<bool>,
+    pub backup_frequency: Option<u32>,
+    pub backup_max_backups: Option<u32>,
+    pub backup_prefix: Option<String>,
+    pub discord_username: Option<String>,
+    pub discord_avatar: Option<String>,
+    pub discord_webhook_url: Option<String>,
+    pub discord_notifications: Option<serde_json::Value>,
+    pub logs_retention_days: Option<u32>,
+    pub watchdog_enabled: Option<bool>,
+    
+    // Server settings
+    pub auth_mode: Option<String>,
+    pub bind_address: Option<String>,
+    pub port: Option<u16>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +78,20 @@ pub struct ServerResponse {
     pub max_players: Option<u32>,
     pub port: Option<u16>,
     pub bind_address: Option<String>,
+    
+    // New fields
+    pub backup_enabled: bool,
+    pub backup_frequency: u32,
+    pub backup_max_backups: u32,
+    pub backup_prefix: String,
+    pub discord_username: Option<String>,
+    pub discord_avatar: Option<String>,
+    pub discord_webhook_url: Option<String>,
+    pub discord_notifications: Option<serde_json::Value>,
+    pub logs_retention_days: u32,
+    pub watchdog_enabled: bool,
+    pub auth_mode: String,
+
     pub cpu_usage: f32,
     pub memory_usage_bytes: u64,
     pub max_memory_bytes: u64,
@@ -103,7 +134,7 @@ async fn list_servers(
     pm: web::Data<ProcessManager>,
 ) -> Result<HttpResponse, AppError> {
     let servers: Vec<ServerRow> = sqlx::query_as(
-        "SELECT id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at FROM servers"
+        "SELECT * FROM servers"
     )
     .fetch_all(pool.get_ref())
     .await?;
@@ -174,6 +205,10 @@ async fn list_servers(
         let heap_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
         let total_bytes = calculate_total_memory(heap_bytes);
         
+        // Parse notifications JSON
+        let notifications = s.discord_notifications.as_ref()
+            .and_then(|n| serde_json::from_str(n).ok());
+
         responses.push(ServerResponse {
             id: s.id,
             name: s.name,
@@ -192,14 +227,21 @@ async fn list_servers(
             dir_exists,
             players,
             max_players,
-            port: config_json.as_ref()
-                .and_then(|c| c.get("port").or(c.get("Port")))
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u16),
-            bind_address: config_json.as_ref()
-                .and_then(|c| c.get("bind_address"))
-                .and_then(|v| v.as_str())
-                .map(|v| v.to_string()),
+            port: Some(s.port as u16),
+            bind_address: Some(s.bind_address),
+            
+            backup_enabled: s.backup_enabled != 0,
+            backup_frequency: s.backup_frequency as u32,
+            backup_max_backups: s.backup_max_backups as u32,
+            backup_prefix: s.backup_prefix,
+            discord_username: s.discord_username,
+            discord_avatar: s.discord_avatar,
+            discord_webhook_url: s.discord_webhook_url,
+            discord_notifications: notifications,
+            logs_retention_days: s.logs_retention_days as u32,
+            watchdog_enabled: s.watchdog_enabled != 0,
+            auth_mode: s.auth_mode,
+
             cpu_usage: cpu,
             memory_usage_bytes: mem,
             max_memory_bytes: total_bytes,
@@ -223,17 +265,16 @@ async fn create_server(
 
     // Create server directory with ID subdirectory
     // Structure:
-    //   {uuid}/manager.json      - Manager config
-    //   {uuid}/server/           - Hytale server files (working directory)
+    //   {uuid}/Server/           - Hytale server binary (and dependencies)
+    //   {uuid}/logs/             - Logs
+    //   {uuid}/universe/         - World data
+    //   {uuid}/config.json       - Hytale config
     let server_base_path = Path::new(&body.working_dir).join(&id);
-    let server_path = server_base_path.join("server");
     let backups_path = server_base_path.join("backups");
     
-    // Create all directories (Hytale official structure)
-    // We only create the base structure, the server will generate the rest (.cache, logs, universe, etc.)
+    // Create base directories
     let directories = [
         &server_base_path,
-        &server_path,
         &backups_path,
     ];
 
@@ -251,7 +292,7 @@ async fn create_server(
     // Extract configuration from request body
     let config_value = body.config.as_ref();
     let server_name = &body.name;
-    // max_players et al are used for manager.json but we don't generate server config anymore
+
     let auth_mode = config_value
         .and_then(|c| c.get("auth_mode"))
         .and_then(|v| v.as_str())
@@ -265,54 +306,32 @@ async fn create_server(
         .and_then(|v| v.as_u64())
         .unwrap_or(5520) as u16;
 
-
-    // Generate and write manager/manager.json (unified config)
-    let manager_config = templates::generate_manager_json(
-        &id,
-        server_name,
-        server_base_path.to_str().unwrap_or(""),
-        bind_address,
-        port,
-        auth_mode,
-        body.java_path.as_deref(),
-        body.min_memory.as_deref(),
-        body.max_memory.as_deref(),
-    );
-    let manager_json_path = server_base_path.join("manager.json");
-    let mut file = fs::File::create(&manager_json_path).await.map_err(|e| {
-        AppError::Internal(format!("Failed to create manager.json: {}", e))
-    })?;
-    file.write_all(serde_json::to_string_pretty(&manager_config).unwrap().as_bytes())
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to write manager.json: {}", e)))?;
-
-    info!("Generated manager configuration for server {}", id);
-
     // Auto-download server jar if requested
     let mut final_executable = body.executable_path.clone();
+    // Use root as the install path for Hytale Downloader - it produces "Server/"
+    let install_path = server_base_path.clone();
+
     if body.game_type == "hytale" {
-        spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), server_path.clone());
+        spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), install_path.clone());
         
-        // We set executable path tentatively...
-        final_executable = "HytaleServer.jar".to_string(); 
+        // We set executable path tentatively to the expected location
+        final_executable = "Server/HytaleServer.jar".to_string(); 
     }
 
     let config_str = body.config.as_ref().map(|c| c.to_string());
 
     // Store server in database with the correct paths
     let actual_working_dir = server_base_path.to_str().unwrap_or(&body.working_dir);
-    let actual_executable = server_path.join(&final_executable);
-    let actual_executable_str = actual_executable.to_str().unwrap_or(&final_executable);
+    // Executable path is relative to working_dir (which is root)
+    let actual_executable_str = &final_executable;
 
-    // Generate and write config.json (Hytale server config)
-    // We do this to ensure defaults (like MaxPlayers) are set as desired
-    // Note: 100 is the default MaxPlayers requested
+    // Generate and write config.json (Hytale server config) at ROOT
     let hytale_config = templates::generate_config_json(
         server_name,
         100, 
         auth_mode
     );
-    let config_json_path = server_path.join("config.json");
+    let config_json_path = server_base_path.join("config.json");
     let mut config_file = fs::File::create(&config_json_path).await.map_err(|e| {
         AppError::Internal(format!("Failed to create config.json: {}", e))
     })?;
@@ -322,8 +341,21 @@ async fn create_server(
 
     info!("Generated Hytale config.json for server {}", id);
 
+    // Insert into DB with new columns (using defaults for now)
     sqlx::query(
-        "INSERT INTO servers (id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO servers (
+            id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at,
+            backup_enabled, backup_frequency, backup_max_backups, backup_prefix,
+            discord_username, discord_avatar, discord_webhook_url, discord_notifications,
+            logs_retention_days, watchdog_enabled,
+            auth_mode, bind_address, port
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            1, 30, 7, 'hytale_backup',
+            'Hytale Bot', '', '', '{}',
+            7, 1,
+            ?, ?, ?
+        )",
     )
     .bind(&id)
     .bind(&body.name)
@@ -334,10 +366,13 @@ async fn create_server(
     .bind(&body.min_memory)
     .bind(&body.max_memory)
     .bind(&body.extra_args)
-    .bind(config_str) // This stores the raw request config, but we also wrote the actual file above
+    .bind(config_str) // stores raw request config
     .bind(auto_start)
     .bind(&now)
     .bind(&now)
+    .bind(auth_mode)
+    .bind(bind_address)
+    .bind(port)
     .execute(pool.get_ref())
     .await?;
 
@@ -656,15 +691,17 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
         }
 
         // 5. Verify HytaleServer.jar exists
-        // Only check in nested "Server" directory (new structure)
+        // Check in nested "Server" directory (automatically created by downloader)
+        let nested_bundle_dir = server_path.join("Server");
         let nested_jar_path = nested_bundle_dir.join("HytaleServer.jar");
         
         if nested_jar_path.exists() {
              log_helper("✨ HytaleServer.jar présent. Installation terminée !".to_string()).await;
              
-             // Update DB executable path to ensure it points to the jar
+             // Update DB executable path to ensure it points to the jar relative to working dir
+             // Since working dir is {uuid}, we point to Server/HytaleServer.jar
              let update_result = sqlx::query("UPDATE servers SET executable_path = ? WHERE id = ?")
-                .bind(nested_jar_path.to_str().unwrap_or("HytaleServer.jar"))
+                .bind("Server/HytaleServer.jar")
                 .bind(&id)
                 .execute(&pool)
                 .await;
@@ -822,7 +859,7 @@ async fn reinstall_server(
 
 
     // 4. Trigger Installation
-    spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), server_path.to_path_buf());
+    spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), base_path.to_path_buf());
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ 
         "success": true, 
@@ -838,7 +875,7 @@ async fn get_server(
     let id = path.into_inner();
 
     let server: ServerRow = sqlx::query_as(
-        "SELECT id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at FROM servers WHERE id = ?"
+        "SELECT * FROM servers WHERE id = ?"
     )
     .bind(&id)
     .fetch_optional(pool.get_ref())
@@ -943,17 +980,8 @@ async fn get_server(
         }
     }
 
-    let port = config_json.as_ref()
-        .and_then(|c| c.get("port").or(c.get("Port")))
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u16)
-        .or(Some(5520));
-
-    let bind_address = config_json.as_ref()
-        .and_then(|c| c.get("bind_address"))
-        .and_then(|v| v.as_str())
-        .map(|v| v.to_string())
-        .or(Some("0.0.0.0".to_string()));
+    let port = Some(server.port as u16);
+    let bind_address = Some(server.bind_address.clone());
 
     let started_at = pm.get_server_started_at(&server.id).await;
     let (cpu, mem, mut disk) = pm.get_metrics_data(&server.id).await;
@@ -972,7 +1000,11 @@ async fn get_server(
     let heap_bytes = parse_memory_to_bytes(server.max_memory.as_deref().unwrap_or("4G"));
     let total_bytes = calculate_total_memory(heap_bytes);
 
-    Ok(HttpResponse::Ok().json(ServerResponse {
+        // Parse notifications JSON
+        let notifications = server.discord_notifications.as_ref()
+            .and_then(|n| serde_json::from_str(n).ok());
+
+        Ok(HttpResponse::Ok().json(ServerResponse {
         id: server.id,
         name: server.name,
         game_type: server.game_type,
@@ -992,6 +1024,19 @@ async fn get_server(
         max_players,
         port,
         bind_address,
+        
+        backup_enabled: server.backup_enabled != 0,
+        backup_frequency: server.backup_frequency as u32,
+        backup_max_backups: server.backup_max_backups as u32,
+        backup_prefix: server.backup_prefix,
+        discord_username: server.discord_username,
+        discord_avatar: server.discord_avatar,
+        discord_webhook_url: server.discord_webhook_url,
+        discord_notifications: notifications,
+        logs_retention_days: server.logs_retention_days as u32,
+        watchdog_enabled: server.watchdog_enabled != 0,
+        auth_mode: server.auth_mode,
+
         cpu_usage: cpu,
         memory_usage_bytes: mem,
         max_memory_bytes: total_bytes,
@@ -1020,9 +1065,25 @@ async fn update_server(
     let auto_start = body.auto_start.unwrap_or(false) as i32;
 
     let config_str = body.config.as_ref().map(|c| c.to_string());
+    let notifications_str = body.discord_notifications.as_ref().map(|c| c.to_string());
 
     let result = sqlx::query(
-        "UPDATE servers SET name = ?, game_type = ?, executable_path = ?, working_dir = ?, java_path = ?, min_memory = ?, max_memory = ?, extra_args = ?, config = ?, auto_start = ?, updated_at = ? WHERE id = ?",
+        "UPDATE servers SET 
+        name = ?, game_type = ?, executable_path = ?, working_dir = ?, java_path = ?, min_memory = ?, max_memory = ?, extra_args = ?, config = ?, auto_start = ?, updated_at = ?,
+        backup_enabled = COALESCE(?, backup_enabled),
+        backup_frequency = COALESCE(?, backup_frequency),
+        backup_max_backups = COALESCE(?, backup_max_backups),
+        backup_prefix = COALESCE(?, backup_prefix),
+        discord_username = COALESCE(?, discord_username),
+        discord_avatar = COALESCE(?, discord_avatar),
+        discord_webhook_url = COALESCE(?, discord_webhook_url),
+        discord_notifications = COALESCE(?, discord_notifications),
+        logs_retention_days = COALESCE(?, logs_retention_days),
+        watchdog_enabled = COALESCE(?, watchdog_enabled),
+        auth_mode = COALESCE(?, auth_mode),
+        bind_address = COALESCE(?, bind_address),
+        port = COALESCE(?, port)
+        WHERE id = ?",
     )
     .bind(&body.name)
     .bind(&body.game_type)
@@ -1035,6 +1096,20 @@ async fn update_server(
     .bind(config_str)
     .bind(auto_start)
     .bind(&now)
+    // New fields bindings
+    .bind(body.backup_enabled.map(|b| b as i32))
+    .bind(body.backup_frequency)
+    .bind(body.backup_max_backups)
+    .bind(&body.backup_prefix)
+    .bind(&body.discord_username)
+    .bind(&body.discord_avatar)
+    .bind(&body.discord_webhook_url)
+    .bind(notifications_str)
+    .bind(body.logs_retention_days)
+    .bind(body.watchdog_enabled.map(|b| b as i32))
+    .bind(&body.auth_mode)
+    .bind(&body.bind_address)
+    .bind(body.port)
     .bind(&id)
     .execute(pool.get_ref())
     .await?;
@@ -1128,7 +1203,7 @@ async fn start_server(
     let id = path.into_inner();
 
     let server: ServerRow = sqlx::query_as(
-        "SELECT id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at FROM servers WHERE id = ?"
+        "SELECT * FROM servers WHERE id = ?"
     )
     .bind(&id)
     .fetch_optional(pool.get_ref())
@@ -1136,13 +1211,16 @@ async fn start_server(
     .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
 
     // Use the working directory from the database directly. 
-    // The ProcessManager will handle legacy 'server/' subdirectories if they exist.
-    let mut process_working_dir = Path::new(&server.working_dir).to_path_buf();
+    let process_working_dir = Path::new(&server.working_dir).to_path_buf();
     
-    // Check if we should use the "server" subdirectory (Hytale standard)
-    if server.game_type == "hytale" || process_working_dir.join("server").exists() {
-         process_working_dir = process_working_dir.join("server");
-    }
+    // Legacy support: Check if we should use the "server" subdirectory
+    // If working_dir/server/Server exists, we might be in legacy mode, 
+    // BUT we are moving to root-based working_dir.
+    // If working_dir contains startup scripts or binary directly (or in Server/), we run from there.
+    // Logic: If working_dir/server exists AND it was explicitly used before, we might assume legacy.
+    // But simplified approach: Trust DB working_dir.
+    // No longer appending "server" unless absolutely sure.
+    // We REMOVE the auto-append "server" block.
     
     let process_working_dir_str = process_working_dir.to_str().unwrap_or(&server.working_dir);
 
@@ -1150,10 +1228,7 @@ async fn start_server(
     let config_json_path = process_working_dir.join("config.json");
     let server_config: Option<serde_json::Value> = server.config.as_ref().and_then(|c| serde_json::from_str(c).ok());
     
-    let port = server_config.as_ref()
-        .and_then(|c| c.get("port").or(c.get("Port")))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(5520) as u16;
+    let port = server.port as u16;
         
     let max_players = server_config.as_ref()
         .and_then(|c| c.get("MaxPlayers"))
@@ -1161,10 +1236,7 @@ async fn start_server(
         .map(|v| v as u32)
         .unwrap_or(100);
 
-    let auth_mode = server_config.as_ref()
-        .and_then(|c| c.get("auth_mode"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("authenticated");
+    let auth_mode = &server.auth_mode;
 
     let hytale_config = templates::generate_config_json(
         &server.name,
@@ -1182,6 +1254,16 @@ async fn start_server(
          let _ = config_file.write_all(serde_json::to_string_pretty(&hytale_config_obj).unwrap().as_bytes()).await;
     }
 
+    // Inject port and bind address into config for process manager
+    let mut pm_config = server.config.as_ref()
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
+        .unwrap_or(serde_json::json!({}));
+        
+    if let Some(obj) = pm_config.as_object_mut() {
+        obj.insert("port".to_string(), serde_json::json!(server.port));
+        obj.insert("bind_address".to_string(), serde_json::json!(server.bind_address));
+    }
+
     pm.start(
         &server.id,
         &server.executable_path,
@@ -1190,7 +1272,7 @@ async fn start_server(
         server.min_memory.as_deref(),
         server.max_memory.as_deref(),
         server.extra_args.as_deref(),
-        server.config.as_ref().and_then(|c| serde_json::from_str(c).ok()).as_ref(),
+        Some(&pm_config),
     )
     .await?;
 
@@ -1199,14 +1281,13 @@ async fn start_server(
     let pool_clone = pool.get_ref().clone();
     let server_name = server.name.clone();
     // Extract webhook_url from server config
-    let config: Option<serde_json::Value> = server.config.clone()
-        .and_then(|c| serde_json::from_str(&c).ok());
+    // Extract webhook_url from server columns
 
         
-    let webhook_url = config.as_ref()
-        .and_then(|c| c.get("discord_webhook_url"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let webhook_url = server.discord_webhook_url.clone();
+    
+    // Filter out empty webhook url
+    let webhook_url = webhook_url.filter(|u| !u.is_empty());
         
     if let Some(url) = webhook_url {
         tokio::spawn(async move {
@@ -1232,7 +1313,7 @@ async fn stop_server(
     let id = path.into_inner();
     
     // Get server name and config for webhook
-    let server_data: Option<(String, Option<String>)> = sqlx::query_as("SELECT name, config FROM servers WHERE id = ?")
+    let server: Option<ServerRow> = sqlx::query_as("SELECT * FROM servers WHERE id = ?")
         .bind(&id)
         .fetch_optional(pool.get_ref())
         .await?;
@@ -1240,28 +1321,23 @@ async fn stop_server(
     pm.stop(&id).await?;
     
     // Send webhook notification
-    if let Some((name, config_str)) = server_data {
+    if let Some(s) = server {
         let pool_clone = pool.get_ref().clone();
         
-        let config: Option<serde_json::Value> = config_str
-            .and_then(|c| serde_json::from_str(&c).ok());
-            
-        let webhook_url = config.as_ref()
-            .and_then(|c| c.get("discord_webhook_url"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-            
-        if let Some(url) = webhook_url {
-            tokio::spawn(async move {
-                crate::services::discord_service::send_notification(
-                    &pool_clone,
-                    "🔴 Serveur Arrêté",
-                    &format!("Le serveur **{}** a été arrêté.", name),
-                    crate::services::discord_service::COLOR_ERROR,
-                    Some(&name),
-                    Some(&url),
-                ).await;
-            });
+        // Use webhook from DB column
+        if let Some(url) = s.discord_webhook_url {
+            if !url.is_empty() {
+                tokio::spawn(async move {
+                    crate::services::discord_service::send_notification(
+                        &pool_clone,
+                        "🔴 Serveur Arrêté",
+                        &format!("Le serveur **{}** a été arrêté.", s.name),
+                        crate::services::discord_service::COLOR_ERROR,
+                        Some(&s.name),
+                        Some(&url),
+                    ).await;
+                });
+            }
         }
     }
     
@@ -1276,7 +1352,7 @@ async fn restart_server(
     let id = path.into_inner();
 
     let server: ServerRow = sqlx::query_as(
-        "SELECT id, name, game_type, executable_path, working_dir, java_path, min_memory, max_memory, extra_args, config, auto_start, created_at, updated_at FROM servers WHERE id = ?"
+        "SELECT * FROM servers WHERE id = ?"
     )
     .bind(&id)
     .fetch_optional(pool.get_ref())
@@ -1333,6 +1409,34 @@ struct ServerRow {
     auto_start: i32,
     created_at: String,
     updated_at: String,
+    
+    // New fields
+    #[sqlx(default)]
+    backup_enabled: i32,
+    #[sqlx(default)]
+    backup_frequency: i32,
+    #[sqlx(default)]
+    backup_max_backups: i32,
+    #[sqlx(default)]
+    backup_prefix: String,
+    #[sqlx(default)]
+    discord_username: Option<String>,
+    #[sqlx(default)]
+    discord_avatar: Option<String>,
+    #[sqlx(default)]
+    discord_webhook_url: Option<String>,
+    #[sqlx(default)]
+    discord_notifications: Option<String>,
+    #[sqlx(default)]
+    logs_retention_days: i32,
+    #[sqlx(default)]
+    watchdog_enabled: i32,
+    #[sqlx(default)]
+    auth_mode: String,
+    #[sqlx(default)]
+    bind_address: String,
+    #[sqlx(default)]
+    port: i32,
 }
 
 // ============= Server Files API =============

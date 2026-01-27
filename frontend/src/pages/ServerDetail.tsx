@@ -1861,7 +1861,7 @@ export default function ServerDetail() {
                                 <Webhook size={48} className="empty-state-icon" />
                                 <p className="font-medium">Configurez les notifications Discord</p>
                                 <p className="text-sm text-muted mb-4">
-                                    Les webhooks sont stockés dans <code className="font-mono bg-dark px-1 rounded">manager.json</code>
+                                    Les webhooks sont stockés dans la configuration du serveur (base de données).
                                 </p>
                                 <button
                                     onClick={() => setActiveTab('files')}

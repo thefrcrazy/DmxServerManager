@@ -14,6 +14,24 @@ pub struct Server {
     pub auto_start: bool,
     pub created_at: String,
     pub updated_at: String,
+
+    // Config settings (formerly manager.json)
+    pub backup_enabled: bool,
+    pub backup_frequency: u32,
+    pub backup_max_backups: u32,
+    pub backup_prefix: String,
+
+    pub discord_username: Option<String>,
+    pub discord_avatar: Option<String>,
+    pub discord_webhook_url: Option<String>,
+    pub discord_notifications: Option<String>, // JSON string
+
+    pub logs_retention_days: u32,
+    pub watchdog_enabled: bool,
+
+    pub auth_mode: String,
+    pub bind_address: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

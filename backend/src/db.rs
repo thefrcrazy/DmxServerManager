@@ -55,7 +55,25 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
             config TEXT,
             auto_start INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            
+            -- New settings (formerly manager.json)
+            backup_enabled INTEGER NOT NULL DEFAULT 1,
+            backup_frequency INTEGER NOT NULL DEFAULT 30,
+            backup_max_backups INTEGER NOT NULL DEFAULT 7,
+            backup_prefix TEXT NOT NULL DEFAULT 'hytale_backup',
+            
+            discord_username TEXT DEFAULT 'Hytale Bot',
+            discord_avatar TEXT DEFAULT '',
+            discord_webhook_url TEXT DEFAULT '',
+            discord_notifications TEXT DEFAULT '{}',
+            
+            logs_retention_days INTEGER NOT NULL DEFAULT 7,
+            watchdog_enabled INTEGER NOT NULL DEFAULT 1,
+            
+            auth_mode TEXT NOT NULL DEFAULT 'authenticated',
+            bind_address TEXT NOT NULL DEFAULT '0.0.0.0',
+            port INTEGER NOT NULL DEFAULT 5520
         );
 
         CREATE TABLE IF NOT EXISTS backups (
@@ -98,9 +116,7 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     .await
     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
 
-    // Run migrations for existing databases (add new columns if they don't exist)
-    // SQLite doesn't support IF NOT EXISTS for columns, so we use PRAGMA to check
-    // PRAGMA table_info returns: cid (INTEGER), name (TEXT), type (TEXT), notnull (INTEGER), dflt_value, pk (INTEGER)
+    // Run migrations for existing databases
     let columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(users)")
         .fetch_all(pool)
         .await
@@ -108,49 +124,27 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
 
     let column_names: Vec<&str> = columns.iter().map(|c| c.1.as_str()).collect();
 
+    // User table migrations
     if !column_names.contains(&"is_active") {
-        sqlx::query("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-            .execute(pool)
-            .await
-            .ok(); // Ignore errors if column exists
+        sqlx::query("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1").execute(pool).await.ok();
     }
-
     if !column_names.contains(&"language") {
-        sqlx::query("ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'fr'")
-            .execute(pool)
-            .await
-            .ok();
+        sqlx::query("ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'fr'").execute(pool).await.ok();
     }
-
     if !column_names.contains(&"accent_color") {
-        sqlx::query("ALTER TABLE users ADD COLUMN accent_color TEXT NOT NULL DEFAULT '#3A82F6'")
-            .execute(pool)
-            .await
-            .ok();
+        sqlx::query("ALTER TABLE users ADD COLUMN accent_color TEXT NOT NULL DEFAULT '#3A82F6'").execute(pool).await.ok();
     }
-
     if !column_names.contains(&"last_login") {
-        sqlx::query("ALTER TABLE users ADD COLUMN last_login TEXT")
-            .execute(pool)
-            .await
-            .ok();
+        sqlx::query("ALTER TABLE users ADD COLUMN last_login TEXT").execute(pool).await.ok();
     }
-
     if !column_names.contains(&"last_ip") {
-        sqlx::query("ALTER TABLE users ADD COLUMN last_ip TEXT")
-            .execute(pool)
-            .await
-            .ok();
+        sqlx::query("ALTER TABLE users ADD COLUMN last_ip TEXT").execute(pool).await.ok();
     }
-
     if !column_names.contains(&"allocated_servers") {
-        sqlx::query("ALTER TABLE users ADD COLUMN allocated_servers TEXT")
-            .execute(pool)
-            .await
-            .ok();
+        sqlx::query("ALTER TABLE users ADD COLUMN allocated_servers TEXT").execute(pool).await.ok();
     }
 
-    // Check servers table for config column
+    // Server table migrations
     let server_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(servers)")
         .fetch_all(pool)
         .await
@@ -159,10 +153,48 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     let server_column_names: Vec<&str> = server_columns.iter().map(|c| c.1.as_str()).collect();
 
     if !server_column_names.contains(&"config") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN config TEXT")
-            .execute(pool)
-            .await
-            .ok();
+        sqlx::query("ALTER TABLE servers ADD COLUMN config TEXT").execute(pool).await.ok();
+    }
+    
+    // New migrations for manager.json fields
+    if !server_column_names.contains(&"backup_enabled") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN backup_enabled INTEGER NOT NULL DEFAULT 1").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"backup_frequency") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN backup_frequency INTEGER NOT NULL DEFAULT 30").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"backup_max_backups") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN backup_max_backups INTEGER NOT NULL DEFAULT 7").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"backup_prefix") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN backup_prefix TEXT NOT NULL DEFAULT 'hytale_backup'").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"discord_username") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN discord_username TEXT DEFAULT 'Hytale Bot'").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"discord_avatar") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN discord_avatar TEXT DEFAULT ''").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"discord_webhook_url") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN discord_webhook_url TEXT DEFAULT ''").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"discord_notifications") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN discord_notifications TEXT DEFAULT '{}'").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"logs_retention_days") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN logs_retention_days INTEGER NOT NULL DEFAULT 7").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"watchdog_enabled") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN watchdog_enabled INTEGER NOT NULL DEFAULT 1").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"auth_mode") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'authenticated'").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"bind_address") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN bind_address TEXT NOT NULL DEFAULT '0.0.0.0'").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"port") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN port INTEGER NOT NULL DEFAULT 5520").execute(pool).await.ok();
     }
 
     info!("✅ Migrations completed");
