@@ -7,7 +7,7 @@ import {
     File, Folder, ChevronRight, Save, AlertCircle, Check,
     ChevronDown, Server as ServerIcon, LogOut, Ban, Shield
 } from 'lucide-react';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, formatGB } from '../utils/formatters';
 import Select from '../components/Select';
 import Checkbox from '../components/Checkbox';
 import RangeSlider from '../components/RangeSlider';
@@ -59,6 +59,7 @@ interface Server {
     auto_start?: boolean;
     disable_sentry?: boolean;
     max_memory_bytes?: number;
+    max_heap_bytes?: number;
     memory_usage_bytes?: number;
     cpu_usage?: number;
     disk_usage_bytes?: number;
@@ -911,15 +912,20 @@ export default function ServerDetail() {
                 </div>
 
                 {/* Memory */}
-                <div className="stat-card" title={`RSS: ${formatBytes(ramUsage)} / Heap Max: ${server.max_memory || '4G'}`}>
+                <div className="stat-card" title={`RSS: ${formatBytes(ramUsage)}${server.max_heap_bytes ? ` / Heap: ${formatBytes(server.max_heap_bytes)} + Overhead: ${formatBytes(server.max_memory_bytes! - server.max_heap_bytes)}` : ''}`}>
                     <div className="stat-card__icon">
                         <HardDrive size={18} />
                     </div>
                     <div className="stat-card__content">
                         <div className="stat-card__label">Mémoire (RAM RSS)</div>
                         <div className="stat-card__value" style={{ color: isRunning && server.max_memory_bytes && ramUsage > server.max_memory_bytes ? 'var(--color-danger)' : 'inherit' }}>
-                            {isRunning ? formatBytes(ramUsage) : '0 B'} / {server.max_memory || '4G'}
+                            {isRunning ? formatGB(ramUsage) : '0.0 GB'} / {formatGB(server.max_memory_bytes || 0)}
                         </div>
+                        {isRunning && server.max_heap_bytes && (
+                            <div className="stat-card__subtitle" style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+                                Heap: {formatGB(server.max_heap_bytes)} + Java: {formatGB(server.max_memory_bytes! - server.max_heap_bytes)}
+                            </div>
+                        )}
                     </div>
                 </div>
 

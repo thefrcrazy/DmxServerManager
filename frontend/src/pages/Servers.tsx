@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
     Plus, Play, Square, RotateCw, Skull, Server as ServerIcon, AlertTriangle
 } from 'lucide-react';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, formatGB } from '../utils/formatters';
 import Table from '../components/Table';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
@@ -22,6 +22,7 @@ interface Server {
     cpu_usage: number;
     memory_usage_bytes: number;
     max_memory_bytes: number;
+    max_heap_bytes: number;
     disk_usage_bytes: number;
 }
 
@@ -187,7 +188,7 @@ export default function Servers() {
                                             <span className="usage-bar__text">{server.cpu_usage.toFixed(1)}%</span>
                                         </div>
                                     </td>
-                                    <td>
+                                    <td title={`Heap: ${formatBytes(server.max_heap_bytes)} + Java: ${formatBytes(server.max_memory_bytes - server.max_heap_bytes)}`}>
                                         <div className="usage-bar">
                                             <div className="usage-bar__track">
                                                 <div
@@ -196,7 +197,7 @@ export default function Servers() {
                                                 />
                                             </div>
                                             <span className="usage-bar__text">
-                                                {formatBytes(server.memory_usage_bytes)} / {formatBytes(server.max_memory_bytes)}
+                                                {formatGB(server.memory_usage_bytes)} / {formatGB(server.max_memory_bytes)}
                                             </span>
                                         </div>
                                     </td>

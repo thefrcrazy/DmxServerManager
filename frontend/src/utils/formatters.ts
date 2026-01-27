@@ -6,6 +6,12 @@ export const formatBytes = (bytes: number): string => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
+export const formatGB = (bytes: number): string => {
+    if (bytes === 0) return '0.0 GB';
+    const gb = bytes / (1024 * 1024 * 1024);
+    return gb.toFixed(1) + ' GB';
+};
+
 export const formatDate = (dateStr: string | null, locale = 'fr-FR'): string => {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleString(locale, {

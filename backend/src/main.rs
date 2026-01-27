@@ -11,6 +11,7 @@ mod error;
 mod models;
 mod services;
 mod templates;
+mod utils;
 
 use config::Settings;
 

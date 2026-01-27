@@ -10,6 +10,7 @@ use tracing::{info, error, warn};
 use std::path::Path;
 
 use crate::db::DbPool;
+use crate::utils::memory::{parse_memory_to_bytes, calculate_heap_bytes};
 use crate::error::AppError;
 use crate::services::ProcessManager;
 use crate::templates;
@@ -62,6 +63,7 @@ pub struct ServerResponse {
     pub cpu_usage: f32,
     pub memory_usage_bytes: u64,
     pub max_memory_bytes: u64,
+    pub max_heap_bytes: u64,
     pub disk_usage_bytes: u64,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -157,7 +159,8 @@ async fn list_servers(
         let started_at = pm.get_server_started_at(&s.id).await;
         let (cpu, mem, disk) = pm.get_metrics_data(&s.id).await;
 
-        let max_memory_bytes = parse_memory_string(s.max_memory.as_deref().unwrap_or("4G"));
+        let total_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
+        let max_heap_bytes = calculate_heap_bytes(total_bytes);
 
         responses.push(ServerResponse {
             id: s.id,
@@ -187,7 +190,8 @@ async fn list_servers(
                 .map(|v| v.to_string()),
             cpu_usage: cpu,
             memory_usage_bytes: mem,
-            max_memory_bytes,
+            max_memory_bytes: total_bytes,
+            max_heap_bytes,
             disk_usage_bytes: disk,
             started_at,
         });
@@ -949,7 +953,8 @@ async fn get_server(
     let started_at = pm.get_server_started_at(&server.id).await;
     let (cpu, mem, disk) = pm.get_metrics_data(&server.id).await;
 
-    let max_memory_bytes = parse_memory_string(server.max_memory.as_deref().unwrap_or("4G"));
+    let total_bytes = parse_memory_to_bytes(server.max_memory.as_deref().unwrap_or("4G"));
+    let max_heap_bytes = calculate_heap_bytes(total_bytes);
 
     Ok(HttpResponse::Ok().json(ServerResponse {
         id: server.id,
@@ -973,7 +978,8 @@ async fn get_server(
         bind_address,
         cpu_usage: cpu,
         memory_usage_bytes: mem,
-        max_memory_bytes,
+        max_memory_bytes: total_bytes,
+        max_heap_bytes,
         disk_usage_bytes: disk,
         started_at,
     }))
@@ -1619,15 +1625,3 @@ async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String
     meta_map
 }
 
-fn parse_memory_string(mem: &str) -> u64 {
-    let mem = mem.to_uppercase();
-    if mem.ends_with('G') {
-        mem.trim_end_matches('G').parse::<u64>().unwrap_or(4) * 1024 * 1024 * 1024
-    } else if mem.ends_with('M') {
-        mem.trim_end_matches('M').parse::<u64>().unwrap_or(4096) * 1024 * 1024
-    } else if mem.ends_with('K') {
-        mem.trim_end_matches('K').parse::<u64>().unwrap_or(4194304) * 1024
-    } else {
-        mem.parse::<u64>().unwrap_or(4 * 1024 * 1024 * 1024)
-    }
-}
