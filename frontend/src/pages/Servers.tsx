@@ -21,6 +21,7 @@ interface Server {
     max_players?: number;
     cpu_usage: number;
     memory_usage_bytes: number;
+    max_memory_bytes: number;
     disk_usage_bytes: number;
 }
 
@@ -190,12 +191,12 @@ export default function Servers() {
                                         <div className="usage-bar">
                                             <div className="usage-bar__track">
                                                 <div
-                                                    className="usage-bar__fill usage-bar__fill--mem"
-                                                    style={{ width: `${Math.min(100, (server.memory_usage_bytes / 1024 / 1024 / 1024 / 16) * 100)}%` }} // Assuming 16GB scale for visual
+                                                    className={`usage-bar__fill ${server.memory_usage_bytes > server.max_memory_bytes ? 'usage-bar__fill--danger' : 'usage-bar__fill--mem'}`}
+                                                    style={{ width: `${Math.min(100, (server.memory_usage_bytes / (server.max_memory_bytes || 1)) * 100)}%` }}
                                                 />
                                             </div>
                                             <span className="usage-bar__text">
-                                                {formatBytes(server.memory_usage_bytes)}
+                                                {formatBytes(server.memory_usage_bytes)} / {formatBytes(server.max_memory_bytes)}
                                             </span>
                                         </div>
                                     </td>

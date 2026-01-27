@@ -58,6 +58,10 @@ interface Server {
     accept_early_plugins?: boolean;
     auto_start?: boolean;
     disable_sentry?: boolean;
+    max_memory_bytes?: number;
+    memory_usage_bytes?: number;
+    cpu_usage?: number;
+    disk_usage_bytes?: number;
     bind_address?: string;
     port?: number;
     auth_mode?: 'authenticated' | 'offline';
@@ -907,13 +911,15 @@ export default function ServerDetail() {
                 </div>
 
                 {/* Memory */}
-                <div className="stat-card">
+                <div className="stat-card" title={`RSS: ${formatBytes(ramUsage)} / Heap Max: ${server.max_memory || '4G'}`}>
                     <div className="stat-card__icon">
                         <HardDrive size={18} />
                     </div>
                     <div className="stat-card__content">
-                        <div className="stat-card__label">Mémoire (RAM)</div>
-                        <div className="stat-card__value">{isRunning ? formatBytes(ramUsage) : '0 B'} / {server.max_memory || '4G'}</div>
+                        <div className="stat-card__label">Mémoire (RAM RSS)</div>
+                        <div className="stat-card__value" style={{ color: isRunning && server.max_memory_bytes && ramUsage > server.max_memory_bytes ? 'var(--color-danger)' : 'inherit' }}>
+                            {isRunning ? formatBytes(ramUsage) : '0 B'} / {server.max_memory || '4G'}
+                        </div>
                     </div>
                 </div>
 
