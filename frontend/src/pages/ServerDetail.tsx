@@ -98,15 +98,15 @@ interface Server {
 
 // JVM Args Suggestions for the config form
 const JVM_ARGS_SUGGESTIONS = [
-    { arg: '-XX:AOTCache=HytaleServer.aot', desc: 'Accélère considérablement le démarrage (AOT)', isRecommended: true },
-    { arg: '-XX:+UseG1GC', desc: 'Garbage Collector G1', isRecommended: false },
-    { arg: '-XX:+UseZGC', desc: 'Garbage Collector ZGC - Latence ultra-faible', isRecommended: false },
-    { arg: '-XX:MaxGCPauseMillis=50', desc: 'Limite les pauses du GC à 50ms', isRecommended: false },
-    { arg: '-XX:+ParallelRefProcEnabled', desc: 'Traite les références en parallèle', isRecommended: false },
-    { arg: '-XX:+DisableExplicitGC', desc: 'Ignore les appels System.gc()', isRecommended: false },
-    { arg: '-XX:+AlwaysPreTouch', desc: 'Précharge toute la RAM au démarrage', isRecommended: false },
-    { arg: '-XX:+UseStringDeduplication', desc: 'Déduplique les chaînes pour économiser la RAM', isRecommended: false },
-    { arg: '-Dfile.encoding=UTF-8', desc: 'Force l\'encodage UTF-8', isRecommended: false },
+    { key: 'aot', arg: '-XX:AOTCache=HytaleServer.aot', isRecommended: true },
+    { key: 'g1gc', arg: '-XX:+UseG1GC', isRecommended: false },
+    { key: 'zgc', arg: '-XX:+UseZGC', isRecommended: false },
+    { key: 'maxgcpause', arg: '-XX:MaxGCPauseMillis=50', isRecommended: false },
+    { key: 'parallelref', arg: '-XX:+ParallelRefProcEnabled', isRecommended: false },
+    { key: 'disableexplicitgc', arg: '-XX:+DisableExplicitGC', isRecommended: false },
+    { key: 'alwayspretouch', arg: '-XX:+AlwaysPreTouch', isRecommended: false },
+    { key: 'stringdedup', arg: '-XX:+UseStringDeduplication', isRecommended: false },
+    { key: 'encoding', arg: '-Dfile.encoding=UTF-8', isRecommended: false },
 ];
 
 type TabId = 'console' | 'logs' | 'schedule' | 'backups' | 'files' | 'config' | 'players' | 'metrics' | 'webhooks';
@@ -154,6 +154,7 @@ export default function ServerDetail() {
     const [ramUsage, setRamUsage] = useState<number>(0);
     const [diskUsage, setDiskUsage] = useState<number | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
+    const consoleEndRef = useRef<HTMLDivElement>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
 
     // Backups tab state
@@ -190,15 +191,15 @@ export default function ServerDetail() {
     const [isPlayerLoading, setIsPlayerLoading] = useState(false);
 
     const tabs: Tab[] = [
-        { id: 'console', label: 'Terminal', icon: <Terminal size={18} /> },
-        { id: 'logs', label: 'Logs', icon: <FileText size={18} /> },
-        { id: 'schedule', label: 'Schedule', icon: <Calendar size={18} /> },
-        { id: 'backups', label: 'Backups', icon: <History size={18} /> },
-        { id: 'files', label: 'Files', icon: <FolderOpen size={18} /> },
-        { id: 'config', label: 'Config', icon: <Settings size={18} /> },
-        { id: 'players', label: 'Players', icon: <Users size={18} /> }, // Shortened label
-        { id: 'metrics', label: 'Metrics', icon: <BarChart3 size={18} /> },
-        { id: 'webhooks', label: 'Webhooks', icon: <Webhook size={18} /> },
+        { id: 'console', label: t('server_detail.tabs.terminal'), icon: <Terminal size={18} /> },
+        { id: 'logs', label: t('server_detail.tabs.logs'), icon: <FileText size={18} /> },
+        { id: 'schedule', label: t('server_detail.tabs.schedule'), icon: <Calendar size={18} /> },
+        { id: 'backups', label: t('server_detail.tabs.backups'), icon: <History size={18} /> },
+        { id: 'files', label: t('server_detail.tabs.files'), icon: <FolderOpen size={18} /> },
+        { id: 'config', label: t('server_detail.tabs.config'), icon: <Settings size={18} /> },
+        { id: 'players', label: t('server_detail.tabs.players'), icon: <Users size={18} /> },
+        { id: 'metrics', label: t('server_detail.tabs.metrics'), icon: <BarChart3 size={18} /> },
+        { id: 'webhooks', label: t('server_detail.tabs.webhooks'), icon: <Webhook size={18} /> },
     ];
 
 
@@ -390,8 +391,17 @@ export default function ServerDetail() {
     };
 
     useEffect(() => {
-        logsEndRef.current?.scrollIntoView({ behavior: "instant" });
-    }, [logs]);
+        if (activeTab === "console") {
+            setTimeout(() => {
+                consoleEndRef.current?.scrollIntoView({ behavior: "instant" });
+            }, 100);
+        }
+        if (activeTab === "logs") {
+            setTimeout(() => {
+                logsEndRef.current?.scrollIntoView({ behavior: "instant" });
+            }, 100);
+        }
+    }, [logs, activeTab]);
 
     useEffect(() => {
         if (server) {
@@ -510,13 +520,13 @@ export default function ServerDetail() {
             if (response.ok) {
                 // Refresh server data
                 fetchServer();
-                alert('Configuration sauvegardée !');
+                alert(t('server_detail.messages.config_saved'));
             } else {
                 const data = await response.json();
-                setConfigError(data.error || 'Erreur lors de la sauvegarde');
+                setConfigError(data.error || t('server_detail.messages.save_error'));
             }
         } catch (err) {
-            setConfigError('Erreur de connexion');
+            setConfigError(t('server_detail.messages.connection_error'));
         } finally {
             setConfigSaving(false);
         }
@@ -554,7 +564,7 @@ export default function ServerDetail() {
     };
 
     const handleReinstall = async () => {
-        if (!confirm("Êtes-vous sûr de vouloir réinstaller ce serveur ? Cette action supprimera les fichiers binaires du serveur et en téléchargera de nouveaux. Vos mondes et configurations seront conservés.")) {
+        if (!confirm(t('server_detail.reinstall_confirm'))) {
             return;
         }
 
@@ -573,18 +583,18 @@ export default function ServerDetail() {
                 // Trigger a log refresh just in case, or wait for WS
                 fetchServer();
             } else {
-                alert("Erreur lors du lancement de la réinstallation.");
+                alert(t('server_detail.messages.reinstall_error'));
                 setIsInstalling(false);
             }
         } catch (e) {
             console.error(e);
-            alert("Erreur de connexion.");
+            alert(t('server_detail.messages.connection_error'));
             setIsInstalling(false);
         }
     };
 
     const handleDelete = async () => {
-        const confirmName = prompt(`Pour confirmer la suppression, tapez "${server?.name}" :`);
+        const confirmName = prompt(`${t('server_detail.delete_confirm')} "${server?.name}" :`);
         if (confirmName !== server?.name) {
             if (confirmName) alert("Nom incorrect, suppression annulée.");
             return;
@@ -600,11 +610,11 @@ export default function ServerDetail() {
                 // Redirect to servers list
                 window.location.href = '/servers'; // Simple redirect since we don't have navigate hook setup right here in this view (or we can add it)
             } else {
-                alert("Erreur lors de la suppression.");
+                alert(t('server_detail.messages.delete_error'));
             }
         } catch (e) {
             console.error(e);
-            alert("Erreur de connexion.");
+            alert(t('server_detail.messages.connection_error'));
         }
     };
 
@@ -662,7 +672,7 @@ export default function ServerDetail() {
     };
 
     const deleteBackup = async (backupId: string) => {
-        if (!confirm('Supprimer ce backup ?')) return;
+        if (!confirm(t('server_detail.delete_backup_confirm'))) return;
         try {
             await fetch(`/api/v1/backups/${backupId}`, {
                 method: 'DELETE',
@@ -675,13 +685,13 @@ export default function ServerDetail() {
     };
 
     const restoreBackup = async (backupId: string) => {
-        if (!confirm('Restaurer ce backup ? Les données actuelles seront écrasées.')) return;
+        if (!confirm(t('server_detail.restore_backup_confirm'))) return;
         try {
             await fetch(`/api/v1/backups/${backupId}/restore`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
-            alert('Backup restauré avec succès !');
+            alert(t('server_detail.messages.backup_restored'));
         } catch (error) {
             console.error('Failed to restore backup:', error);
         }
@@ -733,7 +743,7 @@ export default function ServerDetail() {
                 },
                 body: JSON.stringify({ path: selectedFile, content: fileContent }),
             });
-            alert('Fichier sauvegardé !');
+            alert(t('server_detail.messages.file_saved'));
         } catch (error) {
             console.error('Failed to save file:', error);
         } finally {
@@ -1030,7 +1040,7 @@ export default function ServerDetail() {
                                         </div>
                                     ))
                                 )}
-                                <div ref={logsEndRef} />
+                                <div ref={consoleEndRef} />
                             </div>
 
                             {/* Command Input Area */}
@@ -1286,6 +1296,7 @@ export default function ServerDetail() {
                                         <Ansi useClasses={false}>{logContent || 'Chargement... ou fichier vide.'}</Ansi>
                                     </pre>
                                 )}
+                                <div ref={logsEndRef} />
                             </div>
                         </div>
                     </div>
@@ -1304,7 +1315,7 @@ export default function ServerDetail() {
                                     <div className="card form-section p-0 border-0 shadow-none bg-transparent">
                                         <h3 className="form-section-title">
                                             <ServerIcon size={18} />
-                                            Informations Générales (Manager)
+                                            {t('server_detail.headers.general')}
                                         </h3>
                                         <div className="form-column">
                                             <div className="form-group">
@@ -1331,7 +1342,7 @@ export default function ServerDetail() {
                                     <div className="card form-section p-0 border-0 shadow-none bg-transparent mt-6">
                                         <h3 className="form-section-title">
                                             <Terminal size={18} />
-                                            Arguments de Lancement (CLI)
+                                            {t('server_detail.headers.launch_args')}
                                         </h3>
                                         <div className="form-grid-2">
                                             <div className="form-group">
@@ -1388,7 +1399,7 @@ export default function ServerDetail() {
                                     </div>
 
                                     {/* Resources (JVM) */}
-                                    <CollapsibleSection title="Ressources (JVM)" icon={Cpu} defaultOpen={true}>
+                                    <CollapsibleSection title={t('server_detail.headers.resources')} icon={Cpu} defaultOpen={true}>
                                         <div className="form-grid-2">
                                             <div className="form-group">
                                                 <label>RAM Minimale (-Xms)</label>
@@ -1410,7 +1421,7 @@ export default function ServerDetail() {
                                                 <label>Arguments JVM</label>
                                                 <input type="text" value={configFormData.extra_args || ''} onChange={(e) => updateConfigValue('extra_args', e.target.value)} className="input font-mono" />
                                                 <div className="jvm-args-shortcuts flex flex-col gap-2 mt-3">
-                                                    {JVM_ARGS_SUGGESTIONS.map(({ arg, desc, isRecommended }) => (
+                                                    {JVM_ARGS_SUGGESTIONS.map(({ arg, key, isRecommended }) => (
                                                         <Checkbox
                                                             key={arg}
                                                             checked={configFormData.extra_args?.includes(arg) || false}
@@ -1421,7 +1432,7 @@ export default function ServerDetail() {
                                                                     {isRecommended && <span className="ml-2 text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">Recommandé</span>}
                                                                 </span>
                                                             }
-                                                            description={desc}
+                                                            description={t(`server_detail.jvm.${key}`)}
                                                         />
                                                     ))}
                                                 </div>
@@ -1430,7 +1441,7 @@ export default function ServerDetail() {
                                     </CollapsibleSection>
 
                                     {/* World Configuration (JSON) */}
-                                    <CollapsibleSection title="Configuration du Monde (JSON)" icon={Globe}>
+                                    <CollapsibleSection title={t('server_detail.headers.world_config')} icon={Globe}>
                                         <div className="form-grid-2">
                                             <div className="form-group">
                                                 <label>Joueurs Maximum</label>
@@ -1893,10 +1904,11 @@ export default function ServerDetail() {
 
             {/* Components Overlays */}
             {
-                isInstalling && (
+                (isInstalling || isAuthRequired) && (
                     <InstallationProgress
                         logs={logs}
                         isInstalling={isInstalling}
+                        isAuthRequired={isAuthRequired}
                         onClose={() => {
                             // Check if installation was finished
                             const isFinished = logs.some(l => l.includes('Installation terminée') || l.includes('Installation finished'));
@@ -1913,6 +1925,8 @@ export default function ServerDetail() {
                                 }).catch(err => console.error("Failed to cleanup install.log", err));
                             }
                             setIsInstalling(false);
+                            // Also clear auth flag if closed manually (although it will re-appear if status persists)
+                            setIsAuthRequired(false);
                         }}
                     />
                 )

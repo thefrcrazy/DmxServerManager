@@ -5,9 +5,10 @@ interface InstallationProgressProps {
     logs: string[];
     onClose: () => void;
     isInstalling: boolean;
+    isAuthRequired?: boolean;
 }
 
-const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClose, isInstalling }) => {
+const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClose, isInstalling, isAuthRequired }) => {
     // Determine current step based on logs
     const steps = [
         { id: 'init', label: 'Initialisation', icon: <Terminal size={18} /> },
@@ -91,48 +92,55 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
     }, [logs]);
 
     // If not installing and no logs, don't show (sanity check)
-    if (!isInstalling && logs.length === 0) return null;
+    // But if auth is required, we should show it regardless of logs length effectively (though logs might contain the url)
+    if (!isInstalling && !isAuthRequired && logs.length === 0) return null;
+
+    const isRuntimeAuth = !isInstalling && isAuthRequired;
 
     return (
         <div className="installation-overlay">
             <div className="installation-overlay__card">
                 <div className="installation-header">
                     <h2 className="installation-header__title">
-                        Installation en cours...
+                        {isRuntimeAuth ? 'Authentification Requise' : 'Installation en cours...'}
                     </h2>
-                    <p className="installation-header__subtitle">Veuillez ne pas fermer cette fenêtre</p>
+                    <p className="installation-header__subtitle">
+                        {isRuntimeAuth ? 'Le serveur nécessite une authentification pour continuer' : 'Veuillez ne pas fermer cette fenêtre'}
+                    </p>
                 </div>
 
-                <div className="installation-steps">
-                    {steps.map((step, index) => {
-                        const isComplete = currentStep > index;
-                        const isCurrent = currentStep === index;
+                {!isRuntimeAuth && (
+                    <div className="installation-steps">
+                        {steps.map((step, index) => {
+                            const isComplete = currentStep > index;
+                            const isCurrent = currentStep === index;
 
-                        let modifierClass = '';
-                        if (isCurrent) modifierClass = 'installation-step--current';
-                        else if (isComplete) modifierClass = 'installation-step--complete';
+                            let modifierClass = '';
+                            if (isCurrent) modifierClass = 'installation-step--current';
+                            else if (isComplete) modifierClass = 'installation-step--complete';
 
-                        return (
-                            <div key={step.id} className={`installation-step ${modifierClass}`}>
-                                <div className="installation-step__icon">
-                                    {isComplete ? <Check size={14} /> : step.icon}
+                            return (
+                                <div key={step.id} className={`installation-step ${modifierClass}`}>
+                                    <div className="installation-step__icon">
+                                        {isComplete ? <Check size={14} /> : step.icon}
+                                    </div>
+                                    <div className="installation-step__content">
+                                        <div className="installation-step__label">{step.label}</div>
+                                        {isCurrent && (
+                                            <div className="installation-step__loader">
+                                                <div className="installation-step__loader-bar"></div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="installation-step__content">
-                                    <div className="installation-step__label">{step.label}</div>
-                                    {isCurrent && (
-                                        <div className="installation-step__loader">
-                                            <div className="installation-step__loader-bar"></div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                            );
+                        })}
+                    </div>
+                )}
 
 
                 {/* Auth Action Required Bubble */}
-                {authUrl && currentStep < 3 && !downloadProgress && (
+                {authUrl && (currentStep < 3 || isRuntimeAuth) && !downloadProgress && (
                     <div className="installation-auth">
                         <div className="installation-auth__title">
                             <AlertTriangle size={18} /> Action Requise
@@ -153,7 +161,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                 )}
 
                 {/* Real-time Progress Bar */}
-                {downloadProgress && currentStep < 3 && (
+                {downloadProgress && currentStep < 3 && !isRuntimeAuth && (
                     <div className="installation-download">
                         <div className="installation-download__details">
                             <span>Téléchargement des fichiers...</span>
@@ -172,7 +180,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                 )}
 
                 {/* Fallback Log Status (Show if no progress bar valid or if Auth needed) */}
-                {logs.length > 0 && currentStep < 3 && !downloadProgress && !authUrl && (
+                {logs.length > 0 && (currentStep < 3 || isRuntimeAuth) && !downloadProgress && !authUrl && (
                     <div className="installation-status">
                         <span className="installation-status__prefix">&gt;</span>
                         {(() => {
@@ -200,13 +208,13 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                     </div>
                 </details>
                 <div className="installation-actions">
-                    {currentStep === 3 ? (
+                    {currentStep === 3 && !isRuntimeAuth ? (
                         <button onClick={onClose} className="btn-finish">
                             Terminer
                         </button>
                     ) : (
                         <button onClick={onClose} className="btn-cancel">
-                            Annuler / Fermer
+                            {isRuntimeAuth ? 'Fermer' : 'Annuler / Fermer'}
                         </button>
                     )}
                 </div>

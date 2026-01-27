@@ -84,7 +84,7 @@ export default function Servers() {
             <div className="page-header">
                 <div>
                     <h1 className="page-header__title">{t('servers.title')}</h1>
-                    <p className="page-header__subtitle">Gérez vos instances de serveurs de jeu</p>
+                    <p className="page-header__subtitle">{t('dashboard.welcome')}</p>
                 </div>
                 <Link to="/servers/create" className="btn btn--primary">
                     <Plus size={18} />
@@ -97,11 +97,11 @@ export default function Servers() {
                     <div className="empty-state__icon">
                         <ServerIcon size={48} />
                     </div>
-                    <h3 className="empty-state__title">Aucun serveur</h3>
-                    <p className="empty-state__description">Commencez par créer votre premier serveur Hytale.</p>
+                    <h3 className="empty-state__title">{t('servers.no_servers')}</h3>
+                    <p className="empty-state__description">{t('servers.empty_desc')}</p>
                     <Link to="/servers/create" className="btn btn--primary">
                         <Plus size={18} />
-                        Créer un serveur
+                        {t('servers.create_new')}
                     </Link>
                 </div>
 
@@ -109,13 +109,13 @@ export default function Servers() {
                 <Table>
                     <thead>
                         <tr>
-                            <th className="col-server">Server</th>
-                            <th className="col-actions">Actions</th>
-                            <th className="col-cpu">CPU Usage</th>
-                            <th className="col-mem">Memory Usage</th>
-                            <th className="col-disk">Server Dir Size</th>
-                            <th className="col-players">Players</th>
-                            <th className="col-status">Status</th>
+                            <th className="col-server">{t('servers.server_header')}</th>
+                            <th className="col-actions">{t('servers.actions')}</th>
+                            <th className="col-cpu">{t('dashboard.cpu_usage')}</th>
+                            <th className="col-mem">{t('dashboard.ram_usage')}</th>
+                            <th className="col-disk">{t('dashboard.disk_usage')}</th>
+                            <th className="col-players">{t('servers.players')}</th>
+                            <th className="col-status">{t('servers.status')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -142,35 +142,35 @@ export default function Servers() {
                                             {isMissing ? (
                                                 <span className="server-actions__corrupt">
                                                     <AlertTriangle size={14} />
-                                                    Corrompu
+                                                    {t('servers.corrupt')}
                                                 </span>
                                             ) : isInstalling ? (
                                                 <span className="text-info text-sm flex items-center gap-1">
-                                                    <RotateCw size={14} className="spin" /> Installation...
+                                                    <RotateCw size={14} className="spin" /> {t('servers.installing')}
                                                 </span>
                                             ) : isAuthRequired ? (
                                                 <Link to={`/servers/${server.id}`} className="btn btn--sm btn--warning">
-                                                    Authentifier
+                                                    {t('servers.authenticate')}
                                                 </Link>
                                             ) : isRunning ? (
                                                 <>
                                                     <button
                                                         className="btn btn--icon btn--ghost text-info"
                                                         onClick={() => handleAction(server.id, 'restart')}
-                                                        title="Redémarrer"
+                                                        title={t('servers.restart')}
                                                     >
                                                         <RotateCw size={16} />
                                                     </button>
                                                     <button
                                                         className="btn btn--icon btn--ghost text-danger"
                                                         onClick={() => handleAction(server.id, 'stop')}
-                                                        title="Arrêter"
+                                                        title={t('servers.stop')}
                                                     >
                                                         <Square size={16} />
                                                     </button>
                                                     <button
                                                         onClick={() => handleAction(server.id, 'kill')}
-                                                        title="Forcer l'arrêt"
+                                                        title={t('servers.kill')}
                                                         className="btn btn--icon btn--ghost text-danger btn-kill"
                                                     >
                                                         <Skull size={16} />
@@ -180,7 +180,7 @@ export default function Servers() {
                                                 <button
                                                     className="btn btn--icon btn--ghost text-success"
                                                     onClick={() => handleAction(server.id, 'start')}
-                                                    title="Démarrer"
+                                                    title={t('servers.start')}
                                                 >
                                                     <Play size={18} />
                                                 </button>
@@ -219,7 +219,7 @@ export default function Servers() {
                                     </td>
                                     <td className="text-right">
                                         <span className={`badge badge--${isMissing ? 'warning' : isAuthRequired ? 'warning' : isInstalling ? 'info' : server.status === 'running' ? 'success' : 'danger'}`}>
-                                            {isMissing ? 'Missing' : isAuthRequired ? 'Auth Required' : isInstalling ? 'Installing' : server.status === 'running' ? 'Online' : 'Offline'}
+                                            {isMissing ? t('servers.missing') : isAuthRequired ? t('servers.auth_required') : isInstalling ? t('servers.installing').replace('...', '') : server.status === 'running' ? t('servers.online') : t('servers.offline')}
                                         </span>
                                     </td>
                                 </tr>

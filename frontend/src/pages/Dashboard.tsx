@@ -211,7 +211,7 @@ export default function Dashboard() {
                 <h2 className="section-title">{t('dashboard.system_status')}</h2>
                 {stats.running > 0 && (
                     <span className="section-badge">
-                        {stats.running} serveur{stats.running > 1 ? 's' : ''} actif{stats.running > 1 ? 's' : ''}
+                        {t('dashboard.active_servers_status').replace('{{count}}', stats.running.toString())}
                     </span>
                 )}
             </div>
@@ -320,13 +320,13 @@ export default function Dashboard() {
                                             <span>{server.game_type}</span>
                                             <span>•</span>
                                             <span className={isRunning ? 'server-item__status--running' : isInstalling ? 'text-info' : isAuthRequired ? 'text-warning' : ''}>
-                                                {isRunning ? 'En ligne' : isInstalling ? 'Installation...' : isAuthRequired ? 'Auth Requise' : 'Arrêté'}
+                                                {isRunning ? t('servers.online') : isInstalling ? t('servers.installing') : isAuthRequired ? t('servers.auth_required') : t('servers.offline')}
                                             </span>
 
                                             <>
                                                 <span className="server-item__players">
                                                     <Users size={14} />
-                                                    Joueur(s): {server.players ? server.players.length : 0}
+                                                    {t('servers.players')}: {server.players ? server.players.length : 0}
                                                 </span>
                                             </>
                                         </div>
@@ -335,7 +335,7 @@ export default function Dashboard() {
 
                                 <div className="server-item__actions">
                                     <Link to={`/servers/${server.id}`} className={`btn btn--secondary btn--sm ${isAuthRequired ? 'btn--warning' : ''}`}>
-                                        {isAuthRequired ? 'Authentifier' : 'Console'}
+                                        {isAuthRequired ? 'Authentifier' : t('servers.console')}
                                     </Link>
 
                                     {!isRunning && !isInstalling && !isAuthRequired && (

@@ -78,12 +78,12 @@ async fn login(
     .bind(&body.username)
     .fetch_optional(pool.get_ref())
     .await?
-    .ok_or_else(|| AppError::Unauthorized("Invalid credentials".into()))?;
+    .ok_or_else(|| AppError::Unauthorized("auth.invalid_credentials".into()))?;
 
     if !bcrypt::verify(&body.password, &user.password_hash)
         .map_err(|_| AppError::Internal("Password verification failed".into()))?
     {
-        return Err(AppError::Unauthorized("Invalid credentials".into()));
+        return Err(AppError::Unauthorized("auth.invalid_credentials".into()));
     }
 
     let token = create_token(&user)?;
@@ -209,11 +209,11 @@ async fn change_password(
         .headers()
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized("Missing authorization header".into()))?;
+        .ok_or_else(|| AppError::Unauthorized("auth.missing_auth_header".into()))?;
 
     let token = auth_header
         .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized("Invalid authorization header".into()))?;
+        .ok_or_else(|| AppError::Unauthorized("auth.invalid_auth_header".into()))?;
 
     let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".into());
     
@@ -222,13 +222,13 @@ async fn change_password(
         &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
         &jsonwebtoken::Validation::default(),
     )
-    .map_err(|_| AppError::Unauthorized("Invalid token".into()))?;
+    .map_err(|_| AppError::Unauthorized("auth.invalid_token".into()))?;
 
     let user_id = token_data.claims.sub;
 
     // Validate new password length
     if body.new_password.len() < 8 {
-        return Err(AppError::BadRequest("Password must be at least 8 characters".into()));
+        return Err(AppError::BadRequest("auth.password_length".into()));
     }
 
     // Hash new password
@@ -246,12 +246,12 @@ async fn change_password(
         .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("User not found".into()));
+        return Err(AppError::NotFound("auth.user_not_found".into()));
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "success": true,
-        "message": "Password updated successfully"
+        "message": "auth.password_updated"
     })))
 }
 

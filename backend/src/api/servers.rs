@@ -378,7 +378,7 @@ async fn create_server(
     Ok(HttpResponse::Created().json(serde_json::json!({ 
         "id": id,
         "working_dir": actual_working_dir,
-        "message": "Server directory structure created. Download the server files using hytale-downloader."
+        "message": "servers.create_success_message"
     })))
 }
 
@@ -738,7 +738,7 @@ async fn reinstall_server(
     .bind(&id)
     .fetch_optional(pool.get_ref())
     .await?
-    .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
+    .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
 
     // 2. Stop server if running
     if pm.is_running(&id) {
@@ -830,7 +830,7 @@ async fn get_server(
     .bind(&id)
     .fetch_optional(pool.get_ref())
     .await?
-    .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
+    .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
 
     let dir_exists = Path::new(&server.working_dir).exists();
     let is_running = pm.is_running(&server.id);
@@ -1068,7 +1068,7 @@ async fn update_server(
     .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Server not found".into()));
+        return Err(AppError::NotFound("servers.not_found".into()));
     }
 
     // Write config to file to ensure Hytale picks up changes (like port, seed, etc.)
@@ -1126,7 +1126,7 @@ async fn delete_server(
         .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Server not found".into()));
+        return Err(AppError::NotFound("servers.not_found".into()));
     }
 
     // Delete server directory
@@ -1161,7 +1161,7 @@ async fn start_server(
     .bind(&id)
     .fetch_optional(pool.get_ref())
     .await?
-    .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
+    .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
 
     // Use the working directory from the database directly. 
     let process_working_dir = Path::new(&server.working_dir).to_path_buf();
@@ -1310,7 +1310,7 @@ async fn restart_server(
     .bind(&id)
     .fetch_optional(pool.get_ref())
     .await?
-    .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
+    .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
 
     // We must run the server binary from the 'server' subdirectory to ensure it finds config.json
     let process_working_dir = Path::new(&server.working_dir).join("server");
@@ -1432,7 +1432,7 @@ async fn list_server_files(
         .await?;
     
     let working_dir = server
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
         .0;
     
     // Build the path - relative to working_dir (includes server/ and manager/)
@@ -1533,7 +1533,7 @@ async fn read_server_file(
         .await?;
     
     let working_dir = server
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
         .0;
     
     let base_path = Path::new(&working_dir);
@@ -1575,7 +1575,7 @@ async fn write_server_file(
         .await?;
     
     let working_dir = server
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
         .0;
     
     let base_path = Path::new(&working_dir);
@@ -1616,7 +1616,7 @@ async fn delete_server_file(
         .await?;
     
     let working_dir = server
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
         .0;
     
     let base_path = Path::new(&working_dir);

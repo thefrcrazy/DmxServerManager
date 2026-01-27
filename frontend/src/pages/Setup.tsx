@@ -64,7 +64,7 @@ export default function Setup() {
                 window.location.href = '/';
             } else {
                 const err = await response.json();
-                setError(err.error || t('common.error'));
+                setError(err.error ? t(err.error) : t('common.error'));
             }
         } catch (e) {
             setError(t('common.error'));
@@ -147,7 +147,7 @@ export default function Setup() {
                                     className="form-input"
                                     value={formData.password}
                                     onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder="Minimum 8 caractères"
+                                    placeholder={t('setup.password_placeholder')}
                                     required
                                 />
                             </div>
@@ -161,7 +161,7 @@ export default function Setup() {
                                 {t('setup.step2')}
                             </h3>
                             <p className="step-content__description">
-                                Ces chemins définissent où seront stockés vos serveurs et sauvegardes.
+                                {t('setup.paths_desc')}
                             </p>
                             <div className="form-group mb-4">
                                 <label className="form-label">{t('setup.servers_dir')}</label>
@@ -318,14 +318,14 @@ export default function Setup() {
                 onClose={() => setShowServersDirPicker(false)}
                 onSelect={(path) => setFormData(prev => ({ ...prev, servers_dir: path }))}
                 initialPath="/"
-                title="Sélectionner le répertoire des serveurs"
+                title={t('setup.servers_dir_title')}
             />
             <DirectoryPicker
                 isOpen={showBackupsDirPicker}
                 onClose={() => setShowBackupsDirPicker(false)}
                 onSelect={(path) => setFormData(prev => ({ ...prev, backups_dir: path }))}
                 initialPath="/"
-                title={t('setup.backups_dir')} // Title is passed, picker might not be translated inside, but title helps
+                title={t('setup.backups_dir_title')}
             />
         </div>
     );

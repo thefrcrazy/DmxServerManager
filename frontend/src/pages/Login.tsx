@@ -82,7 +82,7 @@ export default function Login() {
     setError('');
 
     if (needsSetup && password !== confirmPassword) {
-      setError(t('auth.login_failed') || 'Les mots de passe ne correspondent pas'); // Fallback or add proper key
+      setError(t('user_settings.password_mismatch'));
       return;
     }
 
@@ -98,7 +98,7 @@ export default function Login() {
 
         if (!response.ok) {
           const data = await response.json();
-          throw new Error(data.error || t('common.error'));
+          throw new Error(data.error || 'common.error');
         }
 
         const data = await response.json();
@@ -110,7 +110,7 @@ export default function Login() {
         navigate('/dashboard');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('auth.login_failed'));
+      setError(err instanceof Error ? t(err.message) : t('auth.login_failed'));
     } finally {
       setIsLoading(false);
     }

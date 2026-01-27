@@ -62,8 +62,13 @@ export default function UserSettings() {
             setPasswordSuccess(true);
             setNewPassword('');
             setConfirmPassword('');
-        } catch (err) {
-            setPasswordError(err instanceof Error ? err.message : 'Erreur lors du changement de mot de passe');
+        } catch (err: any) {
+            // If err.message is a key (no spaces), translate it. Otherwise use it as is?
+            // Actually backend sends keys now. But catch might catch other things.
+            // We can safely try t(err.message). If no key, it returns the key.
+            const msg = err instanceof Error ? err.message : t('user_settings.password_error');
+            // Quick heuristic: if it looks like a key (contains dot), translate it
+            setPasswordError(msg.includes('.') ? t(msg) : msg);
         }
     };
 
@@ -83,7 +88,7 @@ export default function UserSettings() {
             });
 
             if (!response.ok) {
-                throw new Error('Erreur lors de la sauvegarde');
+                throw new Error(t('user_settings.color_error'));
             }
 
             setOriginalColor(accentColor);
@@ -190,7 +195,7 @@ export default function UserSettings() {
                                     type="color"
                                     value={accentColor}
                                     onChange={(e) => setAccentColor(e.target.value)}
-                                    title="Couleur personnalisée"
+                                    title={t('user_settings.custom_color_title')}
                                 />
                             </div>
                         </div>

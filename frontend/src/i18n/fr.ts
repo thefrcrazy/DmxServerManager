@@ -16,6 +16,11 @@ export const fr = {
         required: "Requis",
         optional: "Optionnel"
     },
+    errors: {
+        internal: "Une erreur interne est survenue. Veuillez consulter les logs serveur.",
+        database: "Erreur de base de données. Veuillez réessayer plus tard.",
+        network: "Erreur réseau. Veuillez vérifier votre connexion."
+    },
     sidebar: {
         dashboard: "Tableau de Bord",
         servers: "Serveurs",
@@ -33,6 +38,7 @@ export const fr = {
         ram_usage: "Utilisation RAM",
         disk_usage: "Utilisation Disque",
         active_servers: "Serveurs Actifs",
+        active_servers_status: "{{count}} serveur(s) actif(s)",
         total_servers: "Total Serveurs"
     },
     servers: {
@@ -47,7 +53,19 @@ export const fr = {
         stop: "Arrêter",
         restart: "Redémarrer",
         console: "Console",
-        settings: "Configuration"
+        settings: "Configuration",
+        online: "En ligne",
+        offline: "Hors ligne",
+        installing: "Installation...",
+        auth_required: "Auth Requise",
+        missing: "Manquant",
+        empty_desc: "Commencez par créer votre premier serveur Hytale.",
+        corrupt: "Corrompu",
+        authenticate: "Authentifier",
+        server_header: "Serveur",
+        kill: "Forcer l'arrêt",
+        not_found: "Serveur non trouvé",
+        create_success_message: "Structure du serveur créée. Téléchargez les fichiers via hytale-downloader."
     },
     auth: {
         login: "Connexion",
@@ -58,32 +76,39 @@ export const fr = {
         login_subtitle: "Connectez-vous pour gérer vos serveurs Hytale",
         setup_admin: "Bienvenue ! Créez votre compte administrateur",
         first_install: "Première installation requise",
-        login_failed: "Échec de la connexion"
+        login_failed: "Échec de la connexion",
+        invalid_credentials: "Identifiants invalides",
+        user_not_found: "Utilisateur non trouvé",
+        password_length: "Le mot de passe doit faire au moins 8 caractères",
+        missing_auth_header: "Header d'authentification manquant",
+        invalid_auth_header: "Header d'authentification invalide",
+        invalid_token: "Session invalide ou expirée",
+        password_updated: "Mot de passe mis à jour avec succès"
     },
-    settings: {
-        language: "Langue",
-        select_language: "Choisir la langue"
-    },
+
     user_settings: {
-        title: "Mon Compte",
-        subtitle: "Gérez vos préférences personnelles",
+        title: "Paramètres Utilisateur",
+        subtitle: "Gérez votre compte et vos préférences",
         profile: "Profil",
         role_admin: "Administrateur",
         role_user: "Utilisateur",
         accent_color: "Couleur d'accentuation",
-        color_saved: "✓ Couleur sauvegardée !",
+        custom_color_title: "Couleur personnalisée",
         save_color: "Sauvegarder la couleur",
         data_saving: "Sauvegarde...",
+        color_saved: "Couleur sauvegardée !",
+        color_error: "Erreur lors de la sauvegarde",
         discord_link: "Lier Discord",
-        discord_desc: "Liez votre compte Discord pour recevoir des notifications personnalisées et faciliter l'authentification.",
-        discord_connected: "Connecté en tant que",
-        discord_disconnected: "Non connecté",
+        discord_desc: "Liez votre compte Discord pour activer les notifications et fonctionnalités communautaires.",
+        discord_disconnected: "Déconnecté",
         connect_discord: "Connecter Discord",
         change_password: "Changer le mot de passe",
+        password_error: "Erreur lors du changement de mot de passe",
         new_password: "Nouveau mot de passe",
-        password_success: "Mot de passe modifié avec succès !",
+        confirm_password: "Confirmer le mot de passe",
         password_mismatch: "Les mots de passe ne correspondent pas",
-        password_min_length: "Le mot de passe doit contenir au moins 6 caractères"
+        password_min_length: "Le mot de passe doit faire au moins 6 caractères",
+        password_success: "Mot de passe modifié avec succès !"
     },
     backups: {
         title: "Sauvegardes",
@@ -104,19 +129,6 @@ export const fr = {
         success_create: "Sauvegarde créée avec succès",
         success_restore: "Sauvegarde restaurée avec succès",
         success_delete: "Sauvegarde supprimée"
-    },
-    users: {
-        title: "Utilisateurs",
-        subtitle: "Gérez les accès au panel",
-        create_user: "Créer un utilisateur",
-        role: "Rôle",
-        edit_user: "Modifier",
-        delete_user: "Supprimer",
-        username: "Nom d'utilisateur",
-        password_placeholder: "Laisser vide pour ne pas changer",
-        create_success: "Utilisateur créé",
-        update_success: "Utilisateur mis à jour",
-        delete_success: "Utilisateur supprimé"
     },
     panel_settings: {
         title: "Paramètres Panel",
@@ -147,31 +159,98 @@ export const fr = {
         address: "Adresse",
         uptime: "Uptime",
         java_version: "Version Java",
-        memory: "Mémoire"
+        memory: "Mémoire",
+        reinstall_confirm: "Êtes-vous sûr de vouloir réinstaller ce serveur ? Cette action supprimera les fichiers binaires du serveur et en téléchargera de nouveaux. Vos mondes et configurations seront conservés.",
+        delete_confirm: "Pour confirmer la suppression, tapez",
+        delete_backup_confirm: "Supprimer ce backup ?",
+        restore_backup_confirm: "Restaurer ce backup ? Les données actuelles seront écrasées.",
+        save_success: "Fichier sauvegardé !",
+        headers: {
+            general: "Informations Générales (Manager)",
+            launch_args: "Arguments de Lancement (CLI)",
+            resources: "Ressources (JVM)",
+            world_config: "Configuration du Monde (JSON)"
+        },
+        tabs: {
+            terminal: "Terminal",
+            logs: "Logs",
+            schedule: "Planification",
+            backups: "Sauvegardes",
+            files: "Fichiers",
+            config: "Config",
+            players: "Joueurs",
+            metrics: "Métriques",
+            webhooks: "Webhooks"
+        },
+        messages: {
+            config_saved: "Configuration sauvegardée !",
+            connection_error: "Erreur de connexion",
+            save_error: "Erreur lors de la sauvegarde",
+            reinstall_error: "Erreur lors du lancement de la réinstallation.",
+            delete_error: "Erreur lors de la suppression.",
+            item_deleted: "Supprimé !",
+            backup_created: "Backup créé !",
+            backup_restored: "Backup restauré avec succès !",
+            file_saved: "Fichier sauvegardé !"
+        },
+        jvm: {
+            aot: "Accélère considérablement le démarrage (AOT)",
+            g1gc: "Garbage Collector G1",
+            zgc: "Garbage Collector ZGC - Latence ultra-faible",
+            maxgcpause: "Limite les pauses du GC à 50ms",
+            parallelref: "Traite les références en parallèle",
+            disableexplicitgc: "Ignore les appels System.gc()",
+            alwayspretouch: "Précharge toute la RAM au démarrage",
+            stringdedup: "Déduplique les chaînes pour économiser la RAM",
+            encoding: "Force l'encodage UTF-8"
+        }
+    },
+    settings: {
+        language: "Langue",
+        select_language: "Choisir la langue",
+        theme: "Thème"
+    },
+    users: {
+        title: "Utilisateurs",
+        subtitle: "Gérez les accès au panel",
+        create_user: "Créer un utilisateur",
+        role: "Rôle",
+        edit_user: "Modifier",
+        delete_user: "Supprimer",
+        username: "Nom d'utilisateur",
+        password_placeholder: "Laisser vide pour ne pas changer",
+        status: "Statut",
+        last_login: "Dernière connexion",
+        not_found: "Utilisateur non trouvé",
+        exists: "Ce nom d'utilisateur est déjà pris",
+        create_success: "Utilisateur créé avec succès",
+        update_success: "Utilisateur mis à jour avec succès",
+        delete_success: "Utilisateur supprimé avec succès"
     },
     setup: {
         title: "Bienvenue sur Kweebec Manager",
-        subtitle: "Commençons par configurer votre compte administrateur.",
-        create_admin: "Créer l'administrateur",
+        subtitle: "Commençons par configurer votre environnement.",
+        create_admin: "Créer un administrateur",
         username: "Nom d'utilisateur",
         password: "Mot de passe",
-        confirm_password: "Confirmer le mot de passe",
-        loading: "Création en cours...",
-        success: "Compte créé ! Redirection...",
-        step1: "Compte Admin",
-        step2: "Répertoires",
-        step3: "Apparence",
-        step4: "Récapitulatif",
-        next: "Suivant",
-        prev: "Précédent",
-        finish: "Terminer l'installation",
-        servers_dir: "Répertoire Serveurs",
-        backups_dir: "Répertoire Backups",
-        theme_title: "Choisissez la couleur du thème",
+        password_placeholder: "Minimum 8 caractères",
+        step1: "Admin",
+        step2: "Stockage",
+        step3: "Personnalisation",
+        step4: "Résumé",
+        servers_dir: "Répertoire des Serveurs",
+        servers_dir_title: "Sélectionner le répertoire des serveurs",
+        backups_dir: "Répertoire des Backups",
+        backups_dir_title: "Sélectionner le répertoire des backups",
+        paths_desc: "Ces chemins définissent où seront stockés vos serveurs et sauvegardes.",
+        theme_title: "Choisir un thème",
         summary_user: "Utilisateur",
-        summary_servers: "Répertoire Serveurs",
-        summary_backups: "Répertoire Backups",
-        summary_theme: "Couleur du thème"
+        summary_servers: "Dossier Serveurs",
+        summary_backups: "Dossier Backups",
+        summary_theme: "Couleur Thème",
+        prev: "Précédent",
+        next: "Suivant",
+        finish: "Terminer"
     }
 };
 

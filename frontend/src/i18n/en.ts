@@ -18,6 +18,11 @@ export const en: TranslationType = {
         required: "Required",
         optional: "Optional"
     },
+    errors: {
+        internal: "Internal server error. Please check server logs.",
+        database: "Database error. Please try again later.",
+        network: "Network error. Please check your connection."
+    },
     sidebar: {
         dashboard: "Dashboard",
         servers: "Servers",
@@ -35,6 +40,7 @@ export const en: TranslationType = {
         ram_usage: "RAM Usage",
         disk_usage: "Disk Usage",
         active_servers: "Active Servers",
+        active_servers_status: "{{count}} active server(s)",
         total_servers: "Total Servers"
     },
     servers: {
@@ -49,7 +55,19 @@ export const en: TranslationType = {
         stop: "Stop",
         restart: "Restart",
         console: "Console",
-        settings: "Configuration"
+        settings: "Configuration",
+        online: "Online",
+        offline: "Offline",
+        installing: "Installing...",
+        auth_required: "Auth Required",
+        missing: "Missing",
+        empty_desc: "Start by creating your first Hytale server.",
+        corrupt: "Corrupt",
+        authenticate: "Authenticate",
+        server_header: "Server",
+        kill: "Kill",
+        not_found: "Server not found",
+        create_success_message: "Server structure created. Download files via hytale-downloader."
     },
     auth: {
         login: "Login",
@@ -60,32 +78,43 @@ export const en: TranslationType = {
         login_subtitle: "Login to manage your Hytale servers",
         setup_admin: "Welcome! Create your admin account",
         first_install: "First installation required",
-        login_failed: "Login failed"
+        login_failed: "Login failed",
+        invalid_credentials: "Invalid credentials",
+        user_not_found: "User not found",
+        password_length: "Password must be at least 8 characters",
+        missing_auth_header: "Missing authorization header",
+        invalid_auth_header: "Invalid authorization header",
+        invalid_token: "Invalid or expired session",
+        password_updated: "Password updated successfully"
     },
     settings: {
         language: "Language",
-        select_language: "Select Language"
+        select_language: "Select Language",
+        theme: "Theme"
     },
     user_settings: {
-        title: "My Account",
-        subtitle: "Manage your personal preferences",
+        title: "User Settings",
+        subtitle: "Manage your account and preferences",
         profile: "Profile",
         role_admin: "Administrator",
         role_user: "User",
         accent_color: "Accent Color",
-        color_saved: "✓ Color saved!",
+        custom_color_title: "Custom Color",
         save_color: "Save Color",
         data_saving: "Saving...",
+        color_saved: "Color saved!",
+        color_error: "Error while saving",
         discord_link: "Link Discord",
-        discord_desc: "Link your Discord account to receive personalized notifications and enable easier login.",
-        discord_connected: "Connected as",
-        discord_disconnected: "Not connected",
+        discord_desc: "Link your Discord account to enable notifications and community features.",
+        discord_disconnected: "Disconnected",
         connect_discord: "Connect Discord",
         change_password: "Change Password",
+        password_error: "Error while changing password",
         new_password: "New Password",
-        password_success: "Password changed successfully!",
+        confirm_password: "Confirm Password",
         password_mismatch: "Passwords do not match",
-        password_min_length: "Password must be at least 6 characters long"
+        password_min_length: "Password must be at least 6 characters",
+        password_success: "Password changed successfully!"
     },
     backups: {
         title: "Backups",
@@ -116,9 +145,13 @@ export const en: TranslationType = {
         delete_user: "Delete",
         username: "Username",
         password_placeholder: "Leave empty to keep unchanged",
-        create_success: "User created",
-        update_success: "User updated",
-        delete_success: "User deleted"
+        status: "Status",
+        last_login: "Last Login",
+        not_found: "User not found",
+        exists: "Username already exists",
+        create_success: "User created successfully",
+        update_success: "User updated successfully",
+        delete_success: "User deleted successfully"
     },
     panel_settings: {
         title: "Panel Settings",
@@ -149,30 +182,75 @@ export const en: TranslationType = {
         address: "Address",
         uptime: "Uptime",
         java_version: "Java Version",
-        memory: "Memory"
+        memory: "Memory",
+        reinstall_confirm: "Are you sure you want to reinstall this server? This will delete the server binaries and download new ones. Your worlds and configurations will be kept.",
+        delete_confirm: "To confirm deletion, type",
+        delete_backup_confirm: "Delete this backup?",
+        restore_backup_confirm: "Restore this backup? Current data will be overwritten.",
+        save_success: "File saved!",
+        headers: {
+            general: "General Information (Manager)",
+            launch_args: "Launch Arguments (CLI)",
+            resources: "Resources (JVM)",
+            world_config: "World Configuration (JSON)"
+        },
+        tabs: {
+            terminal: "Terminal",
+            logs: "Logs",
+            schedule: "Schedule",
+            backups: "Backups",
+            files: "Files",
+            config: "Config",
+            players: "Players",
+            metrics: "Metrics",
+            webhooks: "Webhooks"
+        },
+        messages: {
+            config_saved: "Configuration saved!",
+            connection_error: "Connection error",
+            save_error: "Error while saving",
+            reinstall_error: "Error initiating reinstall.",
+            delete_error: "Error while deleting.",
+            item_deleted: "Deleted!",
+            backup_created: "Backup created!",
+            backup_restored: "Backup restored successfully!",
+            file_saved: "File saved!"
+        },
+        jvm: {
+            aot: "Significantly speeds up startup (AOT)",
+            g1gc: "G1 Garbage Collector",
+            zgc: "ZGC Garbage Collector - Ultra-low latency",
+            maxgcpause: "Limits GC pauses to 50ms",
+            parallelref: "Parallel reference processing",
+            disableexplicitgc: "Ignores System.gc() calls",
+            alwayspretouch: "Preloads all RAM at startup",
+            stringdedup: "Deduplicates strings to save RAM",
+            encoding: "Forces UTF-8 encoding"
+        }
     },
     setup: {
         title: "Welcome to Kweebec Manager",
-        subtitle: "Let's start by configuring your administrator account.",
+        subtitle: "Let's start by configuring your environment.",
         create_admin: "Create Administrator",
         username: "Username",
         password: "Password",
-        confirm_password: "Confirm Password",
-        loading: "Creating...",
-        success: "Account created! Redirecting...",
-        step1: "Admin Account",
-        step2: "Directories",
-        step3: "Appearance",
+        password_placeholder: "Minimum 8 characters",
+        step1: "Admin",
+        step2: "Storage",
+        step3: "Customization",
         step4: "Summary",
-        next: "Next",
-        prev: "Previous",
-        finish: "Finish Installation",
         servers_dir: "Servers Directory",
+        servers_dir_title: "Select servers directory",
         backups_dir: "Backups Directory",
-        theme_title: "Choose Theme Color",
+        backups_dir_title: "Select backups directory",
+        paths_desc: "These paths define where your servers and backups will be stored.",
+        theme_title: "Choose a Theme",
         summary_user: "User",
-        summary_servers: "Servers Directory",
-        summary_backups: "Backups Directory",
-        summary_theme: "Theme Color"
+        summary_servers: "Servers Folder",
+        summary_backups: "Backups Folder",
+        summary_theme: "Theme Color",
+        prev: "Previous",
+        next: "Next",
+        finish: "Finish"
     }
 };

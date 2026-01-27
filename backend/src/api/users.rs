@@ -113,7 +113,7 @@ async fn get_user(
     .bind(&user_id)
     .fetch_optional(pool.get_ref())
     .await?
-    .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+    .ok_or_else(|| AppError::NotFound("users.not_found".into()))?;
 
     let servers: Vec<String> = user
         .allocated_servers
@@ -148,7 +148,7 @@ async fn create_user(
             .await?;
 
     if exists.is_some() {
-        return Err(AppError::BadRequest("Username already exists".into()));
+        return Err(AppError::BadRequest("users.exists".into()));
     }
 
     let password_hash = bcrypt::hash(&body.password, bcrypt::DEFAULT_COST)
@@ -200,7 +200,7 @@ async fn create_user(
         "username": body.username,
         "role": role,
         "is_active": is_active,
-        "message": "User created successfully"
+        "message": "users.create_success"
     })))
 }
 
@@ -219,7 +219,7 @@ async fn update_user(
         .await?;
 
     if exists.is_none() {
-        return Err(AppError::NotFound("User not found".into()));
+        return Err(AppError::NotFound("users.not_found".into()));
     }
 
     // Build dynamic update query
@@ -288,7 +288,7 @@ async fn update_user(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "success": true,
-        "message": "User updated successfully"
+        "message": "users.update_success"
     })))
 }
 
@@ -304,11 +304,11 @@ async fn delete_user(
         .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("User not found".into()));
+        return Err(AppError::NotFound("users.not_found".into()));
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "success": true,
-        "message": "User deleted successfully"
+        "message": "users.delete_success"
     })))
 }

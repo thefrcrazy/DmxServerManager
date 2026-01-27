@@ -35,10 +35,16 @@ impl ResponseError for AppError {
                 HttpResponse::Unauthorized().json(serde_json::json!({ "error": msg }))
             }
             AppError::Internal(msg) => {
-                HttpResponse::InternalServerError().json(serde_json::json!({ "error": msg }))
+                // Log the actual error for debugging
+                eprintln!("Internal Server Error: {}", msg);
+                // Return generic key to client
+                HttpResponse::InternalServerError().json(serde_json::json!({ "error": "errors.internal" }))
             }
             AppError::Database(msg) => {
-                HttpResponse::InternalServerError().json(serde_json::json!({ "error": msg }))
+                // Log the actual error for debugging
+                eprintln!("Database Error: {}", msg);
+                // Return generic key to client
+                HttpResponse::InternalServerError().json(serde_json::json!({ "error": "errors.database" }))
             }
         }
     }
