@@ -5,7 +5,7 @@ import {
     FileText, Settings, History, FolderOpen, BarChart3,
     Webhook, Calendar, Plus, Download, Trash2,
     File, Folder, ChevronRight, Save, AlertCircle, Check,
-    ChevronDown, Server as ServerIcon
+    ChevronDown, Server as ServerIcon, LogOut, Ban, Shield
 } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
 import Select from '../components/Select';
@@ -571,6 +571,13 @@ export default function ServerDetail() {
             wsRef.current.send(command);
             setLogs((prev) => [...prev, `> ${command}`]);
             setCommand('');
+        }
+    };
+
+    const sendServerCommand = (cmd: string) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(cmd);
+            setLogs((prev) => [...prev, `> ${cmd}`]);
         }
     };
 
@@ -1601,10 +1608,74 @@ export default function ServerDetail() {
 
                                 <div className="tab-content p-6">
                                     {activePlayerTab === 'online' && (
-                                        <div className="empty-state">
-                                            <Users size={32} className="icon-faded" />
-                                            <p>Aucun joueur connecté.</p>
-                                        </div>
+                                        server?.players && server.players.length > 0 ? (
+                                            <div className="player-list-manager">
+                                                <table className="data-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Pseudo</th>
+                                                            <th className="text-right">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {server.players.map((player, idx) => (
+                                                            <tr key={idx}>
+                                                                <td>
+                                                                    <div className="player-info">
+                                                                        <div className="avatar">
+                                                                            {player.charAt(0).toUpperCase()}
+                                                                        </div>
+                                                                        <span className="name">{player}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="text-right">
+                                                                    <div className="flex justify-end gap-1">
+                                                                        <button
+                                                                            className="btn btn--icon btn--secondary btn--sm"
+                                                                            onClick={() => {
+                                                                                if (confirm(`Donner les droits d'administration à ${player} ?`)) {
+                                                                                    sendServerCommand(`op ${player}`);
+                                                                                }
+                                                                            }}
+                                                                            title="OP"
+                                                                        >
+                                                                            <Shield size={14} />
+                                                                        </button>
+                                                                        <button
+                                                                            className="btn btn--icon btn--danger btn--sm"
+                                                                            onClick={() => {
+                                                                                if (confirm(`Bannir ${player} ?`)) {
+                                                                                    sendServerCommand(`ban ${player}`);
+                                                                                }
+                                                                            }}
+                                                                            title="Ban"
+                                                                        >
+                                                                            <Ban size={14} />
+                                                                        </button>
+                                                                        <button
+                                                                            className="btn btn--icon btn--danger btn--sm"
+                                                                            onClick={() => {
+                                                                                if (confirm(`Kicker ${player} ?`)) {
+                                                                                    sendServerCommand(`kick ${player}`);
+                                                                                }
+                                                                            }}
+                                                                            title="Kick"
+                                                                        >
+                                                                            <LogOut size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <div className="empty-state">
+                                                <Users size={32} className="icon-faded" />
+                                                <p>Aucun joueur connecté.</p>
+                                            </div>
+                                        )
                                     )}
 
                                     {(activePlayerTab === 'whitelist' || activePlayerTab === 'bans' || activePlayerTab === 'permissions') && (
