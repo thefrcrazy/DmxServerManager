@@ -221,10 +221,10 @@ impl ProcessManager {
         let mut cmd = Command::new(java);
         cmd.current_dir(&final_working_dir);
 
-        // Smart Memory Adjustment: User provided max_mem is the TARGET TOTAL RSS
-        // We subtract the overhead buffer to set the JVM HEAP (-Xmx and -Xms)
-        let target_total_bytes = parse_memory_to_bytes(max_mem);
-        let (xms, xmx) = calculate_smart_heap(target_total_bytes);
+        // Smart Memory Adjustment: User provided max_mem is now the HEAP SIZE (-Xmx)
+        // We calculate Xms based on this.
+        let heap_target_bytes = parse_memory_to_bytes(max_mem);
+        let (xms, xmx) = calculate_jvm_tokens(heap_target_bytes);
 
         cmd.arg(format!("-Xms{}", xms))
             .arg(format!("-Xmx{}", xmx))
@@ -606,5 +606,5 @@ impl Default for ProcessManager {
 }
 
 
-use crate::utils::memory::{parse_memory_to_bytes, calculate_smart_heap};
+use crate::utils::memory::{parse_memory_to_bytes, calculate_jvm_tokens};
 

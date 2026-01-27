@@ -11,7 +11,7 @@ use std::path::Path;
 
 use crate::db::DbPool;
 use walkdir::WalkDir;
-use crate::utils::memory::{parse_memory_to_bytes, calculate_heap_bytes};
+use crate::utils::memory::{parse_memory_to_bytes, calculate_total_memory};
 use crate::error::AppError;
 use crate::services::ProcessManager;
 use crate::templates;
@@ -171,9 +171,9 @@ async fn list_servers(
                 .sum();
         }
 
-        let total_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
-        let max_heap_bytes = calculate_heap_bytes(total_bytes);
-
+        let heap_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
+        let total_bytes = calculate_total_memory(heap_bytes);
+        
         responses.push(ServerResponse {
             id: s.id,
             name: s.name,
@@ -203,7 +203,7 @@ async fn list_servers(
             cpu_usage: cpu,
             memory_usage_bytes: mem,
             max_memory_bytes: total_bytes,
-            max_heap_bytes,
+            max_heap_bytes: heap_bytes,
             disk_usage_bytes: disk,
             started_at,
         });
@@ -982,8 +982,8 @@ async fn get_server(
             .sum();
     }
 
-    let total_bytes = parse_memory_to_bytes(server.max_memory.as_deref().unwrap_or("4G"));
-    let max_heap_bytes = calculate_heap_bytes(total_bytes);
+    let heap_bytes = parse_memory_to_bytes(server.max_memory.as_deref().unwrap_or("4G"));
+    let total_bytes = calculate_total_memory(heap_bytes);
 
     Ok(HttpResponse::Ok().json(ServerResponse {
         id: server.id,
@@ -1008,7 +1008,7 @@ async fn get_server(
         cpu_usage: cpu,
         memory_usage_bytes: mem,
         max_memory_bytes: total_bytes,
-        max_heap_bytes,
+        max_heap_bytes: heap_bytes,
         disk_usage_bytes: disk,
         started_at,
     }))
