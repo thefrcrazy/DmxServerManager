@@ -44,14 +44,20 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         else if (lastLog.includes('Extraction') || lastLog.includes('Décompression')) setCurrentStep(2);
         else if (lastLog.includes('Installation terminée') || lastLog.includes('Installation finished')) setCurrentStep(3);
 
-        // Check for Auth URL in ALL logs (since it might scroll past)
-        const fullLog = logs.join('\n');
+        // Helper to strip ANSI codes
+        const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+
+        // Check for Auth URL in ALL logs
+        // We join them but also strip ANSI to ensure clean matching
+        // Note: Joining with newline is good, but we should process line by line or strip globally
+        const fullLogClean = stripAnsi(logs.join('\n'));
 
         // Pattern: https://oauth.accounts.hytale.com/...
         // The log usually lines are:
         // "Please visit the following URL to authenticate:"
         // "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=XXXXXX"
-        const linkMatch = fullLog.match(/(https:\/\/oauth\.accounts\.hytale\.com\/[^\s]+)/);
+        // Improved regex to stop at whitespace or ANSI-like leftovers if any
+        const linkMatch = fullLogClean.match(/(https:\/\/oauth\.accounts\.hytale\.com\/[^\s\u001b]+)/);
 
         // Check for progress bar in recent logs (look at last few lines)
         // Format: [==========] 27.0% (385.0 MB / 1.4 GB)
@@ -59,7 +65,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         let foundProgress = false;
         // Search from end to find most recent progress
         for (let i = logs.length - 1; i >= Math.max(0, logs.length - 10); i--) {
-            const line = logs[i];
+            const line = stripAnsi(logs[i]);
             const progressMatch = line.match(/\[=*[\s=]*\]\s*([\d\.]+)%\s*\(([^)]+)\)/);
             if (progressMatch) {
                 setDownloadProgress({
@@ -77,15 +83,21 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
             setAuthUrl(null);
             setAuthCode(null);
         } else if (linkMatch) {
-            setAuthUrl(linkMatch[1]);
+            // Further clean the URL if it dragged in any trailing punctuation
+            // (Though [^\s]+ usually handles it, sometimes logs have closing chars)
+            let url = linkMatch[1];
+            // Remove trailing dot or closing bracket/parenthesis if matched by mistake
+            url = url.replace(/[).\]]+$/, '');
+            setAuthUrl(url);
 
             // Try to extract code from URL if present (user_code=...)
-            const codeMatch = linkMatch[1].match(/user_code=([^&]+)/);
+            const codeMatch = url.match(/user_code=([^&]+)/);
             if (codeMatch) {
                 setAuthCode(codeMatch[1]);
             } else {
                 // Fallback: Check for "Authorization code: XXXXXX"
-                const manualCodeMatch = fullLog.match(/Authorization code:\s*([^\s]+)/);
+                // uses fullLogClean
+                const manualCodeMatch = fullLogClean.match(/Authorization code:\s*([^\s]+)/);
                 if (manualCodeMatch) setAuthCode(manualCodeMatch[1]);
             }
         } else {
