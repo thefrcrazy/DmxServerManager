@@ -29,6 +29,8 @@ interface ServerInfo {
     name: string;
     game_type: string;
     status: string;
+    players?: string[];
+    max_players?: number;
 }
 
 import { useLanguage } from '../contexts/LanguageContext';
@@ -313,6 +315,13 @@ export default function Dashboard() {
                                         <span className={server.status === 'running' ? 'server-item__status--running' : ''}>
                                             {server.status === 'running' ? 'En ligne' : 'Arrêté'}
                                         </span>
+
+                                        <>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'red', fontWeight: 'bold' }}>
+                                                <Users size={14} />
+                                                Joueur(s): {server.players ? server.players.length : 0}
+                                            </span>
+                                        </>
                                     </div>
                                 </div>
                             </div>
@@ -335,7 +344,8 @@ export default function Dashboard() {
                         </div>
                     ))}
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

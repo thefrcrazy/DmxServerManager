@@ -212,8 +212,9 @@ impl ProcessManager {
             
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
-                let join_re = Regex::new(r"\[Universe\|P\] Adding player '([^' ]+)").unwrap();
-                let leave_re = Regex::new(r"\[Universe\|P\] Removing player '([^']+)'").unwrap();
+                // Regex relaxed to ignore potential timestamp/ANSI codes/prefixes
+                let join_re = Regex::new(r"Adding player '([^']+)'").unwrap();
+                let leave_re = Regex::new(r"Removing player '([^']+)'").unwrap();
                 let server_started_re = Regex::new(r"Done \([0-9\.]+s\)!").unwrap();
 
                 for line in reader.lines().map_while(Result::ok) {

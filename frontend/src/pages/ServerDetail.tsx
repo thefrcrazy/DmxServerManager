@@ -327,7 +327,7 @@ export default function ServerDetail() {
             }
 
             // 2. If no active installation, fetch standard console.log
-            let res = await fetch(`/api/v1/servers/${id}/files/read?path=server/console.log`, {
+            let res = await fetch(`/api/v1/servers/${id}/files/read?path=console.log`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
 
