@@ -12,7 +12,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5500
-      - DATABASE_URL=sqlite:/data/draveur.db?mode=rwc
+      - DATABASE_URL=sqlite:/data/database.db?mode=rwc
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - SERVERS_DIR=/servers
       - BACKUPS_DIR=/backups

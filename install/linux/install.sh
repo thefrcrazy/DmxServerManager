@@ -164,7 +164,7 @@ create_env_file() {
     cat > "$DATA_DIR/.env" << EOF
 HOST=0.0.0.0
 PORT=5500
-DATABASE_URL=sqlite:$DATA_DIR/data/draveur.db?mode=rwc
+DATABASE_URL=sqlite:$DATA_DIR/data/database.db?mode=rwc
 JWT_SECRET=$(openssl rand -base64 32)
 SERVERS_DIR=$DATA_DIR/servers
 BACKUPS_DIR=$DATA_DIR/backups

@@ -126,7 +126,7 @@ function Setup-Config {
     @"
 HOST=0.0.0.0
 PORT=5500
-DATABASE_URL=sqlite:$DataDir\data\draveur.db?mode=rwc
+DATABASE_URL=sqlite:$DataDir\data\database.db?mode=rwc
 JWT_SECRET=$jwtSecret
 SERVERS_DIR=$DataDir\servers
 BACKUPS_DIR=$DataDir\backups
@@ -154,7 +154,7 @@ function Create-WindowsService {
     
     nssm install $serviceName "$InstallDir\backend\target\release\draveur.exe"
     nssm set $serviceName AppDirectory "$InstallDir\backend"
-    nssm set $serviceName AppEnvironmentExtra "HOST=0.0.0.0" "PORT=5500" "DATABASE_URL=sqlite:$DataDir\data\draveur.db?mode=rwc"
+    nssm set $serviceName AppEnvironmentExtra "HOST=0.0.0.0" "PORT=5500" "DATABASE_URL=sqlite:$DataDir\data\database.db?mode=rwc"
     nssm set $serviceName DisplayName "Draveur Manager"
     nssm set $serviceName Description "Game Server Manager for Hytale"
     nssm set $serviceName Start SERVICE_AUTO_START
