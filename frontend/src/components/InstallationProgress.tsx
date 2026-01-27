@@ -1,23 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Terminal, Download, Folder, Check, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface InstallationProgressProps {
     logs: string[];
     onClose: () => void;
     isInstalling: boolean;
     isAuthRequired?: boolean;
+    onSendAuth?: () => void;
 }
 
-const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClose, isInstalling, isAuthRequired }) => {
+const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClose, isInstalling, isAuthRequired, onSendAuth }) => {
+    const { t } = useLanguage();
+
     // Determine current step based on logs
     const steps = [
-        { id: 'init', label: 'Initialisation', icon: <Terminal size={18} /> },
-        { id: 'download', label: 'Téléchargement', icon: <Download size={18} /> },
-        { id: 'extract', label: 'Installation', icon: <Folder size={18} /> },
-        { id: 'finish', label: 'Finalisation', icon: <Check size={18} /> },
+        { id: 'init', label: t('installation.steps.init'), icon: <Terminal size={18} /> },
+        { id: 'download', label: t('installation.steps.download'), icon: <Download size={18} /> },
+        { id: 'extract', label: t('installation.steps.extract'), icon: <Folder size={18} /> },
+        { id: 'finish', label: t('installation.steps.finish'), icon: <Check size={18} /> },
     ];
 
     const [currentStep, setCurrentStep] = useState(0);
+    const [isMinimized, setIsMinimized] = useState(false);
     const [authUrl, setAuthUrl] = useState<string | null>(null);
     const [authCode, setAuthCode] = useState<string | null>(null);
     const [downloadProgress, setDownloadProgress] = useState<{ percent: number; details: string } | null>(null);
@@ -97,16 +102,32 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
 
     const isRuntimeAuth = !isInstalling && isAuthRequired;
 
+    if (isMinimized) {
+        return (
+            <div className="installation-overlay minimized" onClick={() => setIsMinimized(false)}>
+                <div className="minimized-badge">
+                    {isRuntimeAuth ? <AlertTriangle size={16} className="text-yellow-400" /> : <div className="spinner spinner--sm"></div>}
+                    <span>{isRuntimeAuth ? t('installation.auth_required') : t('installation.installing')}</span>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="installation-overlay">
             <div className="installation-overlay__card">
                 <div className="installation-header">
-                    <h2 className="installation-header__title">
-                        {isRuntimeAuth ? 'Authentification Requise' : 'Installation en cours...'}
-                    </h2>
-                    <p className="installation-header__subtitle">
-                        {isRuntimeAuth ? 'Le serveur nécessite une authentification pour continuer' : 'Veuillez ne pas fermer cette fenêtre'}
-                    </p>
+                    <div className="flex-col">
+                        <h2 className="installation-header__title">
+                            {isRuntimeAuth ? t('installation.auth_required') : t('installation.installing')}
+                        </h2>
+                        <p className="installation-header__subtitle">
+                            {isRuntimeAuth ? t('installation.auth_required_sub') : t('installation.installing_sub')}
+                        </p>
+                    </div>
+                    <button onClick={() => setIsMinimized(true)} className="btn btn--icon btn--ghost" title="Minimiser">
+                        <div className="w-4 h-1 bg-current rounded"></div>
+                    </button>
                 </div>
 
                 {!isRuntimeAuth && (
@@ -140,21 +161,38 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
 
 
                 {/* Auth Action Required Bubble */}
-                {authUrl && (currentStep < 3 || isRuntimeAuth) && !downloadProgress && (
+                {(currentStep < 3 || isRuntimeAuth) && !downloadProgress && (
                     <div className="installation-auth">
                         <div className="installation-auth__title">
-                            <AlertTriangle size={18} /> Action Requise
+                            <AlertTriangle size={18} /> {t('installation.action_required')}
                         </div>
                         <div className="installation-auth__content">
-                            <p className="text-sm text-yellow-100/80 mb-1">Hytale nécessite une authentification :</p>
-                            <a href={authUrl} target="_blank" rel="noopener noreferrer" className="installation-auth__link">
-                                {authUrl} <ExternalLink size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />
-                            </a>
-                            {authCode && (
-                                <div>
-                                    <span className="text-xs text-muted block mt-2">Code de vérification :</span>
-                                    <span className="installation-auth__code">{authCode}</span>
-                                </div>
+                            {authUrl ? (
+                                <>
+                                    <p className="text-sm text-yellow-100/80 mb-1">{t('installation.auth_needed')}</p>
+                                    <a href={authUrl} target="_blank" rel="noopener noreferrer" className="installation-auth__link">
+                                        {authUrl} <ExternalLink size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />
+                                    </a>
+                                    {authCode && (
+                                        <div>
+                                            <span className="text-xs text-muted block mt-2">{t('installation.verification_code')}</span>
+                                            <span className="installation-auth__code">{authCode}</span>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-sm text-yellow-100/80 mb-3">
+                                        {t('installation.waiting_command')}
+                                    </p>
+                                    <button
+                                        onClick={onSendAuth}
+                                        className="btn btn--primary btn--sm w-full justification-center"
+                                        disabled={!onSendAuth}
+                                    >
+                                        <Terminal size={14} /> {t('installation.send_auth')}
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
@@ -164,7 +202,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                 {downloadProgress && currentStep < 3 && !isRuntimeAuth && (
                     <div className="installation-download">
                         <div className="installation-download__details">
-                            <span>Téléchargement des fichiers...</span>
+                            <span>{t('installation.downloading_files')}</span>
                             <span className="installation-download__percent">{downloadProgress.percent}%</span>
                         </div>
                         <div className="installation-download__bar-container">
@@ -195,11 +233,11 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                 {/* Detailed Logs Collapsible - Always shown to user request */}
                 <details className="installation-details">
                     <summary className="installation-details__summary">
-                        <Terminal size={12} className="mr-2" /> Voir en détails ({logs.length})
+                        <Terminal size={12} className="mr-2" /> {t('installation.view_details')} ({logs.length})
                     </summary>
                     <div className="installation-details__content" ref={logsContainerRef}>
                         {logs.length === 0 ? (
-                            <div className="text-muted italic opacity-50">En attente de logs...</div>
+                            <div className="text-muted italic opacity-50">{t('installation.waiting_logs')}</div>
                         ) : (
                             logs.map((log, i) => (
                                 <div key={i} className="log-line">{log}</div>
@@ -210,11 +248,11 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                 <div className="installation-actions">
                     {currentStep === 3 && !isRuntimeAuth ? (
                         <button onClick={onClose} className="btn-finish">
-                            Terminer
+                            {t('installation.finish')}
                         </button>
                     ) : (
                         <button onClick={onClose} className="btn-cancel">
-                            {isRuntimeAuth ? 'Fermer' : 'Annuler / Fermer'}
+                            {isRuntimeAuth ? t('installation.close') : t('installation.cancel_close')}
                         </button>
                     )}
                 </div>

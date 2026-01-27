@@ -1909,6 +1909,7 @@ export default function ServerDetail() {
                         logs={logs}
                         isInstalling={isInstalling}
                         isAuthRequired={isAuthRequired}
+                        onSendAuth={() => sendServerCommand('/auth login')}
                         onClose={() => {
                             // Check if installation was finished
                             const isFinished = logs.some(l => l.includes('Installation terminée') || l.includes('Installation finished'));

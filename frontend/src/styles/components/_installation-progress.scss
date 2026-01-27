@@ -13,6 +13,40 @@
     padding: 1rem;
     border-radius: 0.75rem; // rounded-xl matches this roughly
 
+    &.minimized {
+        background-color: transparent;
+        backdrop-filter: none;
+        pointer-events: none;
+        justify-content: flex-end;
+        align-items: flex-end;
+        padding: 2rem;
+
+        .minimized-badge {
+            pointer-events: auto;
+            background-color: #1a1b1e;
+            border: 1px solid rgba(251, 191, 36, 0.4);
+            padding: 0.75rem 1rem;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
+            animation: slideUp 0.3s ease-out;
+
+            &:hover {
+                transform: translateY(-2px);
+            }
+
+            span {
+                font-weight: 600;
+                color: #fbbf24; // amber-400
+                font-size: 0.9rem;
+            }
+        }
+    }
+
     &__card {
         background-color: #1a1b1e;
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -21,6 +55,18 @@
         max-width: 32rem; // max-w-lg
         width: 100%;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); // shadow-2xl
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 

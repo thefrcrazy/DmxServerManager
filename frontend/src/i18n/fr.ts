@@ -251,6 +251,29 @@ export const fr = {
         prev: "Précédent",
         next: "Suivant",
         finish: "Terminer"
+    },
+    installation: {
+        auth_required: "Authentification Requise",
+        installing: "Installation en cours...",
+        auth_required_sub: "Le serveur nécessite une authentification pour continuer",
+        installing_sub: "Veuillez ne pas fermer cette fenêtre",
+        action_required: "Action Requise",
+        auth_needed: "Hytale nécessite une authentification :",
+        verification_code: "Code de vérification :",
+        waiting_command: "Le serveur attend une commande d'authentification.",
+        send_auth: "Envoyer /auth login",
+        downloading_files: "Téléchargement des fichiers...",
+        view_details: "Voir en détails",
+        waiting_logs: "En attente de logs...",
+        finish: "Terminer",
+        close: "Fermer",
+        cancel_close: "Annuler / Fermer",
+        steps: {
+            init: "Initialisation",
+            download: "Téléchargement",
+            extract: "Installation",
+            finish: "Finalisation"
+        }
     }
 };
 

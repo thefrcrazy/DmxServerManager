@@ -252,5 +252,28 @@ export const en: TranslationType = {
         prev: "Previous",
         next: "Next",
         finish: "Finish"
+    },
+    installation: {
+        auth_required: "Authentication Required",
+        installing: "Installation in progress...",
+        auth_required_sub: "The server requires authentication to continue",
+        installing_sub: "Please do not close this window",
+        action_required: "Action Required",
+        auth_needed: "Hytale requires authentication:",
+        verification_code: "Verification code:",
+        waiting_command: "The server awaits an authentication command.",
+        send_auth: "Send /auth login",
+        downloading_files: "Downloading files...",
+        view_details: "View details",
+        waiting_logs: "Waiting for logs...",
+        finish: "Finish",
+        close: "Close",
+        cancel_close: "Cancel / Close",
+        steps: {
+            init: "Initialization",
+            download: "Download",
+            extract: "Installation",
+            finish: "Finalization"
+        }
     }
 };
