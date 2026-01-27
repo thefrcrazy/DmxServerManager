@@ -299,7 +299,9 @@ export default function ServerDetail() {
                 setIsAuthRequired(true);
             }
             if (message.includes('Installation terminée') || message.includes('Installation finished')) {
-                // Keep wizard open for a moment or let user close it
+                // Refresh server state to unlock UI
+                setIsInstalling(false);
+                fetchServer();
             }
 
             setLogs((prev) => [...prev, message]);
@@ -355,7 +357,14 @@ export default function ServerDetail() {
                         // Only set installing if not finished AND server is not explicitly running (avoid false positives)
                         if (!isFinished && server?.status !== 'running') {
                             setIsInstalling(true);
-                            if (lines.some((l: string) => l.includes('IMPORTANT') && (l.includes('authentifier') || l.includes('authenticate')))) {
+                            // Checks for both legacy and new auth message formats
+                            const isAuthMsg = lines.some((l: string) =>
+                                (l.includes('IMPORTANT') && (l.includes('authentifier') || l.includes('authenticate'))) ||
+                                (l.includes('[HytaleServer] No server tokens configured')) ||
+                                (l.includes('/auth login to authenticate'))
+                            );
+
+                            if (isAuthMsg) {
                                 setIsAuthRequired(true);
                             }
                         }
@@ -755,7 +764,7 @@ export default function ServerDetail() {
     const fetchLogFiles = async () => {
         if (!id) return;
         try {
-            const response = await fetch(`/api/v1/servers/${id}/files?path=server/logs`, {
+            const response = await fetch(`/api/v1/servers/${id}/files?path=logs`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
             const data = await response.json();
@@ -1162,7 +1171,7 @@ export default function ServerDetail() {
                                     <button onClick={() => fetchFiles('universe')} className="btn btn--sm btn--ghost" title="Mondes (Universe)">
                                         Universe
                                     </button>
-                                    <button onClick={() => fetchFiles('server/logs')} className="btn btn--sm btn--ghost" title="Logs">
+                                    <button onClick={() => fetchFiles('logs')} className="btn btn--sm btn--ghost" title="Logs">
                                         Logs
                                     </button>
                                 </div>
@@ -1275,7 +1284,7 @@ export default function ServerDetail() {
                                         <AlertCircle size={32} />
                                         <p className="font-medium">Aucun fichier de log trouvé</p>
                                         <p className="text-sm">
-                                            Le dossier <code className="bg-dark px-1 rounded">server/logs</code> est vide ou n'existe pas.
+                                            Le dossier <code className="bg-dark px-1 rounded">logs</code> est vide ou n'existe pas.
                                         </p>
                                     </div>
                                 ) : (

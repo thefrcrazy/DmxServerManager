@@ -740,123 +740,71 @@ async fn reinstall_server(
     }
 
     // 3. Clean up server binaries ONLY (Preserve world, config, logs)
-    // Flattened structure: server files are directly in working_dir/server/
-    // We need to handle both legacy (root) and new ({uuid}/server) structures
+    // Flattened structure: server files are directly in working_dir/
     let base_path = Path::new(&server.working_dir);
-    let server_path = base_path.join("server");
     
-    // Ensure base directories exist
+    // Ensure base directory exists
     if !base_path.exists() {
          let _ = fs::create_dir_all(base_path).await;
     }
-    if !server_path.exists() {
-         let _ = fs::create_dir_all(&server_path).await;
-    }
+
+    info!("Cleaning up server binaries in {:?} (preserving user data)...", base_path);
     
-    // Restore manager.json if missing (always in base path)
-    let manager_json_path = base_path.join("manager.json");
-    if !manager_json_path.exists() {
-        info!("Restoring missing manager.json for server {}", id);
-        
-        let config_val = server.config.as_ref()
-            .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
-            
-        let bind_address = config_val.as_ref()
-            .and_then(|c| c.get("bind_address"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("0.0.0.0");
-            
-        let port = config_val.as_ref()
-            .and_then(|c| c.get("port"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5520) as u16;
-            
-        let auth_mode = config_val.as_ref()
-            .and_then(|c| c.get("auth_mode"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("authenticated");
-
-        let manager_config = templates::generate_manager_json(
-            &id,
-            &server.name,
-            server.working_dir.as_str(),
-            bind_address,
-            port,
-            auth_mode,
-            server.java_path.as_deref(),
-            server.min_memory.as_deref(),
-            server.max_memory.as_deref(),
-        );
-
-        if let Ok(mut file) = fs::File::create(&manager_json_path).await {
-            let _ = file.write_all(serde_json::to_string_pretty(&manager_config).unwrap().as_bytes()).await;
-        }
-    }
-
-    if server_path.exists() {
-        info!("Cleaning up server binaries in {:?} (preserving user data)...", server_path);
-        
-        // List of files/dirs to delete for a clean "binary" reinstall
-        let files_to_delete = vec![
-            "HytaleServer.jar",
-            "HytaleServer.aot",
-            "lib", // directory
-            "Assets.zip",
-            "hytale-downloader.zip",
-            "QUICKSTART.md",
-            "hytale-downloader-linux-amd64",
-            "hytale-downloader-windows-amd64.exe",
-            "Server"
-        ];
-        
-        for name in files_to_delete {
-            let p = server_path.join(name);
-            if p.exists() {
-                if p.is_dir() {
-                    let _ = fs::remove_dir_all(&p).await;
-                } else {
-                    let _ = fs::remove_file(&p).await;
-                }
+    // List of files/dirs to delete for a clean "binary" reinstall
+    let files_to_delete = vec![
+        "HytaleServer.jar",
+        "HytaleServer.aot",
+        "lib", // directory
+        "Assets.zip",
+        "hytale-downloader.zip",
+        "QUICKSTART.md",
+        "hytale-downloader-linux-amd64",
+        "hytale-downloader-windows-amd64.exe",
+        "start.bat",
+        "start.sh",
+        "Server" // Legacy nested folder, important for migrating old servers
+    ];
+    
+    for name in files_to_delete {
+        let p = base_path.join(name);
+        if p.exists() {
+            if p.is_dir() {
+                let _ = fs::remove_dir_all(&p).await;
+            } else {
+                let _ = fs::remove_file(&p).await;
             }
         }
-    } else {
-        // Create if missing
-        if let Err(e) = fs::create_dir_all(&server_path).await {
-            return Err(AppError::Internal(format!("Failed to create server directory: {}", e)));
-        }
     }
     
-    // Check if config.json exists, if NOT, generate it.
-    let config_json_path = server_path.join("config.json");
+    // Check if config.json exists at ROOT, if NOT, generate it.
+    let config_json_path = base_path.join("config.json");
     if !config_json_path.exists() {
-        let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
-        let max_players = config_json.as_ref()
-            .and_then(|c| c.get("MaxPlayers"))
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u32)
-            .unwrap_or(100);
+        let auth_default = "authenticated".to_string();
+        let auth_mode = server.config.as_ref()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
+            .and_then(|v| v.get("auth_mode").map(|v| v.as_str().unwrap_or("authenticated").to_string()))
+            .unwrap_or(auth_default);
             
         let hytale_config = templates::generate_config_json(
             &server.name,
-            max_players, 
-            "authenticated" 
+            100, // Default max players if regenerating
+            &auth_mode
         );
         
-        let mut config_file = fs::File::create(&config_json_path).await.map_err(|e| {
-            AppError::Internal(format!("Failed to create config.json: {}", e))
-        })?;
-        config_file.write_all(serde_json::to_string_pretty(&hytale_config).unwrap().as_bytes())
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to write config.json: {}", e)))?;
+        // Write config.json
+        if let Ok(mut config_file) = fs::File::create(&config_json_path).await {
+            let _ = config_file.write_all(serde_json::to_string_pretty(&hytale_config).unwrap().as_bytes()).await;
+        }
     }
 
-
-    // 4. Trigger Installation
+    // 4. Trigger Hytale installation
+    // Pass root path as install path
     spawn_hytale_installation(pool.get_ref().clone(), pm.get_ref().clone(), id.clone(), base_path.to_path_buf());
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ 
-        "success": true, 
-        "message": "Reinstallation started" 
+        "success": true,
+        "message": "Reinstallation started",
+        "working_dir": base_path.to_string_lossy()
     })))
 }
 
