@@ -181,7 +181,10 @@
             font-size: 0.8125rem;
             overflow-y: auto;
             max-height: 600px;
+            overflow-y: auto;
+            max-height: 600px;
             scroll-behavior: smooth;
+            overscroll-behavior: contain; // Prevent parent scrolling
 
             &__line {
                 line-height: 1.4;

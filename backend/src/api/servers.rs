@@ -830,22 +830,45 @@ async fn get_server(
     
     // Fetch persistent players from DB
     let player_rows: Vec<PlayerRow> = sqlx::query_as(
-        "SELECT player_name, is_online, last_seen FROM server_players WHERE server_id = ? ORDER BY is_online DESC, last_seen DESC"
+        "SELECT player_name, is_online, last_seen FROM server_players WHERE server_id = ?"
     )
     .bind(&id)
     .fetch_all(pool.get_ref())
     .await
     .unwrap_or_default();
 
-    let players: Option<Vec<Player>> = if player_rows.is_empty() {
-        None
-    } else {
-        Some(player_rows.into_iter().map(|row| Player {
-            name: row.player_name,
-            is_online: row.is_online != 0,
-            last_seen: row.last_seen,
-        }).collect())
-    };
+    // Create a map for easy lookup/merging
+    let mut players_map: std::collections::HashMap<String, Player> = player_rows.into_iter().map(|row| (row.player_name.clone(), Player {
+        name: row.player_name,
+        is_online: row.is_online != 0,
+        last_seen: row.last_seen,
+    })).collect();
+
+    // Merge with real-time in-memory players (Authority on "Online" status)
+    if let Some(online_names) = pm.get_online_players(&id).await {
+        for name in online_names {
+            players_map.entry(name.clone())
+                .and_modify(|p| {
+                     p.is_online = true; 
+                     // Update last_seen to now if online
+                     p.last_seen = chrono::Utc::now().to_rfc3339();
+                })
+                .or_insert(Player {
+                    name,
+                    is_online: true,
+                    last_seen: chrono::Utc::now().to_rfc3339(),
+                });
+        }
+    }
+
+    let mut final_players: Vec<Player> = players_map.into_values().collect();
+    // Sort: Online first, then by Last Seen
+    final_players.sort_by(|a, b| {
+        b.is_online.cmp(&a.is_online)
+            .then_with(|| b.last_seen.cmp(&a.last_seen))
+    });
+
+    let players = if final_players.is_empty() { None } else { Some(final_players) };
 
     // Parse max_players (DB config or file config)
     let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());

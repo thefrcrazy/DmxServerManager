@@ -21,6 +21,11 @@ pub async fn ws_handler(
     let mut log_rx = pm.subscribe_logs(&server_id);
 
     info!("WebSocket connected for server: {}", server_id);
+    
+    // Send last known metrics immediately
+    if let Some(metrics) = pm.get_last_metrics(&server_id).await {
+        let _ = session.text(metrics).await;
+    }
 
     // Spawn task to handle WebSocket messages
     let server_id_clone = server_id.clone();

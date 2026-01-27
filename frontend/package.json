@@ -10,10 +10,11 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "ansi-to-react": "^6.2.6",
+    "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.2.0",
-    "lucide-react": "^0.468.0"
+    "react-router-dom": "^7.2.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.9",

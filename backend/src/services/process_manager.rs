@@ -9,6 +9,7 @@ use tracing::info;
 use regex::Regex;
 
 use crate::error::AppError;
+use walkdir::WalkDir;
 
 
 
@@ -26,6 +27,7 @@ pub struct ServerProcess {
     child: Option<Child>,
     log_tx: broadcast::Sender<String>,
     players: Arc<std::sync::RwLock<HashSet<String>>>,
+    pub last_metrics: Arc<std::sync::RwLock<Option<String>>>,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -37,8 +39,9 @@ impl ProcessManager {
         let processes_clone = processes.clone();
         tokio::spawn(async move {
             let mut system = sysinfo::System::new_all();
+            let mut tick_count = 0;
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                // Refresh first so we have accurate CPU readings even on first iteration
                 system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
                 
                 {
@@ -50,16 +53,39 @@ impl ProcessManager {
                                 let cpu = process.cpu_usage();
                                 let memory = process.memory(); // in bytes
                                 
-                                let metrics_json = serde_json::json!({
+                                let mut metrics_json = serde_json::json!({
                                     "cpu": cpu,
                                     "memory": memory
                                 });
-                                
-                                let _ = server_proc.log_tx.send(format!("[METRICS]: {}", metrics_json));
+
+                                // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
+                                if tick_count % 15 == 0 {
+                                    let server_path = format!("db/servers/{}", id);
+                                    let size: u64 = WalkDir::new(&server_path)
+                                        .into_iter()
+                                        .filter_map(|entry| entry.ok())
+                                        .filter_map(|entry| entry.metadata().ok())
+                                        .filter(|metadata| metadata.is_file())
+                                        .map(|metadata| metadata.len())
+                                        .sum();
+                                    
+                                    if let Some(obj) = metrics_json.as_object_mut() {
+                                        obj.insert("disk_bytes".to_string(), serde_json::Value::Number(serde_json::Number::from(size)));
+                                    }
+                                }
+
+                                let metrics_msg = format!("[METRICS]: {}", metrics_json);
+                                let _ = server_proc.log_tx.send(metrics_msg.clone());
+                                if let Ok(mut cache) = server_proc.last_metrics.write() {
+                                    *cache = Some(metrics_msg);
+                                }
                             }
                         }
                     }
                 }
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                tick_count += 1;
             }
         });
 
@@ -127,6 +153,7 @@ impl ProcessManager {
                  child: None, 
                  log_tx, 
                  players,
+                 last_metrics: Arc::new(std::sync::RwLock::new(None)),
                  started_at: Some(chrono::Utc::now())
              },
          );
@@ -253,14 +280,16 @@ impl ProcessManager {
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
                 // Regex relaxed to ignore potential timestamp/ANSI codes/prefixes
-                let join_re = Regex::new(r"Adding player '([^']+)'").unwrap();
-                let leave_re = Regex::new(r"Removing player '([^']+)'").unwrap();
+                let join_re = Regex::new(r"(?i)(?:Adding player '([^']+)'|([a-zA-Z0-9_]{3,16}) joined the game| UUID of player ([a-zA-Z0-9_]{3,16}) is)").unwrap();
+                let leave_re = Regex::new(r"(?i)(?:Removing player '([^']+)'|([a-zA-Z0-9_]{3,16}) left the game|([a-zA-Z0-9_]{3,16}) lost connection)").unwrap();
                 let server_started_re = Regex::new(r"Done \([0-9\.]+s\)!").unwrap();
 
                 let pool_clone = pool_clone_opt; // Capture optional pool
 
                 for line in reader.lines().map_while(Result::ok) {
-                     // Write to file
+                    // tracing::debug!("Server {} log line: {}", server_id_clone, line);
+                    
+                    // Write to file
                     if let Some(f) = &log_file_clone {
                         if let Ok(mut guard) = f.lock() {
                             let _ = writeln!(guard, "{}", line);
@@ -269,8 +298,9 @@ impl ProcessManager {
 
                     // Try to match player events
                     if let Some(caps) = join_re.captures(&line) {
-                        if let Some(name) = caps.get(1) {
+                        if let Some(name) = caps.get(1).or(caps.get(2)).or(caps.get(3)) {
                             let player_name = name.as_str().to_string();
+                            info!("Player joined server {}: {}", server_id_clone, player_name);
                             if let Ok(mut p) = players_clone.write() {
                                 p.insert(player_name.clone());
                             }
@@ -299,7 +329,7 @@ impl ProcessManager {
                             }
                         }
                     } else if let Some(caps) = leave_re.captures(&line) {
-                        if let Some(name) = caps.get(1) {
+                        if let Some(name) = caps.get(1).or(caps.get(2)).or(caps.get(3)) {
                             let player_name = name.as_str().to_string();
                             if let Ok(mut p) = players_clone.write() {
                                 p.remove(&player_name);
@@ -370,6 +400,7 @@ impl ProcessManager {
                 child: Some(child), 
                 log_tx, 
                 players,
+                last_metrics: Arc::new(std::sync::RwLock::new(None)),
                 started_at: Some(chrono::Utc::now())
             },
         );
@@ -480,11 +511,10 @@ impl ProcessManager {
 
 
     pub async fn get_online_players(&self, server_id: &str) -> Option<Vec<String>> {
-        if let Ok(processes) = self.processes.try_read() {
-            if let Some(proc) = processes.get(server_id) {
-                if let Ok(players) = proc.players.read() {
-                    return Some(players.iter().cloned().collect());
-                }
+        let processes = self.processes.read().await;
+        if let Some(proc) = processes.get(server_id) {
+            if let Ok(players) = proc.players.read() {
+                return Some(players.iter().cloned().collect());
             }
         }
         None
@@ -501,12 +531,11 @@ impl ProcessManager {
 
     pub async fn get_total_online_players(&self) -> u32 {
         let mut total = 0;
-        if let Ok(processes) = self.processes.try_read() {
-            for proc in processes.values() {
-                 if let Ok(players) = proc.players.read() {
-                     total += players.len() as u32;
-                 }
-            }
+        let processes = self.processes.read().await;
+        for proc in processes.values() {
+             if let Ok(players) = proc.players.read() {
+                 total += players.len() as u32;
+             }
         }
         total
     }
@@ -517,6 +546,16 @@ impl ProcessManager {
                 if let Some(child) = &proc.child {
                     return Some(child.id());
                 }
+            }
+        }
+        None
+    }
+
+    pub async fn get_last_metrics(&self, server_id: &str) -> Option<String> {
+        let processes = self.processes.read().await;
+        if let Some(proc) = processes.get(server_id) {
+            if let Ok(cache) = proc.last_metrics.read() {
+                return cache.clone();
             }
         }
         None

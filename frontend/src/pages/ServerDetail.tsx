@@ -13,6 +13,7 @@ import Checkbox from '../components/Checkbox';
 import RangeSlider from '../components/RangeSlider';
 
 // ... imports
+import Ansi from 'ansi-to-react';
 import InstallationProgress from '../components/InstallationProgress';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
@@ -143,6 +144,7 @@ export default function ServerDetail() {
     const [uptime, setUptime] = useState('--:--:--');
     const [cpuUsage, setCpuUsage] = useState<number>(0);
     const [ramUsage, setRamUsage] = useState<number>(0);
+    const [diskUsage, setDiskUsage] = useState<number | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -175,7 +177,7 @@ export default function ServerDetail() {
     const [javaVersions, setJavaVersions] = useState<{ path: string; version: string }[]>([]);
 
     // Players tab state
-    const [activePlayerTab, setActivePlayerTab] = useState<'online' | 'whitelist' | 'bans' | 'permissions'>('online');
+    const [activePlayerTab, setActivePlayerTab] = useState<'online' | 'history' | 'whitelist' | 'bans' | 'permissions'>('online');
     const [playerData, setPlayerData] = useState<any[]>([]); // Placeholder for list data
     const [isPlayerLoading, setIsPlayerLoading] = useState(false);
 
@@ -264,11 +266,14 @@ export default function ServerDetail() {
             }
 
             // Handle Metrics
-            if (message.startsWith('[METRICS]:')) {
+            if (message.trim().startsWith('[METRICS]:')) {
                 try {
-                    const metrics = JSON.parse(message.substring(10));
+                    const metrics = JSON.parse(message.trim().substring(10));
                     setCpuUsage(metrics.cpu || 0);
                     setRamUsage(metrics.memory || 0);
+                    if (metrics.disk_bytes !== undefined) {
+                        setDiskUsage(metrics.disk_bytes);
+                    }
                 } catch (e) {
                     console.error('Failed to parse metrics', e);
                 }
@@ -930,6 +935,17 @@ export default function ServerDetail() {
                         <div className="stat-card__value stat-card__value--mono">{bindAddress}:{port}</div>
                     </div>
                 </div>
+
+                {/* Disk Usage */}
+                <div className="stat-card">
+                    <div className="stat-card__icon">
+                        <HardDrive size={18} />
+                    </div>
+                    <div className="stat-card__content">
+                        <div className="stat-card__label">Disque</div>
+                        <div className="stat-card__value">{diskUsage !== null ? formatBytes(diskUsage) : '--'}</div>
+                    </div>
+                </div>
             </div>
 
             {/* Tabs - Navbar Style */}
@@ -985,7 +1001,7 @@ export default function ServerDetail() {
                                                             : ''
                                                 }`}
                                         >
-                                            {log}
+                                            <Ansi useClasses={false}>{log}</Ansi>
                                         </div>
                                     ))
                                 )}
@@ -1242,7 +1258,7 @@ export default function ServerDetail() {
                                     </div>
                                 ) : (
                                     <pre className="log-content-pre">
-                                        {logContent || 'Chargement... ou fichier vide.'}
+                                        <Ansi useClasses={false}>{logContent || 'Chargement... ou fichier vide.'}</Ansi>
                                     </pre>
                                 )}
                             </div>
@@ -1604,7 +1620,13 @@ export default function ServerDetail() {
                                         onClick={() => setActivePlayerTab('online')}
                                         className={`tab-btn ${activePlayerTab === 'online' ? 'tab-btn--active' : ''}`}
                                     >
-                                        <Globe size={16} /> En ligne
+                                        <Users size={16} /> En ligne
+                                    </button>
+                                    <button
+                                        onClick={() => setActivePlayerTab('history')}
+                                        className={`tab-btn ${activePlayerTab === 'history' ? 'tab-btn--active' : ''}`}
+                                    >
+                                        <History size={16} /> Historique
                                     </button>
                                     <button
                                         onClick={() => setActivePlayerTab('whitelist')}
@@ -1627,7 +1649,7 @@ export default function ServerDetail() {
                                 </div>
 
                                 <div className="tab-content p-6">
-                                    {activePlayerTab === 'online' && (
+                                    {(activePlayerTab === 'online' || activePlayerTab === 'history') && (
                                         server?.players && server.players.length > 0 ? (
                                             <div className="player-list-manager">
                                                 <table className="data-table">
@@ -1640,72 +1662,76 @@ export default function ServerDetail() {
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {server.players.filter(p => !p.is_online ? false : true).length === 0 ? (
-                                                            <tr><td colSpan={4} className="p-4 text-center text-muted">Aucun joueur en ligne</td></tr>
+                                                        {server.players.filter(p => activePlayerTab === 'history' || p.is_online).length === 0 ? (
+                                                            <tr><td colSpan={4} className="p-4 text-center text-muted">
+                                                                {activePlayerTab === 'online' ? 'Aucun joueur en ligne' : 'Aucun historique de joueur'}
+                                                            </td></tr>
                                                         ) : (
-                                                            server.players.filter(p => p.is_online).map((player, idx) => (
-                                                                <tr key={idx}>
-                                                                    <td>
-                                                                        <div className="player-info">
-                                                                            <div className="avatar">
-                                                                                {player.name.charAt(0).toUpperCase()}
+                                                            server.players
+                                                                .filter(p => activePlayerTab === 'history' || p.is_online)
+                                                                .map((player, idx) => (
+                                                                    <tr key={idx}>
+                                                                        <td>
+                                                                            <div className="player-info">
+                                                                                <div className="avatar">
+                                                                                    {player.name.charAt(0).toUpperCase()}
+                                                                                </div>
+                                                                                <span className="name">{player.name}</span>
                                                                             </div>
-                                                                            <span className="name">{player.name}</span>
-                                                                        </div>
-                                                                    </td>
-                                                                    <td>
-                                                                        {player.is_online ? (
-                                                                            <div className="status-badge">
-                                                                                En ligne
+                                                                        </td>
+                                                                        <td>
+                                                                            {player.is_online ? (
+                                                                                <div className="status-badge">
+                                                                                    En ligne
+                                                                                </div>
+                                                                            ) : (
+                                                                                <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Hors ligne</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td>
+                                                                            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                                                                                {player.is_online ? '-' : new Date(player.last_seen).toLocaleString()}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="text-right">
+                                                                            <div className="player-actions">
+                                                                                <button
+                                                                                    className="btn btn--icon btn--secondary btn--sm"
+                                                                                    onClick={() => {
+                                                                                        if (confirm(`Donner les droits d'administration à ${player.name} ?`)) {
+                                                                                            sendServerCommand(`op add ${player.name}`);
+                                                                                        }
+                                                                                    }}
+                                                                                    title="OP"
+                                                                                >
+                                                                                    <Shield size={14} />
+                                                                                </button>
+                                                                                <button
+                                                                                    className="btn btn--icon btn--danger btn--sm"
+                                                                                    onClick={() => {
+                                                                                        if (confirm(`Bannir ${player.name} ?`)) {
+                                                                                            sendServerCommand(`ban ${player.name}`);
+                                                                                        }
+                                                                                    }}
+                                                                                    title="Ban"
+                                                                                >
+                                                                                    <Ban size={14} />
+                                                                                </button>
+                                                                                <button
+                                                                                    className="btn btn--icon btn--danger btn--sm"
+                                                                                    onClick={() => {
+                                                                                        if (confirm(`Kicker ${player.name} ?`)) {
+                                                                                            sendServerCommand(`kick ${player.name}`);
+                                                                                        }
+                                                                                    }}
+                                                                                    title="Kick"
+                                                                                >
+                                                                                    <LogOut size={14} />
+                                                                                </button>
                                                                             </div>
-                                                                        ) : (
-                                                                            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Hors ligne</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td>
-                                                                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                                                                            {player.is_online ? '-' : new Date(player.last_seen).toLocaleString()}
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="text-right">
-                                                                        <div className="player-actions">
-                                                                            <button
-                                                                                className="btn btn--icon btn--secondary btn--sm"
-                                                                                onClick={() => {
-                                                                                    if (confirm(`Donner les droits d'administration à ${player.name} ?`)) {
-                                                                                        sendServerCommand(`op add ${player.name}`);
-                                                                                    }
-                                                                                }}
-                                                                                title="OP"
-                                                                            >
-                                                                                <Shield size={14} />
-                                                                            </button>
-                                                                            <button
-                                                                                className="btn btn--icon btn--danger btn--sm"
-                                                                                onClick={() => {
-                                                                                    if (confirm(`Bannir ${player.name} ?`)) {
-                                                                                        sendServerCommand(`ban ${player.name}`);
-                                                                                    }
-                                                                                }}
-                                                                                title="Ban"
-                                                                            >
-                                                                                <Ban size={14} />
-                                                                            </button>
-                                                                            <button
-                                                                                className="btn btn--icon btn--danger btn--sm"
-                                                                                onClick={() => {
-                                                                                    if (confirm(`Kicker ${player.name} ?`)) {
-                                                                                        sendServerCommand(`kick ${player.name}`);
-                                                                                    }
-                                                                                }}
-                                                                                title="Kick"
-                                                                            >
-                                                                                <LogOut size={14} />
-                                                                            </button>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            )))}
+                                                                        </td>
+                                                                    </tr>
+                                                                )))}
                                                     </tbody>
                                                 </table>
                                             </div>
