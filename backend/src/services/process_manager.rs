@@ -314,7 +314,8 @@ impl ProcessManager {
         let log_path = logs_dir.join("console.log");
         let log_file = std::fs::OpenOptions::new()
             .create(true)
-            .append(true)
+            .write(true)
+            .truncate(true)
             .open(log_path)
             .ok()
             .map(|f| Arc::new(std::sync::Mutex::new(f)));
