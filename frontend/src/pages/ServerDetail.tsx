@@ -211,6 +211,10 @@ export default function ServerDetail() {
     useEffect(() => {
         serverStatusRef.current = server?.status;
 
+        // Sync local state with authoritative server status
+        setIsInstalling(server?.status === 'installing');
+        setIsAuthRequired(server?.status === 'auth_required');
+
         if ((server?.status === 'running' || server?.status === 'installing') && !wsRef.current) {
             shouldReconnectRef.current = true;
             connectWebSocket();
@@ -357,16 +361,6 @@ export default function ServerDetail() {
                         // Only set installing if not finished AND server is not explicitly running (avoid false positives)
                         if (!isFinished && server?.status !== 'running') {
                             setIsInstalling(true);
-                            // Checks for both legacy and new auth message formats
-                            const isAuthMsg = lines.some((l: string) =>
-                                (l.includes('IMPORTANT') && (l.includes('authentifier') || l.includes('authenticate'))) ||
-                                (l.includes('[HytaleServer] No server tokens configured')) ||
-                                (l.includes('/auth login to authenticate'))
-                            );
-
-                            if (isAuthMsg) {
-                                setIsAuthRequired(true);
-                            }
                         }
                     }
                 }

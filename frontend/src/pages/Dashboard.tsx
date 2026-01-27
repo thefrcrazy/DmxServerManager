@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Server, Activity, HardDrive, Users, Plus, Play, Square, Cpu, MemoryStick } from 'lucide-react';
+import { Server, Activity, HardDrive, Users, Plus, Play, Square, Cpu, MemoryStick, RotateCw, AlertTriangle } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
 
 interface ServerStats {
@@ -295,54 +295,64 @@ export default function Dashboard() {
                 </div>
             ) : (
                 <div className="servers-list">
-                    {servers.map((server) => (
-                        <div
-                            key={server.id}
-                            className={`card server-item server-item--${server.status === 'running' ? 'running' : 'stopped'}`}
-                        >
-                            <div className="server-item__info">
-                                <div className="server-item__icon">
-                                    {server.game_type === 'hytale'
-                                        ? <img src="https://hytale.com/favicon.ico" alt="H" width="24" />
-                                        : <Server size={20} />
-                                    }
-                                </div>
-                                <div>
-                                    <div className="server-item__name">{server.name}</div>
-                                    <div className="server-item__meta">
-                                        <span>{server.game_type}</span>
-                                        <span>•</span>
-                                        <span className={server.status === 'running' ? 'server-item__status--running' : ''}>
-                                            {server.status === 'running' ? 'En ligne' : 'Arrêté'}
-                                        </span>
+                    {servers.map((server) => {
+                        const isRunning = server.status === 'running';
+                        const isInstalling = server.status === 'installing';
+                        const isAuthRequired = server.status === 'auth_required';
 
-                                        <>
-                                            <span className="server-item__players">
-                                                <Users size={14} />
-                                                Joueur(s): {server.players ? server.players.length : 0}
+                        return (
+                            <div
+                                key={server.id}
+                                className={`card server-item server-item--${isRunning ? 'running' : 'stopped'}`}
+                            >
+                                <div className="server-item__info">
+                                    <div className="server-item__icon">
+                                        {isInstalling ? <RotateCw size={20} className="spin" />
+                                            : isAuthRequired ? <AlertTriangle size={20} className="text-warning" />
+                                                : server.game_type === 'hytale'
+                                                    ? <img src="https://hytale.com/favicon.ico" alt="H" width="24" />
+                                                    : <Server size={20} />
+                                        }
+                                    </div>
+                                    <div>
+                                        <div className="server-item__name">{server.name}</div>
+                                        <div className="server-item__meta">
+                                            <span>{server.game_type}</span>
+                                            <span>•</span>
+                                            <span className={isRunning ? 'server-item__status--running' : isInstalling ? 'text-info' : isAuthRequired ? 'text-warning' : ''}>
+                                                {isRunning ? 'En ligne' : isInstalling ? 'Installation...' : isAuthRequired ? 'Auth Requise' : 'Arrêté'}
                                             </span>
-                                        </>
+
+                                            <>
+                                                <span className="server-item__players">
+                                                    <Users size={14} />
+                                                    Joueur(s): {server.players ? server.players.length : 0}
+                                                </span>
+                                            </>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="server-item__actions">
-                                <Link to={`/servers/${server.id}`} className="btn btn--secondary btn--sm">
-                                    Console
-                                </Link>
+                                <div className="server-item__actions">
+                                    <Link to={`/servers/${server.id}`} className={`btn btn--secondary btn--sm ${isAuthRequired ? 'btn--warning' : ''}`}>
+                                        {isAuthRequired ? 'Authentifier' : 'Console'}
+                                    </Link>
 
-                                {server.status === 'stopped' ? (
-                                    <button className="btn btn--success btn--sm" onClick={() => handleServerAction(server.id, 'start')}>
-                                        <Play size={16} />
-                                    </button>
-                                ) : (
-                                    <button className="btn btn--danger btn--sm" onClick={() => handleServerAction(server.id, 'stop')}>
-                                        <Square size={16} />
-                                    </button>
-                                )}
+                                    {!isRunning && !isInstalling && !isAuthRequired && (
+                                        <button className="btn btn--success btn--sm" onClick={() => handleServerAction(server.id, 'start')}>
+                                            <Play size={16} />
+                                        </button>
+                                    )}
+
+                                    {isRunning && (
+                                        <button className="btn btn--danger btn--sm" onClick={() => handleServerAction(server.id, 'stop')}>
+                                            <Square size={16} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             )
             }

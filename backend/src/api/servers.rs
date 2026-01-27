@@ -145,8 +145,10 @@ async fn list_servers(
         let dir_exists = Path::new(&s.working_dir).exists();
         let is_running = pm.is_running(&s.id);
         
-        let status = if !dir_exists {
-            "missing"
+        let status = if !dir_exists { 
+            "missing" 
+        } else if pm.is_installing(&s.id) {
+            if pm.is_auth_required(&s.id) { "auth_required" } else { "installing" }
         } else if is_running {
             "running"
         } else {
@@ -515,6 +517,13 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             let id = id.clone();
             let log_file = log_file.clone();
             async move {
+                // Check for auth requirement
+                if (msg.contains("IMPORTANT") && (msg.contains("authentifier") || msg.contains("authenticate"))) ||
+                   (msg.contains("[HytaleServer] No server tokens configured")) ||
+                   (msg.contains("/auth login to authenticate")) {
+                    pm.set_auth_required(&id, true);
+                }
+
                 pm.broadcast_log(&id, msg.clone()).await;
                 if let Some(f) = log_file {
                     let mut guard = f.lock().await;
@@ -823,14 +832,17 @@ async fn get_server(
     .await?
     .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
 
+    let dir_exists = Path::new(&server.working_dir).exists();
     let is_running = pm.is_running(&server.id);
-    let status = if is_running {
+    let status = if !dir_exists {
+        "missing"
+    } else if pm.is_installing(&server.id) {
+        if pm.is_auth_required(&server.id) { "auth_required" } else { "installing" }
+    } else if is_running {
         "running"
     } else {
         "stopped"
     };
-
-    let dir_exists = Path::new(&server.working_dir).exists();
     
     // Fetch persistent players from DB
     let player_rows: Vec<PlayerRow> = sqlx::query_as(

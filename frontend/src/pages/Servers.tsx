@@ -122,13 +122,15 @@ export default function Servers() {
                         {servers.map(server => {
                             const isRunning = server.status === 'running';
                             const isMissing = server.status === 'missing';
+                            const isInstalling = server.status === 'installing';
+                            const isAuthRequired = server.status === 'auth_required';
 
                             return (
-                                <tr key={server.id} className={`server-row ${isRunning ? 'server-row--running' : ''} ${isMissing ? 'server-row--missing' : ''}`}>
+                                <tr key={server.id} className={`server-row ${isRunning ? 'server-row--running' : ''} ${isMissing ? 'server-row--missing' : ''} ${isInstalling ? 'server-row--installing' : ''}`}>
                                     <td>
                                         <div className="server-name">
-                                            <div className={`server-icon ${isRunning ? 'server-icon--running' : ''} ${isMissing ? 'server-icon--missing' : ''}`}>
-                                                {isMissing ? <AlertTriangle size={18} /> : <ServerIcon size={18} />}
+                                            <div className={`server-icon ${isRunning ? 'server-icon--running' : ''} ${isMissing ? 'server-icon--missing' : ''} ${isInstalling ? 'server-icon--installing' : ''}`}>
+                                                {isMissing ? <AlertTriangle size={18} /> : isAuthRequired ? <AlertTriangle size={18} className="text-warning" /> : isInstalling ? <RotateCw size={18} className="spin" /> : <ServerIcon size={18} />}
                                             </div>
                                             <Link to={`/servers/${server.id}`} className="server-link">
                                                 {server.name}
@@ -142,6 +144,14 @@ export default function Servers() {
                                                     <AlertTriangle size={14} />
                                                     Corrompu
                                                 </span>
+                                            ) : isInstalling ? (
+                                                <span className="text-info text-sm flex items-center gap-1">
+                                                    <RotateCw size={14} className="spin" /> Installation...
+                                                </span>
+                                            ) : isAuthRequired ? (
+                                                <Link to={`/servers/${server.id}`} className="btn btn--sm btn--warning">
+                                                    Authentifier
+                                                </Link>
                                             ) : isRunning ? (
                                                 <>
                                                     <button
@@ -208,8 +218,8 @@ export default function Servers() {
                                         {server.players ? `${server.players.length}` : '0'} / {server.max_players || '?'} Max
                                     </td>
                                     <td className="text-right">
-                                        <span className={`badge badge--${isMissing ? 'warning' : server.status === 'running' ? 'success' : 'danger'}`}>
-                                            {isMissing ? 'Missing' : server.status === 'running' ? 'Online' : 'Offline'}
+                                        <span className={`badge badge--${isMissing ? 'warning' : isAuthRequired ? 'warning' : isInstalling ? 'info' : server.status === 'running' ? 'success' : 'danger'}`}>
+                                            {isMissing ? 'Missing' : isAuthRequired ? 'Auth Required' : isInstalling ? 'Installing' : server.status === 'running' ? 'Online' : 'Offline'}
                                         </span>
                                     </td>
                                 </tr>

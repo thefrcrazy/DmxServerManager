@@ -33,6 +33,7 @@ pub struct ServerProcess {
     pub last_disk: Arc<std::sync::RwLock<u64>>,
     pub working_dir: String,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub auth_required: Arc<std::sync::RwLock<bool>>,
 }
 
 impl ProcessManager {
@@ -139,10 +140,39 @@ impl ProcessManager {
         }
         false
     }
+    
+    pub fn is_installing(&self, server_id: &str) -> bool {
+        if let Ok(processes) = self.processes.try_read() {
+            if let Some(proc) = processes.get(server_id) {
+                return proc.child.is_none();
+            }
+        }
+        false
+    }
+
+    pub fn is_auth_required(&self, server_id: &str) -> bool {
+        if let Ok(processes) = self.processes.try_read() {
+            if let Some(proc) = processes.get(server_id) {
+                if let Ok(auth) = proc.auth_required.read() {
+                    return *auth;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn set_auth_required(&self, server_id: &str, required: bool) {
+        if let Ok(processes) = self.processes.try_read() {
+            if let Some(proc) = processes.get(server_id) {
+                if let Ok(mut auth) = proc.auth_required.write() {
+                    *auth = required;
+                }
+            }
+        }
+    }
 
     pub fn subscribe_logs(&self, server_id: &str) -> broadcast::Receiver<String> {
         let (_tx, rx) = broadcast::channel(1000);
-        // If server exists, return its receiver; otherwise return empty receiver
         if let Ok(processes) = self.processes.try_read() {
             if let Some(proc) = processes.get(server_id) {
                 return proc.log_tx.subscribe();
@@ -171,7 +201,8 @@ impl ProcessManager {
                  last_memory: Arc::new(std::sync::RwLock::new(0)),
                  last_disk: Arc::new(std::sync::RwLock::new(0)),
                  working_dir: working_dir.to_string(),
-                 started_at: Some(chrono::Utc::now())
+                 started_at: Some(chrono::Utc::now()),
+                 auth_required: Arc::new(std::sync::RwLock::new(false)),
              },
          );
          Ok(())
@@ -295,6 +326,8 @@ impl ProcessManager {
         // Create players tracker
         let players = Arc::new(std::sync::RwLock::new(HashSet::new()));
 
+        let auth_required = Arc::new(std::sync::RwLock::new(false));
+
         // Spawn task to read stdout
         if let Some(stdout) = child.stdout.take() {
             let tx = log_tx.clone();
@@ -302,13 +335,18 @@ impl ProcessManager {
             let server_id_clone = server_id.to_string();
             let log_file_clone = log_file.clone();
             let pool_clone_opt = self.pool.clone();
+            let auth_required_clone = auth_required.clone();
             
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
-                // Regex relaxed to ignore potential timestamp/ANSI codes/prefixes
-                let join_re = Regex::new(r"(?i)(?:Adding player '([^']+)'|([a-zA-Z0-9_]{3,16}) joined the game| UUID of player ([a-zA-Z0-9_]{3,16}) is)").unwrap();
-                let leave_re = Regex::new(r"(?i)(?:Removing player '([^']+)'|([a-zA-Z0-9_]{3,16}) left the game|([a-zA-Z0-9_]{3,16}) lost connection)").unwrap();
-                let server_started_re = Regex::new(r"Done \([0-9\.]+s\)!").unwrap();
+                let join_re = Regex::new(r"\[.*\] \[.*\]: (.*) joined the game").unwrap();
+                let leave_re = Regex::new(r"\[.*\] \[.*\]: (.*) left the game").unwrap();
+                // Also match "Authentication successful! Welcome, [Player]!" logic if needed?
+                // Actually server emits "Player joined" essentially.
+
+                // Regex for "Server started" or similar if we want to change status?
+                // Hytale: "[HytaleServer] Universe ready!"
+                let server_started_re = Regex::new(r"Universe ready!").unwrap();
 
                 let pool_clone = pool_clone_opt; // Capture optional pool
 
@@ -324,7 +362,7 @@ impl ProcessManager {
 
                     // Try to match player events
                     if let Some(caps) = join_re.captures(&line) {
-                        if let Some(name) = caps.get(1).or(caps.get(2)).or(caps.get(3)) {
+                        if let Some(name) = caps.get(1) {
                             let player_name = name.as_str().to_string();
                             info!("Player joined server {}: {}", server_id_clone, player_name);
                             if let Ok(mut p) = players_clone.write() {
@@ -355,7 +393,7 @@ impl ProcessManager {
                             }
                         }
                     } else if let Some(caps) = leave_re.captures(&line) {
-                        if let Some(name) = caps.get(1).or(caps.get(2)).or(caps.get(3)) {
+                        if let Some(name) = caps.get(1) {
                             let player_name = name.as_str().to_string();
                             if let Ok(mut p) = players_clone.write() {
                                 p.remove(&player_name);
@@ -383,6 +421,15 @@ impl ProcessManager {
                          let _ = tx.send(format!("[STATUS]: running"));
                     }
 
+                    // Runtime Auth Detection
+                    if (line.contains("IMPORTANT") && (line.contains("authentifier") || line.contains("authenticate"))) ||
+                       (line.contains("[HytaleServer] No server tokens configured")) ||
+                       (line.contains("/auth login to authenticate")) {
+                         if let Ok(mut auth) = auth_required_clone.write() {
+                             *auth = true;
+                         }
+                    }
+
                     let _ = tx.send(line);
                 }
                 
@@ -403,6 +450,7 @@ impl ProcessManager {
             let tx = log_tx.clone();
             let server_id_clone = server_id.to_string();
             let log_file_clone = log_file.clone();
+            let auth_required_clone = auth_required.clone();
 
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
@@ -415,6 +463,15 @@ impl ProcessManager {
                         }
                     }
                     let _ = tx.send(log_line);
+                    
+                    // Runtime Auth Detection (stderr)
+                     if (line.contains("IMPORTANT") && (line.contains("authentifier") || line.contains("authenticate"))) ||
+                       (line.contains("[HytaleServer] No server tokens configured")) ||
+                       (line.contains("/auth login to authenticate")) {
+                            if let Ok(mut auth) = auth_required_clone.write() {
+                             *auth = true;
+                         }
+                    }
                 }
                 info!("Server {} stderr stream ended", server_id_clone);
             });
@@ -431,7 +488,8 @@ impl ProcessManager {
                 last_memory: Arc::new(std::sync::RwLock::new(0)),
                 last_disk: Arc::new(std::sync::RwLock::new(0)),
                 working_dir: working_dir.to_string(),
-                started_at: Some(chrono::Utc::now())
+                started_at: Some(chrono::Utc::now()),
+                auth_required: auth_required,
             },
         );
 
