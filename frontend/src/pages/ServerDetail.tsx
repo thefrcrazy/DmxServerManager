@@ -390,7 +390,7 @@ export default function ServerDetail() {
     };
 
     useEffect(() => {
-        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        logsEndRef.current?.scrollIntoView({ behavior: "instant" });
     }, [logs]);
 
     useEffect(() => {

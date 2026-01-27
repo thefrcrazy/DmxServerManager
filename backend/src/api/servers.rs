@@ -150,7 +150,7 @@ async fn list_servers(
         } else if pm.is_installing(&s.id) {
             if pm.is_auth_required(&s.id) { "auth_required" } else { "installing" }
         } else if is_running {
-            "running"
+             if pm.is_auth_required(&s.id) { "auth_required" } else { "running" }
         } else {
             "stopped"
         };
@@ -839,7 +839,7 @@ async fn get_server(
     } else if pm.is_installing(&server.id) {
         if pm.is_auth_required(&server.id) { "auth_required" } else { "installing" }
     } else if is_running {
-        "running"
+        if pm.is_auth_required(&server.id) { "auth_required" } else { "running" }
     } else {
         "stopped"
     };
