@@ -86,8 +86,10 @@ async fn run_status_update(pool: &DbPool, sys: &mut System, pm: &ProcessManager)
     // Let's use the DB servers table like webhook.rs to ensure "Serveurs (X/Y)" matches the dashboard.
     // Reading FS is risky if names don't match IDs perfectly.
     
-    let servers: Vec<(String, String)> = sqlx::query_as(
-        "SELECT name, id FROM servers ORDER BY name"
+    // 2. Get Servers Info
+    // Fetch config as well to get MaxPlayers
+    let servers: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT name, id, config FROM servers ORDER BY name"
     )
     .fetch_all(pool)
     .await?;
@@ -96,12 +98,60 @@ async fn run_status_update(pool: &DbPool, sys: &mut System, pm: &ProcessManager)
     let mut online_servers = 0;
     let mut server_lines = Vec::new();
 
-    for (name, id) in servers {
+    for (name, id, config_str) in servers {
         total_servers += 1;
         let is_running = pm.is_running(&id);
+        
         if is_running {
             online_servers += 1;
-            server_lines.push(format!("🟢 **{}**", name));
+            
+            // Get rich stats
+            let mut details = String::new();
+            
+            // 1. Players
+            let online_players = pm.get_online_players(&id).await
+                .map(|p| p.len()).unwrap_or(0);
+                
+            // Parse MaxPlayers
+            let mut max_players = 100; // Default
+            if let Some(conf) = config_str.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok()) {
+                if let Some(mp) = conf.get("MaxPlayers").and_then(|v| v.as_u64()) {
+                     max_players = mp as usize;
+                }
+            }
+            
+            details.push_str(&format!("👥 {}/{}", online_players, max_players));
+            
+            // 2. Uptime
+            if let Some(started_at) = pm.get_server_started_at(&id).await {
+                let duration = chrono::Utc::now().signed_duration_since(started_at);
+                let hours = duration.num_hours();
+                let minutes = duration.num_minutes() % 60;
+                details.push_str(&format!(" • ⏱️ {}h{}m", hours, minutes));
+            }
+            
+            // 3. CPU/RAM
+            if let Some(pid_u32) = pm.get_server_pid(&id).await {
+                 let pid = sysinfo::Pid::from(pid_u32 as usize);
+                 // Need to refresh specific process
+                 // sysinfo 0.30+
+                 sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+                 
+                 if let Some(proc) = sys.process(pid) {
+                     let cpu = proc.cpu_usage();
+                     let mem_bytes = proc.memory();
+                     let mem_mb = mem_bytes as f64 / 1024.0 / 1024.0;
+                     let mem_gb = mem_mb / 1024.0;
+                     
+                     if mem_gb >= 1.0 {
+                         details.push_str(&format!(" • 📊 CPU: {:.1}% RAM: {:.1} GB", cpu, mem_gb));
+                     } else {
+                         details.push_str(&format!(" • 📊 CPU: {:.1}% RAM: {:.0} MB", cpu, mem_mb));
+                     }
+                 }
+            }
+
+            server_lines.push(format!("🟢 **{}**\n╰ {}", name, details));
         } else {
             server_lines.push(format!("🔴 **{}**", name));
         }
@@ -110,8 +160,8 @@ async fn run_status_update(pool: &DbPool, sys: &mut System, pm: &ProcessManager)
     let server_list_str = if server_lines.is_empty() {
         "Aucun serveur détecté.".to_string()
     } else {
-        let mut result = server_lines.join("\n");
-        // Simple truncation if too long ? Discord limits field value to 1024.
+        let mut result = server_lines.join("\n\n"); // Double newline for spacing
+        // Basic truncation check
         if result.len() > 1000 {
             result.truncate(1000);
             result.push_str("\n...");

@@ -427,6 +427,17 @@ impl ProcessManager {
         }
         total
     }
+
+    pub async fn get_server_pid(&self, server_id: &str) -> Option<u32> {
+        if let Ok(processes) = self.processes.try_read() {
+            if let Some(proc) = processes.get(server_id) {
+                if let Some(child) = &proc.child {
+                    return Some(child.id());
+                }
+            }
+        }
+        None
+    }
 }
 
 impl Default for ProcessManager {
