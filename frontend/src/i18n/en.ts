@@ -262,7 +262,7 @@ export const en: TranslationType = {
         auth_needed: "Hytale requires authentication:",
         verification_code: "Verification code:",
         waiting_command: "The server awaits an authentication command.",
-        send_auth: "Send /auth login",
+        send_auth: "Send /auth login device",
         downloading_files: "Downloading files...",
         view_details: "View details",
         waiting_logs: "Waiting for logs...",

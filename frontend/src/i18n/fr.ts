@@ -261,7 +261,7 @@ export const fr = {
         auth_needed: "Hytale nécessite une authentification :",
         verification_code: "Code de vérification :",
         waiting_command: "Le serveur attend une commande d'authentification.",
-        send_auth: "Envoyer /auth login",
+        send_auth: "Envoyer /auth login device",
         downloading_files: "Téléchargement des fichiers...",
         view_details: "Voir en détails",
         waiting_logs: "En attente de logs...",
