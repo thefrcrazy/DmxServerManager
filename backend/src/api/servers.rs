@@ -33,6 +33,9 @@ pub struct Player {
     pub name: String,
     pub is_online: bool,
     pub last_seen: String,
+    pub is_op: bool,
+    pub is_banned: bool,
+    pub is_whitelisted: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,6 +59,9 @@ pub struct ServerResponse {
     pub max_players: Option<u32>,
     pub port: Option<u16>,
     pub bind_address: Option<String>,
+    pub cpu_usage: f32,
+    pub memory_usage_bytes: u64,
+    pub disk_usage_bytes: u64,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -120,7 +126,10 @@ async fn list_servers(
                      players_vec.push(Player {
                          name: p_name,
                          is_online: true,
-                         last_seen: Utc::now().to_rfc3339()
+                         last_seen: Utc::now().to_rfc3339(),
+                         is_op: false,
+                         is_banned: false,
+                         is_whitelisted: false,
                      });
                 }
             }
@@ -145,6 +154,7 @@ async fn list_servers(
         }
 
         let started_at = pm.get_server_started_at(&s.id).await;
+        let (cpu, mem, disk) = pm.get_metrics_data(&s.id).await;
 
         responses.push(ServerResponse {
             id: s.id,
@@ -172,6 +182,9 @@ async fn list_servers(
                 .and_then(|c| c.get("bind_address"))
                 .and_then(|v| v.as_str())
                 .map(|v| v.to_string()),
+            cpu_usage: cpu,
+            memory_usage_bytes: mem,
+            disk_usage_bytes: disk,
             started_at,
         });
     }
@@ -842,6 +855,9 @@ async fn get_server(
         name: row.player_name,
         is_online: row.is_online != 0,
         last_seen: row.last_seen,
+        is_op: false,
+        is_banned: false,
+        is_whitelisted: false,
     })).collect();
 
     // Merge with real-time in-memory players (Authority on "Online" status)
@@ -854,10 +870,37 @@ async fn get_server(
                      p.last_seen = chrono::Utc::now().to_rfc3339();
                 })
                 .or_insert(Player {
-                    name,
+                    name: name.clone(),
                     is_online: true,
                     last_seen: chrono::Utc::now().to_rfc3339(),
+                    is_op: false,
+                    is_banned: false,
+                    is_whitelisted: false,
                 });
+        }
+    }
+
+    // Load extra metadata (OP, Banned, Whitelisted) from server files
+    let meta = load_player_meta(&server.working_dir).await;
+    
+    // Ensure players discovered via files are in the map
+    for (name, m) in &meta {
+        players_map.entry(name.clone()).or_insert(Player {
+            name: name.clone(),
+            is_online: false,
+            last_seen: "Jamais".to_string(), // Placeholder for players found only in files
+            is_op: m.is_op,
+            is_banned: m.is_banned,
+            is_whitelisted: m.is_whitelisted,
+        });
+    }
+
+    // Update metadata for existing players
+    for (name, p) in players_map.iter_mut() {
+        if let Some(m) = meta.get(name) {
+            p.is_op = m.is_op;
+            p.is_banned = m.is_banned;
+            p.is_whitelisted = m.is_whitelisted;
         }
     }
 
@@ -900,6 +943,7 @@ async fn get_server(
         .or(Some("0.0.0.0".to_string()));
 
     let started_at = pm.get_server_started_at(&server.id).await;
+    let (cpu, mem, disk) = pm.get_metrics_data(&server.id).await;
 
     Ok(HttpResponse::Ok().json(ServerResponse {
         id: server.id,
@@ -921,6 +965,9 @@ async fn get_server(
         max_players,
         port,
         bind_address,
+        cpu_usage: cpu,
+        memory_usage_bytes: mem,
+        disk_usage_bytes: disk,
         started_at,
     }))
 }
@@ -1505,4 +1552,62 @@ async fn delete_server_file(
         "success": true,
         "path": body.path
     })))
+}
+
+struct PlayerMeta {
+    is_op: bool,
+    is_whitelisted: bool,
+    is_banned: bool,
+}
+
+async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String, PlayerMeta> {
+    let mut meta_map: std::collections::HashMap<String, PlayerMeta> = std::collections::HashMap::new();
+    let server_path = Path::new(working_dir).join("server");
+
+    // 1. Load Permissions (OPs)
+    let ops_path = server_path.join("permissions.json");
+    if let Ok(content) = fs::read_to_string(ops_path).await {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(arr) = json.as_array() {
+                for item in arr {
+                    if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                        let entry = meta_map.entry(name.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: false, is_banned: false });
+                        entry.is_op = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Load Whitelist
+    let wl_path = server_path.join("whitelist.json");
+    if let Ok(content) = fs::read_to_string(wl_path).await {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(arr) = json.as_array() {
+                for item in arr {
+                    if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                        let entry = meta_map.entry(name.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: false, is_banned: false });
+                        entry.is_whitelisted = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Load Bans
+    let bans_path = server_path.join("bans.json");
+    if let Ok(content) = fs::read_to_string(bans_path).await {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(arr) = json.as_array() {
+                for item in arr {
+                    if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                        let entry = meta_map.entry(name.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: false, is_banned: false });
+                        entry.is_banned = true;
+                    }
+                }
+            }
+        }
+    }
+
+    meta_map
 }

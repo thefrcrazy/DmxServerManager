@@ -28,6 +28,9 @@ pub struct ServerProcess {
     log_tx: broadcast::Sender<String>,
     players: Arc<std::sync::RwLock<HashSet<String>>>,
     pub last_metrics: Arc<std::sync::RwLock<Option<String>>>,
+    pub last_cpu: Arc<std::sync::RwLock<f32>>,
+    pub last_memory: Arc<std::sync::RwLock<u64>>,
+    pub last_disk: Arc<std::sync::RwLock<u64>>,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -72,12 +75,21 @@ impl ProcessManager {
                                     if let Some(obj) = metrics_json.as_object_mut() {
                                         obj.insert("disk_bytes".to_string(), serde_json::Value::Number(serde_json::Number::from(size)));
                                     }
+                                    if let Ok(mut disk_cache) = server_proc.last_disk.write() {
+                                        *disk_cache = size;
+                                    }
                                 }
 
                                 let metrics_msg = format!("[METRICS]: {}", metrics_json);
                                 let _ = server_proc.log_tx.send(metrics_msg.clone());
                                 if let Ok(mut cache) = server_proc.last_metrics.write() {
                                     *cache = Some(metrics_msg);
+                                }
+                                if let Ok(mut cpu_cache) = server_proc.last_cpu.write() {
+                                    *cpu_cache = cpu;
+                                }
+                                if let Ok(mut mem_cache) = server_proc.last_memory.write() {
+                                    *mem_cache = memory;
                                 }
                             }
                         }
@@ -154,6 +166,9 @@ impl ProcessManager {
                  log_tx, 
                  players,
                  last_metrics: Arc::new(std::sync::RwLock::new(None)),
+                 last_cpu: Arc::new(std::sync::RwLock::new(0.0)),
+                 last_memory: Arc::new(std::sync::RwLock::new(0)),
+                 last_disk: Arc::new(std::sync::RwLock::new(0)),
                  started_at: Some(chrono::Utc::now())
              },
          );
@@ -401,6 +416,9 @@ impl ProcessManager {
                 log_tx, 
                 players,
                 last_metrics: Arc::new(std::sync::RwLock::new(None)),
+                last_cpu: Arc::new(std::sync::RwLock::new(0.0)),
+                last_memory: Arc::new(std::sync::RwLock::new(0)),
+                last_disk: Arc::new(std::sync::RwLock::new(0)),
                 started_at: Some(chrono::Utc::now())
             },
         );
@@ -559,6 +577,17 @@ impl ProcessManager {
             }
         }
         None
+    }
+
+    pub async fn get_metrics_data(&self, server_id: &str) -> (f32, u64, u64) {
+        let processes = self.processes.read().await;
+        if let Some(proc) = processes.get(server_id) {
+            let cpu = proc.last_cpu.read().map(|g| *g).unwrap_or(0.0);
+            let mem = proc.last_memory.read().map(|g| *g).unwrap_or(0);
+            let disk = proc.last_disk.read().map(|g| *g).unwrap_or(0);
+            return (cpu, mem, disk);
+        }
+        (0.0, 0, 0)
     }
 }
 

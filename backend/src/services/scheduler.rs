@@ -11,8 +11,8 @@ pub fn start(pool: web::Data<DbPool>, process_manager: web::Data<ProcessManager>
         // Wait a bit for server start
         time::sleep(Duration::from_secs(5)).await;
         
-        // Loop interval 1 minute
-        let mut interval = time::interval(Duration::from_secs(60));
+        // Loop interval 5 seconds
+        let mut interval = time::interval(Duration::from_secs(5));
         
         // System info instance
         let mut sys = System::new_with_specifics(

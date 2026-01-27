@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
     Plus, Play, Square, RotateCw, Skull, Server as ServerIcon, AlertTriangle
 } from 'lucide-react';
+import { formatBytes } from '../utils/formatters';
 import Table from '../components/Table';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
@@ -18,6 +19,9 @@ interface Server {
     dir_exists: boolean;
     players?: string[];
     max_players?: number;
+    cpu_usage: number;
+    memory_usage_bytes: number;
+    disk_usage_bytes: number;
 }
 
 export default function Servers() {
@@ -174,21 +178,29 @@ export default function Servers() {
                                     <td>
                                         <div className="usage-bar">
                                             <div className="usage-bar__track">
-                                                <div className="usage-bar__fill usage-bar__fill--cpu" />
+                                                <div
+                                                    className="usage-bar__fill usage-bar__fill--cpu"
+                                                    style={{ width: `${Math.min(100, server.cpu_usage)}%` }}
+                                                />
                                             </div>
-                                            <span className="usage-bar__text">0.0%</span>
+                                            <span className="usage-bar__text">{server.cpu_usage.toFixed(1)}%</span>
                                         </div>
                                     </td>
                                     <td>
                                         <div className="usage-bar">
                                             <div className="usage-bar__track">
-                                                <div className="usage-bar__fill usage-bar__fill--mem" />
+                                                <div
+                                                    className="usage-bar__fill usage-bar__fill--mem"
+                                                    style={{ width: `${Math.min(100, (server.memory_usage_bytes / 1024 / 1024 / 1024 / 16) * 100)}%` }} // Assuming 16GB scale for visual
+                                                />
                                             </div>
-                                            <span className="usage-bar__text">0.0% - 0 MB</span>
+                                            <span className="usage-bar__text">
+                                                {formatBytes(server.memory_usage_bytes)}
+                                            </span>
                                         </div>
                                     </td>
                                     <td className="text-cell">
-                                        --
+                                        {server.disk_usage_bytes > 0 ? formatBytes(server.disk_usage_bytes) : '--'}
                                     </td>
                                     <td className="text-cell">
                                         {server.players ? `${server.players.length}` : '0'} / {server.max_players || '?'} Max

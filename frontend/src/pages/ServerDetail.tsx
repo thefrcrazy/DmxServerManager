@@ -37,6 +37,9 @@ interface Player {
     name: string;
     is_online: boolean;
     last_seen: string;
+    is_op?: boolean;
+    is_banned?: boolean;
+    is_whitelisted?: boolean;
 }
 
 interface Server {
@@ -1676,7 +1679,14 @@ export default function ServerDetail() {
                                                                                 <div className="avatar">
                                                                                     {player.name.charAt(0).toUpperCase()}
                                                                                 </div>
-                                                                                <span className="name">{player.name}</span>
+                                                                                <div className="flex-col">
+                                                                                    <span className="name">{player.name}</span>
+                                                                                    <div className="flex gap-1 mt-1">
+                                                                                        {player.is_op && <span style={{ fontSize: '0.65rem', background: 'var(--color-primary)', color: 'white', padding: '1px 4px', borderRadius: '4px' }}>OP</span>}
+                                                                                        {player.is_banned && <span style={{ fontSize: '0.65rem', background: 'var(--color-danger)', color: 'white', padding: '1px 4px', borderRadius: '4px' }}>BAN</span>}
+                                                                                        {player.is_whitelisted && <span style={{ fontSize: '0.65rem', background: 'var(--color-success)', color: 'white', padding: '1px 4px', borderRadius: '4px' }}>WL</span>}
+                                                                                    </div>
+                                                                                </div>
                                                                             </div>
                                                                         </td>
                                                                         <td>
@@ -1690,30 +1700,34 @@ export default function ServerDetail() {
                                                                         </td>
                                                                         <td>
                                                                             <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                                                                                {player.is_online ? '-' : new Date(player.last_seen).toLocaleString()}
+                                                                                {player.is_online ? '-' : (player.last_seen === 'Jamais' ? 'Jamais' : new Date(player.last_seen).toLocaleString())}
                                                                             </span>
                                                                         </td>
                                                                         <td className="text-right">
                                                                             <div className="player-actions">
                                                                                 <button
-                                                                                    className="btn btn--icon btn--secondary btn--sm"
+                                                                                    className={`btn btn--icon ${player.is_op ? 'btn--primary' : 'btn--secondary'} btn--sm`}
                                                                                     onClick={() => {
-                                                                                        if (confirm(`Donner les droits d'administration à ${player.name} ?`)) {
-                                                                                            sendServerCommand(`op add ${player.name}`);
+                                                                                        const action = player.is_op ? 'deop' : 'op';
+                                                                                        const msg = player.is_op ? `Retirer les droits d'administration à ${player.name} ?` : `Donner les droits d'administration à ${player.name} ?`;
+                                                                                        if (confirm(msg)) {
+                                                                                            sendServerCommand(`${action} ${player.name}`);
                                                                                         }
                                                                                     }}
-                                                                                    title="OP"
+                                                                                    title={player.is_op ? "Retirer OP" : "Donner OP"}
                                                                                 >
                                                                                     <Shield size={14} />
                                                                                 </button>
                                                                                 <button
-                                                                                    className="btn btn--icon btn--danger btn--sm"
+                                                                                    className={`btn btn--icon ${player.is_banned ? 'btn--success' : 'btn--danger'} btn--sm`}
                                                                                     onClick={() => {
-                                                                                        if (confirm(`Bannir ${player.name} ?`)) {
-                                                                                            sendServerCommand(`ban ${player.name}`);
+                                                                                        const action = player.is_banned ? 'unban' : 'ban';
+                                                                                        const msg = player.is_banned ? `Pardonner ${player.name} ?` : `Bannir ${player.name} ?`;
+                                                                                        if (confirm(msg)) {
+                                                                                            sendServerCommand(`${action} ${player.name}`);
                                                                                         }
                                                                                     }}
-                                                                                    title="Ban"
+                                                                                    title={player.is_banned ? "Unban" : "Ban"}
                                                                                 >
                                                                                     <Ban size={14} />
                                                                                 </button>
@@ -1738,7 +1752,7 @@ export default function ServerDetail() {
                                         ) : (
                                             <div className="empty-state">
                                                 <Users size={32} className="icon-faded" />
-                                                <p>Aucun joueur connecté.</p>
+                                                <p>{activePlayerTab === 'online' ? 'Aucun joueur connecté.' : 'Aucun historique de joueur.'}</p>
                                             </div>
                                         )
                                     )}
