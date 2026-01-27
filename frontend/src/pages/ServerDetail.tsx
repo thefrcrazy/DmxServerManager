@@ -593,6 +593,7 @@ export default function ServerDetail() {
             } else if (action === 'stop' || action === 'kill') {
                 setStartTime(null);
                 setIsAuthRequired(false); // Immediate local reset
+                setLogs([]); // Clear logs to prepare for new stream
             }
             fetchServer();
             setTimeout(fetchServer, 1000);
@@ -1062,23 +1063,36 @@ export default function ServerDetail() {
                                         </span>
                                     </div>
                                 ) : (
-                                    logs.map((log, i) => (
-                                        <div
-                                            key={i}
-                                            className={`console-output__line ${log.includes('[ERROR]') || log.includes('ERROR') || log.includes('Exception')
-                                                ? 'console-output__line--error'
-                                                : log.includes('[WARN]') || log.includes('WARN')
-                                                    ? 'console-output__line--warning'
-                                                    : log.includes('[INFO]')
-                                                        ? 'console-output__line--info'
-                                                        : log.startsWith('>')
-                                                            ? 'console-output__line--command'
-                                                            : ''
-                                                }`}
-                                        >
-                                            <Ansi useClasses={false}>{log}</Ansi>
-                                        </div>
-                                    ))
+                                    logs.map((log, i) => {
+                                        // Auto-translate known Hytale keys
+                                        let displayLog = log;
+                                        if (log.includes('server.commands.auth.login.device.success')) {
+                                            displayLog = displayLog.replace('server.commands.auth.login.device.success', t('hytale.server.commands.auth.login.device.success'));
+                                        }
+                                        if (log.includes('server.commands.auth.login.persistence.saved')) {
+                                            // Handle potential parameters in the key string
+                                            // Regex to match key + optional {...} garbage
+                                            displayLog = displayLog.replace(/server\.commands\.auth\.login\.persistence\.saved(?:\{.*?\})?/, t('hytale.server.commands.auth.login.persistence.saved'));
+                                        }
+
+                                        return (
+                                            <div
+                                                key={i}
+                                                className={`console-output__line ${log.includes('[ERROR]') || log.includes('ERROR') || log.includes('Exception')
+                                                    ? 'console-output__line--error'
+                                                    : log.includes('[WARN]') || log.includes('WARN')
+                                                        ? 'console-output__line--warning'
+                                                        : log.includes('[INFO]')
+                                                            ? 'console-output__line--info'
+                                                            : log.startsWith('>')
+                                                                ? 'console-output__line--command'
+                                                                : ''
+                                                    }`}
+                                            >
+                                                <Ansi useClasses={false}>{displayLog}</Ansi>
+                                            </div>
+                                        )
+                                    })
                                 )}
                                 <div ref={consoleEndRef} />
                             </div>

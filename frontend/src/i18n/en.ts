@@ -277,5 +277,21 @@ export const en: TranslationType = {
             extract: "Installation",
             finish: "Finalization"
         }
+    },
+    hytale: {
+        server: {
+            commands: {
+                auth: {
+                    login: {
+                        device: {
+                            success: "Authentication successful! use '/auth status' to view details."
+                        },
+                        persistence: {
+                            saved: "Credentials saved."
+                        }
+                    }
+                }
+            }
+        }
     }
 };

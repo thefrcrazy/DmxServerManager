@@ -276,6 +276,22 @@ export const fr = {
             extract: "Installation",
             finish: "Finalisation"
         }
+    },
+    hytale: {
+        server: {
+            commands: {
+                auth: {
+                    login: {
+                        device: {
+                            success: "Authentification réussie ! Utilisez '/auth status' pour voir les détails."
+                        },
+                        persistence: {
+                            saved: "Identifiants sauvegardés."
+                        }
+                    }
+                }
+            }
+        }
     }
 };
 
