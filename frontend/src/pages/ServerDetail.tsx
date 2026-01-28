@@ -813,7 +813,21 @@ export default function ServerDetail() {
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
             const data = await response.json();
-            const logs = (data.entries || []).filter((f: FileEntry) => !f.is_dir);
+            let logs = (data.entries || []).filter((f: FileEntry) => !f.is_dir);
+
+            // Sort by name descending (newest dates first)
+            logs.sort((a: FileEntry, b: FileEntry) => b.name.localeCompare(a.name));
+
+            // Ensure console.log is always at the top
+            const consoleIndex = logs.findIndex((l: FileEntry) => l.name === 'console.log');
+            if (consoleIndex !== -1) {
+                const [consoleLog] = logs.splice(consoleIndex, 1);
+                logs.unshift(consoleLog);
+            } else {
+                // Add it if missing (it might be created on the fly)
+                logs.unshift({ name: 'console.log', path: 'logs/console.log', is_dir: false });
+            }
+
             setLogFiles(logs);
             // Auto-select first log file
             if (logs.length > 0 && !selectedLogFile) {
@@ -1321,15 +1335,12 @@ export default function ServerDetail() {
                             <h3 className="panel-header__title"><FileText size={20} /> Fichiers de log</h3>
                             {logFiles.length > 0 && (
                                 <div className="select-wrapper">
-                                    <select
+                                    <Select
+                                        options={logFiles.map(f => ({ label: f.name, value: f.path }))}
                                         value={selectedLogFile || ''}
-                                        onChange={(e) => readLogFile(e.target.value)}
-                                        className="form-select text-sm py-1"
-                                    >
-                                        {logFiles.map(f => (
-                                            <option key={f.path} value={f.path}>{f.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(v) => readLogFile(v)}
+                                        className="min-w-[200px]"
+                                    />
                                 </div>
                             )}
                         </div>

@@ -17,6 +17,7 @@ interface SystemStats {
     disk: number;
     disk_used: number;
     disk_total: number;
+    cpu_cores?: number;
 }
 
 interface PlayersStats {
@@ -116,6 +117,7 @@ export default function Dashboard() {
                     disk: data.disk || 0,
                     disk_used: data.disk_used || 0,
                     disk_total: data.disk_total || 0,
+                    cpu_cores: data.cpu_cores,
                 });
                 setPlayersStats({
                     current: data.players_current || 0,
@@ -226,6 +228,9 @@ export default function Dashboard() {
                     <div className={`stat-card__value stat-card__value--${getStatColor(systemStats.cpu)}`}>
                         {systemStats.cpu.toFixed(1)}%
                     </div>
+                    <div className="stat-card__meta">
+                        {systemStats.cpu_cores ? `${systemStats.cpu_cores} Cores` : 'Loading...'}
+                    </div>
                     <div className="stat-card__progress">
                         <div
                             className={`stat-card__progress-bar stat-card__progress-bar--${getStatColor(systemStats.cpu)}`}
@@ -301,9 +306,11 @@ export default function Dashboard() {
                         const isAuthRequired = server.status === 'auth_required';
 
                         return (
-                            <div
+                            <Link
+                                to={`/servers/${server.id}`}
                                 key={server.id}
-                                className={`card server-item server-item--${isRunning ? 'running' : 'stopped'}`}
+                                className={`card server-item server-item--${isRunning ? 'running' : 'stopped'} hover:bg-white/5 transition-colors cursor-pointer group`}
+                                style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                             >
                                 <div className="server-item__info">
                                     <div className="server-item__icon">
@@ -315,7 +322,7 @@ export default function Dashboard() {
                                         }
                                     </div>
                                     <div>
-                                        <div className="server-item__name">{server.name}</div>
+                                        <div className="server-item__name group-hover:text-primary transition-colors">{server.name}</div>
                                         <div className="server-item__meta">
                                             <span>{server.game_type}</span>
                                             <span>•</span>
@@ -333,7 +340,7 @@ export default function Dashboard() {
                                     </div>
                                 </div>
 
-                                <div className="server-item__actions">
+                                <div className="server-item__actions" onClick={(e) => e.preventDefault()}>
                                     <Link to={`/servers/${server.id}`} className={`btn btn--secondary btn--sm ${isAuthRequired ? 'btn--warning' : ''}`}>
                                         {isAuthRequired ? 'Authentifier' : t('servers.console')}
                                     </Link>
@@ -350,7 +357,7 @@ export default function Dashboard() {
                                         </button>
                                     )}
                                 </div>
-                            </div>
+                            </Link>
                         )
                     })}
                 </div>

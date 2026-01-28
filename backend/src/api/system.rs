@@ -18,6 +18,7 @@ pub struct SystemStatsResponse {
     pub disk_total: u64,
     pub players_current: u32,
     pub players_max: u32,
+    pub cpu_cores: usize,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -190,6 +191,11 @@ async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse,
     let players_current = pm.get_total_online_players().await;
     let players_max = 0; // TODO: Sum max players from all running servers? Or just leave as 0 for "unlimited" representation
 
+    let cpu_cores = {
+        let sys = SYSTEM.lock().unwrap();
+        sys.cpus().len()
+    };
+
     Ok(HttpResponse::Ok().json(SystemStatsResponse {
         cpu: cpu_usage,
         ram: ram_percent,
@@ -200,6 +206,7 @@ async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse,
         disk_total,
         players_current,
         players_max,
+        cpu_cores,
     }))
 }
 
