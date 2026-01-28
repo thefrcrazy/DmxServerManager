@@ -818,15 +818,33 @@ export default function ServerDetail() {
             // Sort by name descending (newest dates first)
             logs.sort((a: FileEntry, b: FileEntry) => b.name.localeCompare(a.name));
 
-            // Ensure console.log is always at the top
-            const consoleIndex = logs.findIndex((l: FileEntry) => l.name === 'console.log');
-            if (consoleIndex !== -1) {
-                const [consoleLog] = logs.splice(consoleIndex, 1);
-                logs.unshift(consoleLog);
-            } else {
-                // Add it if missing (it might be created on the fly)
-                logs.unshift({ name: 'console.log', path: 'logs/console.log', is_dir: false });
+            // Move specific logs to the bottom (last)
+            const bottomLogs = ['console.log', 'install.log'];
+            const specialLogs: FileEntry[] = [];
+
+            // Remove them from current list
+            logs = logs.filter((l: FileEntry) => {
+                if (bottomLogs.includes(l.name)) {
+                    specialLogs.push(l);
+                    return false;
+                }
+                return true;
+            });
+
+            // Ensure console.log exists if not found
+            if (!specialLogs.some(l => l.name === 'console.log')) {
+                specialLogs.push({ name: 'console.log', path: 'logs/console.log', is_dir: false });
             }
+
+            // Append them to the end (sorted among themselves if needed, or fixed order)
+            // User requested "install.log" and "console.log" at the end. 
+            // We can just append them. The order between them isn't strictly specified but usually console is most important so strictly last or before last?
+            // "console.log met les en dernier" -> "put them last".
+            // Let's sort the special logs too or just append. 
+            // If I append specialLogs, they will be in order they were found (descending name) 
+            // so 'install.log' (i) comes before 'console.log' (c) in descending? No, i > c. 
+            // Let's just append them.
+            logs.push(...specialLogs);
 
             setLogFiles(logs);
             // Auto-select first log file

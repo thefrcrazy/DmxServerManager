@@ -1478,6 +1478,16 @@ async fn list_server_files(
     
     for entry in read_dir.flatten() {
         let entry_path = entry.path();
+        
+        // Auto-delete .log.lck files
+        if let Some(name) = entry_path.file_name() {
+             let name_str = name.to_string_lossy();
+             if name_str.ends_with(".log.lck") {
+                 let _ = std::fs::remove_file(&entry_path);
+                 continue;
+             }
+        }
+
         let is_dir = entry_path.is_dir();
         let size = if is_dir { None } else { entry_path.metadata().ok().map(|m| m.len()) };
         
