@@ -269,6 +269,8 @@ impl ProcessManager {
 
         cmd.arg(format!("-Xms{}", xms))
             .arg(format!("-Xmx{}", xmx))
+            .arg("-Dterminal.jline=true")
+            .arg("-Dterminal.ansi=true")
             .arg("-XX:AOTCache=HytaleServer.aot");
 
         // Pass port and bind address via --bind
