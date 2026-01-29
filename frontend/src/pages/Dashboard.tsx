@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Server as ServerIcon, Activity, HardDrive, Users, Plus, Cpu, MemoryStick, Square } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import ServerList from '../components/ServerList';
+import ServerFilters from '../components/ServerFilters';
 import { Server } from '../types';
 
 interface ServerStats {
@@ -38,6 +39,11 @@ export default function Dashboard() {
     const [playersStats, setPlayersStats] = useState<PlayersStats>({ current: 0, max: 0 });
     const [servers, setServers] = useState<Server[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Filter states
+    const [search, setSearch] = useState('');
+    const [gameType, setGameType] = useState('all');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
 
     useEffect(() => {
         fetchData();
@@ -130,6 +136,19 @@ export default function Dashboard() {
             console.error(`Erreur lors de ${action}:`, error);
         }
     };
+
+    const uniqueGameTypes = useMemo(() => {
+        const types = new Set(servers.map(s => s.game_type));
+        return Array.from(types);
+    }, [servers]);
+
+    const filteredServers = useMemo(() => {
+        return servers.filter(server => {
+            const matchesSearch = server.name.toLowerCase().includes(search.toLowerCase());
+            const matchesType = gameType === 'all' || server.game_type === gameType;
+            return matchesSearch && matchesType;
+        });
+    }, [servers, search, gameType]);
 
     const getStatColor = (value: number): string => {
         if (value >= 90) return 'danger';
@@ -272,28 +291,42 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div className="section-header">
-                <h2 className="section-title">{t('servers.title')}</h2>
-            </div>
+            <ServerFilters
+                search={search}
+                onSearchChange={setSearch}
+                gameType={gameType}
+                onGameTypeChange={setGameType}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                gameTypes={uniqueGameTypes}
+                action={
+                    <Link to="/servers/create" className="btn btn--primary">
+                        <Plus size={18} />
+                        {t('servers.create_new')}
+                    </Link>
+                }
+            />
 
-            {servers.length === 0 ? (
+            {filteredServers.length === 0 ? (
                 <div className="card empty-state">
                     <div className="empty-state__icon">
                         <ServerIcon size={32} />
                     </div>
                     <h3 className="empty-state__title">{t('servers.no_servers')}</h3>
                     <p className="empty-state__description">
-                        {t('dashboard.welcome')}
+                        {search || gameType !== 'all' ? 'No servers match your filters.' : t('dashboard.welcome')}
                     </p>
-                    <Link to="/servers" className="btn btn--primary">
-                        <Plus size={18} />
-                        {t('servers.create_new')}
-                    </Link>
+                    {(search === '' && gameType === 'all') && (
+                        <Link to="/servers/create" className="btn btn--primary">
+                            <Plus size={18} />
+                            {t('servers.create_new')}
+                        </Link>
+                    )}
                 </div>
             ) : (
                 <ServerList
-                    servers={servers}
-                    viewMode="grid"
+                    servers={filteredServers}
+                    viewMode={viewMode}
                     onAction={handleServerAction}
                 />
             )}
