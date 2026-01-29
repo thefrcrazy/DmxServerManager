@@ -14,7 +14,8 @@ export const fr = {
         error: "Erreur",
         success: "Succès",
         required: "Requis",
-        optional: "Optionnel"
+        optional: "Optionnel",
+        all_games: "Tous les jeux"
     },
     errors: {
         internal: "Une erreur interne est survenue. Veuillez consulter les logs serveur.",

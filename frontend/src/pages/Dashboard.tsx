@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Server, Activity, HardDrive, Users, Plus, Play, Square, Cpu, MemoryStick, RotateCw, AlertTriangle } from 'lucide-react';
+import { Server as ServerIcon, Activity, HardDrive, Users, Plus, Cpu, MemoryStick, Square } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
+import { useLanguage } from '../contexts/LanguageContext';
+import { usePageTitle } from '../contexts/PageTitleContext';
+import ServerList from '../components/ServerList';
+import { Server } from '../types';
 
 interface ServerStats {
     total: number;
@@ -25,27 +29,14 @@ interface PlayersStats {
     max: number;
 }
 
-interface ServerInfo {
-    id: string;
-    name: string;
-    game_type: string;
-    status: string;
-    players?: string[];
-    max_players?: number;
-}
-
-import { useLanguage } from '../contexts/LanguageContext';
-import { usePageTitle } from '../contexts/PageTitleContext';
-
 export default function Dashboard() {
     const { t } = useLanguage();
     const [stats, setStats] = useState<ServerStats>({ total: 0, running: 0, stopped: 0 });
-    // ... (rest of state initialization)
     const [systemStats, setSystemStats] = useState<SystemStats>({
         cpu: 0, ram: 0, ram_used: 0, ram_total: 0, disk: 0, disk_used: 0, disk_total: 0
     });
     const [playersStats, setPlayersStats] = useState<PlayersStats>({ current: 0, max: 0 });
-    const [servers, setServers] = useState<ServerInfo[]>([]);
+    const [servers, setServers] = useState<Server[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -65,8 +56,6 @@ export default function Dashboard() {
         setPageTitle(t('sidebar.dashboard'), t('dashboard.welcome'));
     }, [setPageTitle, t]);
 
-    // ... (rest of functions: fetchData, fetchServers, fetchSystemStats, handleServerAction)
-
     const fetchData = async () => {
         try {
             await Promise.all([fetchServers(), fetchSystemStats()]);
@@ -76,7 +65,6 @@ export default function Dashboard() {
     };
 
     const fetchServers = async () => {
-        // ... (no changes in fetch logic)
         try {
             const response = await fetch('/api/v1/servers', {
                 headers: {
@@ -85,7 +73,7 @@ export default function Dashboard() {
             });
 
             if (response.ok) {
-                const data: ServerInfo[] = await response.json();
+                const data: Server[] = await response.json();
                 setServers(data);
                 setStats({
                     total: data.length,
@@ -99,7 +87,6 @@ export default function Dashboard() {
     };
 
     const fetchSystemStats = async () => {
-        // ... (no changes here)
         try {
             const response = await fetch('/api/v1/system/stats', {
                 headers: {
@@ -129,8 +116,7 @@ export default function Dashboard() {
         }
     };
 
-    // Quick helpers
-    const handleServerAction = async (id: string, action: 'start' | 'stop') => {
+    const handleServerAction = async (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => {
         try {
             await fetch(`/api/v1/servers/${id}/${action}`, {
                 method: 'POST',
@@ -160,6 +146,10 @@ export default function Dashboard() {
         );
     }
 
+    // Filter mainly active servers or just show all but using the new component?
+    // User asked for "identical display". So I will just show the ServerList.
+    // Dashboard usually shows all servers or maybe favorites? I will show all for now.
+
     return (
         <div>
             {/* Server Stats */}
@@ -168,7 +158,7 @@ export default function Dashboard() {
                     <div className="stat-card__header">
                         <div className="stat-card__label">{t('dashboard.total_servers')}</div>
                         <div className="stat-card__icon stat-card__icon--default">
-                            <Server size={20} />
+                            <ServerIcon size={20} />
                         </div>
                     </div>
                     <div className="stat-card__value">{stats.total}</div>
@@ -282,12 +272,14 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <h2 className="section-title">{t('dashboard.active_servers')}</h2>
+            <div className="section-header">
+                <h2 className="section-title">{t('servers.title')}</h2>
+            </div>
 
             {servers.length === 0 ? (
                 <div className="card empty-state">
                     <div className="empty-state__icon">
-                        <Server size={32} />
+                        <ServerIcon size={32} />
                     </div>
                     <h3 className="empty-state__title">{t('servers.no_servers')}</h3>
                     <p className="empty-state__description">
@@ -299,70 +291,12 @@ export default function Dashboard() {
                     </Link>
                 </div>
             ) : (
-                <div className="servers-list">
-                    {servers.map((server) => {
-                        const isRunning = server.status === 'running';
-                        const isInstalling = server.status === 'installing';
-                        const isAuthRequired = server.status === 'auth_required';
-
-                        return (
-                            <Link
-                                to={`/servers/${server.id}`}
-                                key={server.id}
-                                className={`card server-item server-item--${isRunning ? 'running' : 'stopped'} hover:bg-white/5 transition-colors cursor-pointer group`}
-                                style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                            >
-                                <div className="server-item__info">
-                                    <div className="server-item__icon">
-                                        {isInstalling ? <RotateCw size={20} className="spin" />
-                                            : isAuthRequired ? <AlertTriangle size={20} className="text-warning" />
-                                                : server.game_type === 'hytale'
-                                                    ? <img src="https://hytale.com/favicon.ico" alt="H" width="24" />
-                                                    : <Server size={20} />
-                                        }
-                                    </div>
-                                    <div>
-                                        <div className="server-item__name group-hover:text-primary transition-colors">{server.name}</div>
-                                        <div className="server-item__meta">
-                                            <span>{server.game_type}</span>
-                                            <span>•</span>
-                                            <span className={isRunning ? 'server-item__status--running' : isInstalling ? 'text-info' : isAuthRequired ? 'text-warning' : ''}>
-                                                {isRunning ? t('servers.online') : isInstalling ? t('servers.installing') : isAuthRequired ? t('servers.auth_required') : t('servers.offline')}
-                                            </span>
-
-                                            <>
-                                                <span className="server-item__players">
-                                                    <Users size={14} />
-                                                    {t('servers.players')}: {server.players ? server.players.length : 0}
-                                                </span>
-                                            </>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="server-item__actions" onClick={(e) => e.preventDefault()}>
-                                    <Link to={`/servers/${server.id}`} className={`btn btn--secondary btn--sm ${isAuthRequired ? 'btn--warning' : ''}`}>
-                                        {isAuthRequired ? 'Authentifier' : t('servers.console')}
-                                    </Link>
-
-                                    {!isRunning && !isInstalling && !isAuthRequired && (
-                                        <button className="btn btn--success btn--sm" onClick={() => handleServerAction(server.id, 'start')}>
-                                            <Play size={16} />
-                                        </button>
-                                    )}
-
-                                    {isRunning && (
-                                        <button className="btn btn--danger btn--sm" onClick={() => handleServerAction(server.id, 'stop')}>
-                                            <Square size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            </Link>
-                        )
-                    })}
-                </div>
-            )
-            }
-        </div >
+                <ServerList
+                    servers={servers}
+                    viewMode="grid"
+                    onAction={handleServerAction}
+                />
+            )}
+        </div>
     );
 }

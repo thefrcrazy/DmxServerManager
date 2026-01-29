@@ -16,7 +16,8 @@ export const en: TranslationType = {
         error: "Error",
         success: "Success",
         required: "Required",
-        optional: "Optional"
+        optional: "Optional",
+        all_games: "All Games"
     },
     errors: {
         internal: "Internal server error. Please check server logs.",
