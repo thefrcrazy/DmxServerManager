@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Users, Shield, Ban, LogOut, Plus, Search, Trash2 } from "lucide-react";
 
 interface Player {

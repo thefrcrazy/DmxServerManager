@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import Ansi from "ansi-to-react";
 import { FileText, AlertCircle, RefreshCw } from "lucide-react";
 import Select from "../../components/Select";

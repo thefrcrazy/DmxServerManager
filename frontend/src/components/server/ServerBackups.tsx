@@ -1,4 +1,3 @@
-import React from "react";
 import { History, Plus, Download, Trash2, Clock, FileArchive, HardDrive } from "lucide-react";
 import { formatBytes } from "../../utils/formatters";
 
