@@ -31,8 +31,9 @@ logs/
 *.sqlite
 
 # Server files (user data)
-servers/
-backups/
+/data/
+/servers/
+/backups/
 
 # Rust
 Cargo.lock
