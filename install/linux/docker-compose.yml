@@ -12,10 +12,12 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5500
+      - IS_DOCKER=true
       - DATABASE_URL=sqlite:/data/database.db?mode=rwc
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - SERVERS_DIR=/servers
       - BACKUPS_DIR=/backups
+      - UPLOADS_DIR=/data/uploads
       - RUST_LOG=info
     volumes:
       - ../../data:/data

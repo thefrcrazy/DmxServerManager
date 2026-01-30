@@ -1,3 +1,9 @@
+use axum::{
+    routing::get,
+    Router,
+};
+use crate::AppState;
+
 pub mod auth;
 pub mod backups;
 pub mod console;
@@ -9,3 +15,18 @@ pub mod system;
 pub mod upload;
 pub mod users;
 pub mod webhook;
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .nest("/auth", auth::routes())
+        .nest("/backups", backups::routes())
+        .nest("/filesystem", filesystem::routes())
+        .nest("/servers", servers::routes())
+        .nest("/settings", settings::routes())
+        .nest("/setup", setup::routes())
+        .nest("/system", system::routes())
+        .nest("/upload", upload::routes())
+        .nest("/users", users::routes())
+        .nest("/webhook", webhook::routes())
+        .route("/ws/console/:id", get(console::ws_handler))
+}

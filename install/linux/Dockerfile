@@ -61,6 +61,7 @@ RUN mkdir -p /data /servers /backups
 # Environment
 ENV HOST=0.0.0.0
 ENV PORT=5500
+ENV IS_DOCKER=true
 ENV DATABASE_URL=sqlite:/data/database.db?mode=rwc
 ENV SERVERS_DIR=/servers
 ENV BACKUPS_DIR=/backups

@@ -11,7 +11,7 @@ flowchart TB
     end
     
     subgraph Backend["🦀 Rust Backend"]
-        D[Axum/Actix API]
+        D[Axum API]
         E[WebSocket Handler]
         F[ServerManager]
         G["tokio::process::Command"]

@@ -1,4 +1,8 @@
-use actix_web::{HttpResponse, ResponseError};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use std::fmt;
 
 #[derive(Debug)]
@@ -22,31 +26,27 @@ impl fmt::Display for AppError {
     }
 }
 
-impl ResponseError for AppError {
-    fn error_response(&self) -> HttpResponse {
-        match self {
-            AppError::NotFound(msg) => {
-                HttpResponse::NotFound().json(serde_json::json!({ "error": msg }))
-            }
-            AppError::BadRequest(msg) => {
-                HttpResponse::BadRequest().json(serde_json::json!({ "error": msg }))
-            }
-            AppError::Unauthorized(msg) => {
-                HttpResponse::Unauthorized().json(serde_json::json!({ "error": msg }))
-            }
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::Internal(msg) => {
-                // Log the actual error for debugging
                 eprintln!("Internal Server Error: {}", msg);
-                // Return generic key to client
-                HttpResponse::InternalServerError().json(serde_json::json!({ "error": "errors.internal" }))
+                (StatusCode::INTERNAL_SERVER_ERROR, "errors.internal".to_string())
             }
             AppError::Database(msg) => {
-                // Log the actual error for debugging
                 eprintln!("Database Error: {}", msg);
-                // Return generic key to client
-                HttpResponse::InternalServerError().json(serde_json::json!({ "error": "errors.database" }))
+                (StatusCode::INTERNAL_SERVER_ERROR, "errors.database".to_string())
             }
-        }
+        };
+
+        let body = Json(serde_json::json!({
+            "error": error_message
+        }));
+
+        (status, body).into_response()
     }
 }
 

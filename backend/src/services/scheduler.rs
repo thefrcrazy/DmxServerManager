@@ -1,18 +1,17 @@
 use std::time::Duration;
-use actix_web::web;
 use tokio::time;
 use sysinfo::{System, RefreshKind, CpuRefreshKind, MemoryRefreshKind};
 use crate::db::DbPool;
 use crate::services::process_manager::ProcessManager;
 use crate::services::discord_service;
 
-pub fn start(pool: web::Data<DbPool>, process_manager: web::Data<ProcessManager>) {
+pub fn start(pool: DbPool, process_manager: ProcessManager) {
     tokio::spawn(async move {
         // Wait a bit for server start
         time::sleep(Duration::from_secs(5)).await;
         
-        // Loop interval 5 seconds
-        let mut interval = time::interval(Duration::from_secs(5));
+        // Loop interval 20 seconds (avoid Discord rate limits while being responsive)
+        let mut interval = time::interval(Duration::from_secs(20));
         
         // System info instance
         let mut sys = System::new_with_specifics(

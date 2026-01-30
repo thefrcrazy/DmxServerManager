@@ -1,8 +1,17 @@
-use actix_web::{web, HttpResponse, Result};
+use axum::{
+    routing::get,
+    extract::Query,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::error::AppError;
+use crate::{AppState, error::AppError};
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/list", get(list_directory))
+}
 
 #[derive(Debug, Serialize)]
 pub struct DirectoryEntry {
@@ -16,11 +25,7 @@ pub struct ListQuery {
     pub path: Option<String>,
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("/filesystem").route("/list", web::get().to(list_directory)));
-}
-
-async fn list_directory(query: web::Query<ListQuery>) -> Result<HttpResponse, AppError> {
+async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_json::Value>, AppError> {
     let base_path = query.path.clone().unwrap_or_else(|| "/".to_string());
     let path = PathBuf::from(&base_path);
 
@@ -80,7 +85,7 @@ async fn list_directory(query: web::Query<ListQuery>) -> Result<HttpResponse, Ap
         }
     });
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "current_path": base_path,
         "entries": entries
     })))

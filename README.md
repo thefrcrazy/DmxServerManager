@@ -67,7 +67,7 @@ irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/wi
 | Composant            | Technologie                      |
 | -------------------- | -------------------------------- |
 | **Frontend**         | React + Vite + TypeScript + SCSS |
-| **Backend**          | Rust + Actix-Web                 |
+| **Backend**          | Rust + Axum                 |
 | **Base de données**  | SQLite                           |
 | **Runtime**          | Bun (frontend), Tokio (backend)  |
 | **Containerisation** | Docker + Docker Compose          |

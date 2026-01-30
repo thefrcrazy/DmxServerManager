@@ -9,7 +9,7 @@ repository = "https://github.com/thefrcrazy/draveur-manager"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["multipart", "ws"] }
+axum = { version = "0.7", features = ["multipart", "ws", "macros"] }
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "fs", "trace", "limit", "catch-panic"] }
 mime = "0.3"

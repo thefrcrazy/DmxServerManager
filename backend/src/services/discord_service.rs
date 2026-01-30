@@ -68,16 +68,21 @@ pub async fn update_status_message(
     embed: Value,
 ) -> Result<()> {
     // 1. Get Webhook URL
-    let webhook_url: Option<(String,)> = 
+    let webhook_url_setting: Option<(String,)> = 
         sqlx::query_as("SELECT value FROM settings WHERE key = 'webhook_url'")
             .fetch_optional(pool)
             .await?;
 
-    let Some((url,)) = webhook_url else {
+    let Some(mut url) = webhook_url_setting.map(|s| s.0) else {
         return Ok(()); // Not configured
     };
     if url.is_empty() {
         return Ok(());
+    }
+
+    // Sanitize URL (remove trailing slashes)
+    if url.ends_with('/') {
+        url = url.trim_end_matches('/').to_string();
     }
 
     // 2. Get saved Message ID
@@ -93,16 +98,31 @@ pub async fn update_status_message(
 
     // 3. Try EDIT if ID exists
     if let Some((msg_id,)) = msg_id_opt {
-        let edit_url = format!("{}/messages/{}", url, msg_id);
-        let resp = client.patch(&edit_url).json(&payload).send().await?;
+        if !msg_id.is_empty() {
+            let edit_url = format!("{}/messages/{}", url, msg_id);
+            tracing::debug!("Attempting to update Discord status message: {}", msg_id);
+            let resp = client.patch(&edit_url).json(&payload).send().await?;
 
-        if resp.status().is_success() {
-            return Ok(());
+            if resp.status().is_success() {
+                return Ok(());
+            }
+
+            let status = resp.status();
+            let error_body = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
+            
+            // IF error is 404 (Message Deleted), we fall through to create a new one
+            // Other errors (429 Rate Limit, etc.) should stay as errors
+            if status == reqwest::StatusCode::NOT_FOUND {
+                tracing::warn!("Discord status message {} not found (404), creating a new one.", msg_id);
+            } else {
+                tracing::error!("Failed to update Discord status: {} - {}", status, error_body);
+                return Err(anyhow::anyhow!("Discord API error: {}", status));
+            }
         }
-        // If edit failed (e.g. 404 message deleted), fallthrough to create new one
     }
 
     // 4. CREATE new message (wait=true to get ID)
+    tracing::info!("Creating a new persistent Discord status message...");
     let create_url = format!("{}?wait=true", url);
     let resp = client.post(&create_url).json(&payload).send().await?;
 
@@ -110,23 +130,17 @@ pub async fn update_status_message(
         let json: Value = resp.json().await?;
         if let Some(new_id) = json["id"].as_str() {
             // 5. Save new ID
-            // Check if key exists first for UPSERT logic (SQLite specific)
-            let exists: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'discord_status_message_id'")
-                .fetch_one(pool)
+            sqlx::query("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('discord_status_message_id', ?, CURRENT_TIMESTAMP)")
+                .bind(new_id)
+                .execute(pool)
                 .await?;
-
-            if exists.0 > 0 {
-                sqlx::query("UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'discord_status_message_id'")
-                    .bind(new_id)
-                    .execute(pool)
-                    .await?;
-            } else {
-                sqlx::query("INSERT INTO settings (key, value, updated_at) VALUES ('discord_status_message_id', ?, CURRENT_TIMESTAMP)")
-                    .bind(new_id)
-                    .execute(pool)
-                    .await?;
-            }
+            tracing::info!("Saved new Discord status message ID: {}", new_id);
         }
+    } else {
+        let status = resp.status();
+        let error_body = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
+        tracing::error!("Failed to create Discord status message: {} - {}", status, error_body);
+        return Err(anyhow::anyhow!("Discord API error: {}", status));
     }
 
     Ok(())

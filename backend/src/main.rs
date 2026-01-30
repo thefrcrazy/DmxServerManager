@@ -1,9 +1,16 @@
-use actix_cors::Cors;
-use actix_files::{Files, NamedFile};
-use actix_web::{middleware, web, App, HttpServer};
+use axum::{
+    routing::{get_service},
+    Router,
+};
+use tower_http::{
+    cors::{CorsLayer, Any},
+    services::ServeDir,
+    trace::TraceLayer,
+};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+// Modules will be uncommented as they are migrated
 mod api;
 mod config;
 mod db;
@@ -14,9 +21,19 @@ mod templates;
 mod utils;
 
 use config::Settings;
+use services::ProcessManager;
+use db::DbPool;
+use std::sync::Arc;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: DbPool,
+    pub process_manager: ProcessManager,
+    pub settings: Arc<Settings>,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -41,52 +58,42 @@ async fn main() -> std::io::Result<()> {
     db::run_migrations(&pool).await?;
 
     // Initialize services
-    let process_manager = web::Data::new(services::ProcessManager::new(Some(pool.clone())));
+    let process_manager = ProcessManager::new(Some(pool.clone()));
 
     // Start background services
-    services::scheduler::start(web::Data::new(pool.clone()), process_manager.clone());
+    services::scheduler::start(pool.clone(), process_manager.clone());
 
+    let state = AppState {
+        pool,
+        process_manager,
+        settings: Arc::new(settings.clone()),
+    };
+    
     let uploads_dir = settings.uploads_dir.clone();
-    HttpServer::new(move || {
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
-            .max_age(3600);
 
-        App::new()
-            .wrap(cors)
-            .wrap(middleware::Logger::default())
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(process_manager.clone())
-            // API routes
-            .service(
-                web::scope("/api/v1")
-                    .configure(api::auth::configure)
-                    .configure(api::servers::configure)
-                    .configure(api::backups::configure)
-                    .configure(api::settings::configure)
-                    .configure(api::system::configure)
-                    .configure(api::users::configure)
-                    .configure(api::filesystem::configure)
-                    .configure(api::webhook::configure)
-                    .configure(api::upload::configure)
-                    .configure(api::setup::configure),
-            )
-            // WebSocket for console
-            .route("/ws/console/{server_id}", web::get().to(api::console::ws_handler))
-            // Serve uploaded files
-            .service(Files::new("/uploads", &uploads_dir))
-            // Serve frontend in production
-            .service(
-                Files::new("/", "./static")
-                    .index_file("index.html")
-                    .default_handler(web::get().to(|| async {
-                        NamedFile::open("./static/index.html")
-                    })),
-            )
-    })
-    .bind(format!("{}:{}", settings.host, settings.port))?
-    .run()
-    .await
+    // CORS configuration
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let app = Router::new()
+        .nest("/api/v1", api::routes())
+        
+        // Serve uploaded files
+        .nest_service("/uploads", get_service(ServeDir::new(&uploads_dir)))
+        
+        // Serve frontend in production (static files)
+        .nest_service("/", get_service(ServeDir::new("./static")))
+        
+        .layer(TraceLayer::new_for_http())
+        .layer(cors)
+        .with_state(state);
+
+    let addr = format!("{}:{}", settings.host, settings.port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }

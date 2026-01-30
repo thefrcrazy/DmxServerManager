@@ -1,6 +1,10 @@
-use actix_web::{web, HttpResponse, Result};
+use axum::{
+    routing::{get, post},
+    extract::State,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
-use crate::db::DbPool;
+use crate::AppState;
 use crate::error::AppError;
 use crate::api::auth::AuthResponse;
 
@@ -18,31 +22,29 @@ struct SetupRequest {
     theme_color: String,
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/setup")
-            .route("/status", web::get().to(get_setup_status))
-            .route("", web::post().to(perform_setup)),
-    );
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/status", get(get_setup_status))
+        .route("/", post(perform_setup))
 }
 
-async fn get_setup_status(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError> {
+async fn get_setup_status(State(state): State<AppState>) -> Result<Json<SetupStatusResponse>, AppError> {
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(pool.get_ref())
+        .fetch_one(&state.pool)
         .await?;
 
-    Ok(HttpResponse::Ok().json(SetupStatusResponse {
+    Ok(Json(SetupStatusResponse {
         is_setup: count > 0,
     }))
 }
 
 async fn perform_setup(
-    pool: web::Data<DbPool>,
-    body: web::Json<SetupRequest>,
-) -> Result<HttpResponse, AppError> {
+    State(state): State<AppState>,
+    Json(body): Json<SetupRequest>,
+) -> Result<Json<AuthResponse>, AppError> {
     // 1. Check if setup is already done
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(pool.get_ref())
+        .fetch_one(&state.pool)
         .await?;
 
     if count > 0 {
@@ -66,7 +68,7 @@ async fn perform_setup(
     .bind(&password_hash)
     .bind("admin") // Role
     .bind(&body.theme_color) // Sync accent_color with theme_color
-    .execute(pool.get_ref())
+    .execute(&state.pool)
     .await?;
 
     // 3. Update Settings
@@ -82,9 +84,9 @@ async fn perform_setup(
         Ok(())
     }
 
-    upsert_setting(pool.get_ref(), "servers_dir", &body.servers_dir).await?;
-    upsert_setting(pool.get_ref(), "backups_dir", &body.backups_dir).await?;
-    upsert_setting(pool.get_ref(), "login_default_color", &body.theme_color).await?;
+    upsert_setting(&state.pool, "servers_dir", &body.servers_dir).await?;
+    upsert_setting(&state.pool, "backups_dir", &body.backups_dir).await?;
+    upsert_setting(&state.pool, "login_default_color", &body.theme_color).await?;
 
     // 4. Return Login Token (Auto-login)
     // Generate JWT
@@ -98,6 +100,7 @@ async fn perform_setup(
         sub: user_id.clone(),
         username: body.username.clone(),
         role: "admin".to_string(),
+        accent_color: Some(body.theme_color.clone()),
         exp: expiration,
     };
 
@@ -108,7 +111,7 @@ async fn perform_setup(
     )
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(AuthResponse {
+    Ok(Json(AuthResponse {
         token,
         user: crate::api::auth::UserInfo {
             id: user_id,

@@ -1,10 +1,15 @@
-use actix_web::{web, HttpResponse, Result};
+use axum::{
+    routing::get,
+    extract::State,
+    Json, Router,
+};
 use serde::Serialize;
 use std::process::Command;
 use std::sync::Mutex;
 use sysinfo::{Disks, System};
 use walkdir::WalkDir;
 
+use crate::AppState;
 use crate::error::AppError;
 
 #[derive(Debug, Serialize)]
@@ -35,15 +40,13 @@ lazy_static::lazy_static! {
     static ref SYSTEM: Mutex<System> = Mutex::new(System::new_all());
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/system")
-            .route("/stats", web::get().to(get_system_stats))
-            .route("/java-versions", web::get().to(get_java_versions)),
-    );
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/stats", get(get_system_stats))
+        .route("/java-versions", get(get_java_versions))
 }
 
-async fn get_java_versions() -> Result<HttpResponse, AppError> {
+async fn get_java_versions() -> Result<Json<Vec<JavaVersion>>, AppError> {
     let mut versions = Vec::new();
     let mut checked_paths = std::collections::HashSet::new();
 
@@ -110,7 +113,7 @@ async fn get_java_versions() -> Result<HttpResponse, AppError> {
         }
     }
 
-    Ok(HttpResponse::Ok().json(versions))
+    Ok(Json(versions))
 }
 
 fn check_java_version(path: &std::path::Path) -> Option<JavaVersion> {
@@ -139,9 +142,8 @@ fn check_java_version(path: &std::path::Path) -> Option<JavaVersion> {
     None
 }
 
-use crate::services::process_manager::ProcessManager;
-
-async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse, AppError> {
+async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemStatsResponse>, AppError> {
+    let pm = &state.process_manager;
     let (cpu_usage, ram_percent, ram_used, ram_total) = {
         let mut sys = SYSTEM.lock().unwrap();
         sys.refresh_all();
@@ -192,7 +194,7 @@ async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse,
 
     // Players
     let players_current = pm.get_total_online_players().await;
-    let players_max = 0; // TODO: Sum max players from all running servers? Or just leave as 0 for "unlimited" representation
+    let players_max = 0; 
 
     let cpu_cores = {
         let sys = SYSTEM.lock().unwrap();
@@ -204,21 +206,14 @@ async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse,
     let mut managed_ram = 0;
     let mut managed_disk = 0;
 
-    // Get all servers to calculate total managed disk
-    // Actually ProcessManager already has metrics for running processes.
-    // For disk, we might want it for all servers, not just running ones? 
-    // The request said "total of all servers".
-    
-    // We can get metrics for running servers from PM
-    if let Ok(procs) = pm.get_processes_read_guard().await {
-        for proc in procs.values() {
-            managed_cpu += *proc.last_cpu.read().unwrap();
-            managed_ram += *proc.last_memory.read().unwrap();
-            managed_disk += *proc.last_disk.read().unwrap();
-        }
+    let procs = pm.get_processes_read_guard().await;
+    for proc in procs.values() {
+        managed_cpu += *proc.last_cpu.read().unwrap();
+        managed_ram += *proc.last_memory.read().unwrap();
+        managed_disk += *proc.last_disk.read().unwrap();
     }
 
-    Ok(HttpResponse::Ok().json(SystemStatsResponse {
+    Ok(Json(SystemStatsResponse {
         cpu: cpu_usage,
         ram: ram_percent,
         ram_used,
@@ -234,4 +229,3 @@ async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse,
         managed_disk,
     }))
 }
-

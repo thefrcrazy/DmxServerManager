@@ -1,11 +1,16 @@
-use actix_web::{web, HttpResponse, Result};
+use axum::{
+    routing::{get, post, put},
+    extract::{State, FromRequestParts},
+    Json, Router,
+    http::{StatusCode, HeaderMap, request::Parts},
+};
+use axum::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::db::DbPool;
-use crate::error::AppError;
+use crate::{AppState, error::AppError};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -43,40 +48,39 @@ pub struct Claims {
     pub sub: String,
     pub username: String,
     pub role: String,
+    pub accent_color: Option<String>,
     pub exp: i64,
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/auth")
-            .route("/status", web::get().to(check_setup_status))
-            .route("/login", web::post().to(login))
-            .route("/register", web::post().to(register))
-            .route("/me", web::get().to(me))
-            .route("/password", web::put().to(change_password)),
-    );
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/status", get(check_setup_status))
+        .route("/login", post(login))
+        .route("/register", post(register))
+        .route("/me", get(me))
+        .route("/password", put(change_password))
 }
 
 /// Check if first-time setup is needed (no users exist)
-async fn check_setup_status(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError> {
+async fn check_setup_status(State(state): State<AppState>) -> Result<Json<SetupStatus>, AppError> {
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(pool.get_ref())
+        .fetch_one(&state.pool)
         .await?;
 
-    Ok(HttpResponse::Ok().json(SetupStatus {
+    Ok(Json(SetupStatus {
         needs_setup: count.0 == 0,
     }))
 }
 
 async fn login(
-    pool: web::Data<DbPool>,
-    body: web::Json<LoginRequest>,
-) -> Result<HttpResponse, AppError> {
+    State(state): State<AppState>,
+    Json(body): Json<LoginRequest>,
+) -> Result<Json<AuthResponse>, AppError> {
     let user: UserRow = sqlx::query_as(
         "SELECT id, username, password_hash, role, accent_color FROM users WHERE username = ?",
     )
     .bind(&body.username)
-    .fetch_optional(pool.get_ref())
+    .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::Unauthorized("auth.invalid_credentials".into()))?;
 
@@ -88,7 +92,7 @@ async fn login(
 
     let token = create_token(&user)?;
 
-    Ok(HttpResponse::Ok().json(AuthResponse {
+    Ok(Json(AuthResponse {
         token,
         user: UserInfo {
             id: user.id,
@@ -100,12 +104,12 @@ async fn login(
 }
 
 async fn register(
-    pool: web::Data<DbPool>,
-    body: web::Json<RegisterRequest>,
-) -> Result<HttpResponse, AppError> {
+    State(state): State<AppState>,
+    Json(body): Json<RegisterRequest>,
+) -> Result<(StatusCode, Json<AuthResponse>), AppError> {
     // Check if any users exist (first user becomes admin)
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(pool.get_ref())
+        .fetch_one(&state.pool)
         .await?;
 
     let role = if count.0 == 0 { "admin" } else { "user" };
@@ -114,7 +118,7 @@ async fn register(
     let default_color: Option<(String,)> = sqlx::query_as(
         "SELECT value FROM settings WHERE key = 'login_default_color'"
     )
-    .fetch_optional(pool.get_ref())
+    .fetch_optional(&state.pool)
     .await?;
     let accent_color = default_color.map(|c| c.0).unwrap_or_else(|| "#3A82F6".to_string());
 
@@ -134,7 +138,7 @@ async fn register(
     .bind(&accent_color)
     .bind(&now)
     .bind(&now)
-    .execute(pool.get_ref())
+    .execute(&state.pool)
     .await?;
 
     let user = UserRow {
@@ -147,7 +151,7 @@ async fn register(
 
     let token = create_token(&user)?;
 
-    Ok(HttpResponse::Created().json(AuthResponse {
+    Ok((StatusCode::CREATED, Json(AuthResponse {
         token,
         user: UserInfo {
             id: user.id,
@@ -155,15 +159,60 @@ async fn register(
             role: user.role,
             accent_color: Some(accent_color),
         },
+    })))
+}
+
+async fn me(auth: AuthUser) -> Result<Json<UserInfo>, AppError> {
+    Ok(Json(UserInfo {
+        id: auth.id,
+        username: auth.username,
+        role: auth.role,
+        accent_color: auth.accent_color,
     }))
 }
 
-async fn me() -> Result<HttpResponse, AppError> {
-    // TODO: Extract user from JWT middleware
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "message": "Implement JWT middleware"
-    })))
+pub struct AuthUser {
+    pub id: String,
+    pub username: String,
+    pub role: String,
+    pub accent_color: Option<String>,
 }
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let auth_header = parts.headers
+            .get("Authorization")
+            .and_then(|h| h.to_str().ok())
+            .ok_or_else(|| AppError::Unauthorized("auth.missing_auth_header".into()))?;
+
+        let token = auth_header
+            .strip_prefix("Bearer ")
+            .ok_or_else(|| AppError::Unauthorized("auth.invalid_auth_header".into()))?;
+
+        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".into());
+        
+        let token_data = jsonwebtoken::decode::<Claims>(
+            token,
+            &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
+            &jsonwebtoken::Validation::default(),
+        )
+        .map_err(|_| AppError::Unauthorized("auth.invalid_token".into()))?;
+
+        Ok(AuthUser {
+            id: token_data.claims.sub,
+            username: token_data.claims.username,
+            role: token_data.claims.role,
+            accent_color: token_data.claims.accent_color,
+        })
+    }
+}
+
 
 #[derive(Debug, FromRow)]
 struct UserRow {
@@ -181,6 +230,7 @@ fn create_token(user: &UserRow) -> Result<String, AppError> {
         sub: user.id.clone(),
         username: user.username.clone(),
         role: user.role.clone(),
+        accent_color: user.accent_color.clone(),
         exp: (Utc::now() + chrono::Duration::days(7)).timestamp(),
     };
 
@@ -200,13 +250,12 @@ pub struct ChangePasswordRequest {
 }
 
 async fn change_password(
-    pool: web::Data<DbPool>,
-    req: actix_web::HttpRequest,
-    body: web::Json<ChangePasswordRequest>,
-) -> Result<HttpResponse, AppError> {
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ChangePasswordRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
     // Extract user_id from Authorization header
-    let auth_header = req
-        .headers()
+    let auth_header = headers
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized("auth.missing_auth_header".into()))?;
@@ -242,16 +291,15 @@ async fn change_password(
         .bind(&new_hash)
         .bind(&now)
         .bind(&user_id)
-        .execute(pool.get_ref())
+        .execute(&state.pool)
         .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("auth.user_not_found".into()));
     }
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "success": true,
         "message": "auth.password_updated"
     })))
 }
-

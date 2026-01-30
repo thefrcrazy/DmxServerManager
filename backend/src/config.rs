@@ -1,4 +1,4 @@
-/// Application settings loaded from environment variables
+#[derive(Clone, Debug)]
 pub struct Settings {
     pub host: String,
     pub port: u16,

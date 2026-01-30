@@ -1,11 +1,22 @@
-use actix_web::{web, HttpResponse, Result};
+use axum::{
+    routing::get,
+    extract::{Path, State},
+    Json, Router,
+    http::StatusCode,
+};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::db::DbPool;
+use crate::AppState;
 use crate::error::AppError;
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/", get(list_users).post(create_user))
+        .route("/:id", get(get_user).put(update_user).delete(delete_user))
+}
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct UserResponse {
@@ -44,18 +55,7 @@ pub struct UpdateUserRequest {
     pub allocated_servers: Option<Vec<String>>,
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/users")
-            .route("", web::get().to(list_users))
-            .route("", web::post().to(create_user))
-            .route("/{id}", web::get().to(get_user))
-            .route("/{id}", web::put().to(update_user))
-            .route("/{id}", web::delete().to(delete_user)),
-    );
-}
-
-async fn list_users(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError> {
+async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<serde_json::Value>>, AppError> {
     let users: Vec<UserResponse> = sqlx::query_as(
         r#"SELECT id, username, role, 
            COALESCE(is_active, 1) as is_active,
@@ -64,7 +64,7 @@ async fn list_users(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError> {
            created_at, updated_at, last_login, last_ip, allocated_servers
            FROM users ORDER BY created_at DESC"#,
     )
-    .fetch_all(pool.get_ref())
+    .fetch_all(&state.pool)
     .await?;
 
     // Parse allocated_servers JSON for each user
@@ -93,15 +93,13 @@ async fn list_users(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError> {
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(users_with_servers))
+    Ok(Json(users_with_servers))
 }
 
 async fn get_user(
-    pool: web::Data<DbPool>,
-    path: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let user_id = path.into_inner();
-
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let user: UserResponse = sqlx::query_as(
         r#"SELECT id, username, role,
            COALESCE(is_active, 1) as is_active,
@@ -111,7 +109,7 @@ async fn get_user(
            FROM users WHERE id = ?"#,
     )
     .bind(&user_id)
-    .fetch_optional(pool.get_ref())
+    .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::NotFound("users.not_found".into()))?;
 
@@ -121,7 +119,7 @@ async fn get_user(
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_default();
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "id": user.id,
         "username": user.username,
         "role": user.role,
@@ -137,14 +135,14 @@ async fn get_user(
 }
 
 async fn create_user(
-    pool: web::Data<DbPool>,
-    body: web::Json<CreateUserRequest>,
-) -> Result<HttpResponse, AppError> {
+    State(state): State<AppState>,
+    Json(body): Json<CreateUserRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     // Check if username already exists
     let exists: Option<(i32,)> =
         sqlx::query_as("SELECT 1 FROM users WHERE username = ?")
             .bind(&body.username)
-            .fetch_optional(pool.get_ref())
+            .fetch_optional(&state.pool)
             .await?;
 
     if exists.is_some() {
@@ -168,7 +166,7 @@ async fn create_user(
         let default_color: Option<(String,)> = sqlx::query_as(
             "SELECT value FROM settings WHERE key = 'login_default_color'"
         )
-        .fetch_optional(pool.get_ref())
+        .fetch_optional(&state.pool)
         .await?;
         default_color.map(|c| c.0).unwrap_or_else(|| "#3A82F6".to_string())
     };
@@ -192,30 +190,29 @@ async fn create_user(
     .bind(&allocated_servers)
     .bind(&now)
     .bind(&now)
-    .execute(pool.get_ref())
+    .execute(&state.pool)
     .await?;
 
-    Ok(HttpResponse::Created().json(serde_json::json!({
+    Ok((StatusCode::CREATED, Json(serde_json::json!({
         "id": id,
         "username": body.username,
         "role": role,
         "is_active": is_active,
         "message": "users.create_success"
-    })))
+    }))))
 }
 
 async fn update_user(
-    pool: web::Data<DbPool>,
-    path: web::Path<String>,
-    body: web::Json<UpdateUserRequest>,
-) -> Result<HttpResponse, AppError> {
-    let user_id = path.into_inner();
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    Json(body): Json<UpdateUserRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let now = Utc::now().to_rfc3339();
 
     // Check if user exists
     let exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE id = ?")
         .bind(&user_id)
-        .fetch_optional(pool.get_ref())
+        .fetch_optional(&state.pool)
         .await?;
 
     if exists.is_none() {
@@ -284,30 +281,30 @@ async fn update_user(
     // Bind user_id last
     sql_query = sql_query.bind(&user_id);
 
-    sql_query.execute(pool.get_ref()).await?;
+    sql_query.execute(&state.pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to update user: {}", e)))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "success": true,
         "message": "users.update_success"
     })))
 }
 
 async fn delete_user(
-    pool: web::Data<DbPool>,
-    path: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let user_id = path.into_inner();
-
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let result = sqlx::query("DELETE FROM users WHERE id = ?")
         .bind(&user_id)
-        .execute(pool.get_ref())
+        .execute(&state.pool)
         .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("users.not_found".into()));
     }
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "success": true,
         "message": "users.delete_success"
     })))

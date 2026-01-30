@@ -1,8 +1,17 @@
-use actix_web::{web, HttpResponse, Result};
+use axum::{
+    routing::get,
+    extract::State,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::db::DbPool;
+use crate::AppState;
 use crate::error::AppError;
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/", get(get_settings).put(update_settings))
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SettingsResponse {
@@ -16,14 +25,6 @@ pub struct SettingsResponse {
     pub login_background_url: Option<String>,
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/settings")
-            .route("", web::get().to(get_settings))
-            .route("", web::put().to(update_settings)),
-    );
-}
-
 #[derive(Deserialize)]
 struct UpdateSettingsRequest {
     webhook_url: Option<String>,
@@ -34,18 +35,16 @@ struct UpdateSettingsRequest {
     login_background_url: Option<String>,
 }
 
-async fn get_settings(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError> {
+async fn get_settings(State(state): State<AppState>) -> Result<Json<SettingsResponse>, AppError> {
     // Read from DB
     let settings_rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM settings")
-        .fetch_all(pool.get_ref())
+        .fetch_all(&state.pool)
         .await?;
 
     // Create map for easier lookup
     let settings_map: std::collections::HashMap<String, String> = settings_rows.into_iter().collect();
 
     // Priority: Env > DB > Default
-    // We prioritize Environment variables (infrastructure config) over DB settings
-    // This fixes issues where pre-existing DB values conflict with Docker configuration
     let servers_dir = std::env::var("SERVERS_DIR")
         .ok()
         .or_else(|| settings_map.get("servers_dir").cloned())
@@ -67,13 +66,13 @@ async fn get_settings(pool: web::Data<DbPool>) -> Result<HttpResponse, AppError>
         login_background_url: settings_map.get("login_background_url").cloned(),
     };
 
-    Ok(HttpResponse::Ok().json(settings))
+    Ok(Json(settings))
 }
 
 async fn update_settings(
-    pool: web::Data<DbPool>,
-    body: web::Json<UpdateSettingsRequest>,
-) -> Result<HttpResponse, AppError> {
+    State(state): State<AppState>,
+    Json(body): Json<UpdateSettingsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
     // Helper function to upsert a setting
     async fn upsert_setting(pool: &crate::db::DbPool, key: &str, value: &str) -> Result<(), AppError> {
         sqlx::query(
@@ -88,17 +87,17 @@ async fn update_settings(
     }
 
     if let Some(ref webhook_url) = body.webhook_url {
-        upsert_setting(pool.get_ref(), "webhook_url", webhook_url).await?;
+        upsert_setting(&state.pool, "webhook_url", webhook_url).await?;
     }
     
     // Only update directories if not in Docker 
     let is_docker = std::env::var("IS_DOCKER").is_ok();
     if !is_docker {
         if let Some(ref dir) = body.servers_dir {
-            upsert_setting(pool.get_ref(), "servers_dir", dir).await?;
+            upsert_setting(&state.pool, "servers_dir", dir).await?;
         }
         if let Some(ref dir) = body.backups_dir {
-            upsert_setting(pool.get_ref(), "backups_dir", dir).await?;
+            upsert_setting(&state.pool, "backups_dir", dir).await?;
         }
         // Database path handling via .env
         if let Some(ref db_path) = body.database_path {
@@ -110,14 +109,14 @@ async fn update_settings(
     }
 
     if let Some(ref color) = body.login_default_color {
-        upsert_setting(pool.get_ref(), "login_default_color", color).await?;
+        upsert_setting(&state.pool, "login_default_color", color).await?;
     }
 
     if let Some(ref url) = body.login_background_url {
-        upsert_setting(pool.get_ref(), "login_background_url", url).await?;
+        upsert_setting(&state.pool, "login_background_url", url).await?;
     }
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "success": true,
         "message": "Settings updated successfully"
     })))
@@ -129,6 +128,12 @@ async fn update_env_file(key: &str, value: &str) -> std::io::Result<()> {
     let env_path = ".env";
     let mut content = String::new();
     
+    // If file doesn't exist, create it
+    if tokio::fs::metadata(env_path).await.is_err() {
+         let mut file = tokio::fs::File::create(env_path).await?;
+         file.write_all(b"").await?;
+    }
+
     if let Ok(mut file) = tokio::fs::File::open(env_path).await {
         file.read_to_string(&mut content).await?;
     }
@@ -156,4 +161,3 @@ async fn update_env_file(key: &str, value: &str) -> std::io::Result<()> {
     
     Ok(())
 }
-

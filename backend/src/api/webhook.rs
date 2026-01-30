@@ -1,9 +1,16 @@
-use actix_web::{web, HttpResponse, Result};
+use axum::{
+    routing::post,
+    extract::State,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::db::DbPool;
-use crate::error::AppError;
-use crate::services::ProcessManager;
+use crate::{AppState, error::AppError};
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/test", post(test_webhook))
+}
 
 #[derive(Debug, Serialize)]
 pub struct WebhookTestResponse {
@@ -23,25 +30,20 @@ pub struct TestWebhookRequest {
     pub webhook_url: Option<String>,
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/webhook")
-            .route("/test", web::post().to(test_webhook)),
-    );
-}
-
 async fn test_webhook(
-    pool: web::Data<DbPool>,
-    pm: web::Data<ProcessManager>,
-    body: web::Json<TestWebhookRequest>,
-) -> Result<HttpResponse, AppError> {
+    State(state): State<AppState>,
+    Json(body): Json<TestWebhookRequest>,
+) -> Result<Json<WebhookTestResponse>, AppError> {
+    let pool = &state.pool;
+    let pm = &state.process_manager;
+
     // Get webhook URL from request or settings
     let webhook_url = if let Some(url) = &body.webhook_url {
         url.clone()
     } else {
         // Fetch from settings
         let settings: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = 'webhook_url'")
-            .fetch_optional(pool.get_ref())
+            .fetch_optional(pool)
             .await?;
         
         settings
@@ -57,7 +59,7 @@ async fn test_webhook(
     let servers: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT name, game_type, id FROM servers ORDER BY name"
     )
-    .fetch_all(pool.get_ref())
+    .fetch_all(pool)
     .await?;
 
     let mut server_list: Vec<ServerInfo> = Vec::new();
@@ -107,7 +109,7 @@ async fn test_webhook(
     let embed = serde_json::json!({
         "author": {
             "name": "Draveur Manager",
-            "icon_url": "https://cdn.discordapp.com/emojis/1199040367842689154.webp"
+            "icon_url": "https://raw.githubusercontent.com/thefrcrazy/Draveur-Manager/refs/heads/main/frontend/public/draveur-manager-logo.png"
         },
         "title": "📊 État du Système",
         "color": 0x3A82F6,
@@ -146,11 +148,10 @@ async fn test_webhook(
     });
 
     // Use update_status_message to edit existing message or create new one
-    // Note: We use the update_status_message from discord_service to persist and update the message
-    crate::services::discord_service::update_status_message(pool.get_ref(), embed).await
+    crate::services::discord_service::update_status_message(pool, embed).await
         .map_err(|e| AppError::Internal(format!("Failed to update status message: {}", e)))?;
 
-    Ok(HttpResponse::Ok().json(WebhookTestResponse {
+    Ok(Json(WebhookTestResponse {
         success: true,
         message: "Status message updated successfully".to_string(),
     }))
