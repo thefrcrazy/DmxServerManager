@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Ansi from "ansi-to-react";
-import { FileText, AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import Select from "../../components/Select";
 import { enhanceLogContent } from "../../utils/logUtils";
 
@@ -38,41 +38,32 @@ export default function ServerLogs({
 
     return (
         <div className="logs-wrapper">
-            {/* Toolbar */}
-            <div className="logs-toolbar">
-                <div className="section-header-simple">
-                    <div className="icon-box">
-                        <FileText size={16} />
-                    </div>
-                    <div>
-                        <h3 className="section-title-sm">Archives de Logs</h3>
-                        <p className="section-subtitle-sm">Consultez l'historique de votre serveur.</p>
-                    </div>
-                </div>
 
-                <div className="logs-actions">
-                    {logFiles.length > 0 && (
-                        <div className="select-wrapper">
-                            <Select
-                                options={logFiles.map((f) => ({
-                                    label: f.name,
-                                    value: f.path,
-                                }))}
-                                value={selectedLogFile || ""}
-                                onChange={(v) => onSelectLogFile(v)}
-                            />
-                        </div>
-                    )}
-                    <button onClick={onRefresh} className="btn btn--secondary btn--icon" title="Rafraîchir">
-                        <RefreshCw size={16} />
-                    </button>
-                </div>
-            </div>
 
             {/* Log Viewer */}
             <div className="console-container logs-container">
                 <div className="console-header">
-                    <span className="console-path">{selectedLogFile || "Aucun fichier sélectionné"}</span>
+                    <div className="console-header__title">
+                        <span className="console-path">{selectedLogFile || "Aucun fichier sélectionné"}</span>
+                    </div>
+
+                    <div className="console-header__actions">
+                        {logFiles.length > 0 && (
+                            <div className="select-wrapper select-wrapper--inline">
+                                <Select
+                                    options={logFiles.map((f) => ({
+                                        label: f.name,
+                                        value: f.path,
+                                    }))}
+                                    value={selectedLogFile || ""}
+                                    onChange={(v) => onSelectLogFile(v)}
+                                />
+                            </div>
+                        )}
+                        <button onClick={onRefresh} className="btn btn--secondary btn--icon btn--xs" title="Rafraîchir">
+                            <RefreshCw size={14} />
+                        </button>
+                    </div>
                 </div>
 
                 <div
@@ -93,7 +84,7 @@ export default function ServerLogs({
                                 {enhanceLogContent(
                                     logContent || "Chargement... ou fichier vide.",
                                     serverType,
-                                )}
+                                ) || ""}
                             </Ansi>
                         </pre>
                     )}

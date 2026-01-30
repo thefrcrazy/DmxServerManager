@@ -8,10 +8,10 @@
     margin: 0 auto;
     animation: fadeIn var(--transition-base);
     // height: calc(100vh - header - main-content padding top/bottom)
-    height: calc(100vh - var(--header-height) - (var(--spacing-5) * 2));
+    // height: calc(100vh - var(--header-height) - (var(--spacing-5) * 2));
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    // overflow: hidden;
 
     @include mobile {
         padding: var(--spacing-4);
@@ -164,7 +164,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--spacing-2) var(--spacing-4);
+    padding: 0 var(--spacing-4);
+    height: 42px;
+    min-height: 42px;
     background-color: rgba(255, 255, 255, 0.03);
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -176,7 +178,34 @@
     font-family: var(--font-family-mono);
     font-size: var(--font-size-xs);
     color: var(--color-text-muted);
+    flex: 1;
+    overflow: hidden;
+
+    .console-path {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
+
+.console-header__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-left: var(--spacing-4);
+}
+
+.select-wrapper--inline {
+    width: 280px;
+
+    .select-control {
+        padding-top: 2px !important;
+        padding-bottom: 2px !important;
+        font-size: var(--font-size-xs) !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
+    }
+}
+
 
 .window-controls {
     display: flex;
@@ -202,12 +231,8 @@
 }
 
 .console-output {
-    flex: 1;
-    padding: var(--spacing-4);
-    overflow-y: auto;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-sm);
-    line-height: 1.6;
+    min-height: 550px;
+    max-height: 550px;
     color: #d4d4d4;
 
     @include custom-scrollbar;
@@ -490,7 +515,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--spacing-2) var(--spacing-3);
+    padding: 0 var(--spacing-3);
+    height: 42px;
+    min-height: 42px;
     background-color: var(--color-bg-tertiary);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
@@ -553,9 +580,14 @@
 
     &.file-manager--with-editor {
         grid-template-columns: 300px 1fr;
+        height: 600px;
+        min-height: 600px;
+        max-height: 600px;
 
         @include mobile {
             grid-template-columns: 1fr;
+            height: auto;
+            max-height: none;
 
             .file-tree {
                 display: none;
@@ -695,7 +727,7 @@
     box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
-    height: 70vh;
+    height: 100%;
     overflow: hidden;
 }
 
@@ -1285,6 +1317,7 @@
         color: var(--color-danger);
     }
 }
+
 // ==========================================
 // Logs Wrapper (Added for fixed layout)
 // ==========================================
@@ -1301,27 +1334,27 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: var(--spacing-4);
-    
+
     .section-header-simple {
         display: flex;
         align-items: center;
         gap: var(--spacing-3);
-        
+
         .icon-box {
-             padding: var(--spacing-2);
-             background-color: var(--color-bg-tertiary);
-             border-radius: var(--radius-md);
-             color: var(--color-accent);
+            padding: var(--spacing-2);
+            background-color: var(--color-bg-tertiary);
+            border-radius: var(--radius-md);
+            color: var(--color-accent);
         }
     }
-    
+
     .logs-actions {
         display: flex;
         align-items: center;
         gap: var(--spacing-2);
-        
+
         .select-wrapper {
-             min-width: 200px;
+            min-width: 200px;
         }
     }
 }
@@ -1335,12 +1368,12 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    
+
     // Ensure header doesn't shrink
     .players-header {
         flex-shrink: 0;
     }
-    
+
     // Ensure content scrolls
     .players-content {
         flex: 1;

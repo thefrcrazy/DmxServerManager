@@ -88,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
         
         .layer(TraceLayer::new_for_http())
         .layer(cors)
+        .fallback_service(get_service(ServeDir::new("./static").fallback(tower_http::services::ServeFile::new("./static/index.html"))))
         .with_state(state);
 
     let addr = format!("{}:{}", settings.host, settings.port);
