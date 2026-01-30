@@ -15,11 +15,24 @@
     .main-content {
         flex: 1;
         margin-left: var(--sidebar-width);
-        padding: var(--spacing-5);
-        padding-top: calc(var(--header-height) + var(--spacing-5));
+        // padding removed to allow full scroll area
+        padding-top: var(--header-height);
         background-color: var(--color-bg-primary);
-        min-height: 100vh;
+        height: 100vh; // Fixed height
+        min-width: 0;
         transition: margin-left var(--transition-smooth);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden; // Prevent main scroll
+
+        // Wrapper to prevent horizontal overflow and handle scroll
+        .page-container {
+            flex: 1;
+            width: 100%;
+            max-width: 100%;
+            overflow-y: auto; // Scroll happens here
+            padding: var(--spacing-5); // Content padding
+        }
     }
 
     // Sidebar collapsed state - after .main-content for correct specificity
@@ -55,8 +68,12 @@
     @media (max-width: 1023px) {
         .main-content {
             margin-left: 0;
-            padding: var(--spacing-4);
-            padding-top: calc(var(--header-height) + var(--spacing-4));
+            padding: 0;
+            padding-top: var(--header-height);
+
+            .page-container {
+                padding: var(--spacing-4);
+            }
         }
     }
 }

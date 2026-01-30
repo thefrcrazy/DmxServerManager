@@ -1,23 +1,36 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
 import {
-    Terminal, Clock, Cpu, HardDrive, Users, Globe,
-    FileText, Settings, History, FolderOpen, BarChart3,
-    Webhook, Calendar, Plus, Download, Trash2,
-    File, Folder, ChevronRight, Save, AlertCircle, Check,
-    ChevronDown, Server as ServerIcon, LogOut, Ban, Shield
-} from 'lucide-react';
-import { formatBytes, formatGB } from '../utils/formatters';
-import { enhanceLogContent } from '../utils/logUtils';
-import Select from '../components/Select';
-import Checkbox from '../components/Checkbox';
-import RangeSlider from '../components/RangeSlider';
+    BarChart3,
+    Clock,
+    Cpu,
+    HardDrive,
+    Play,
+    RotateCw,
+    Square,
+    Terminal, // Keep for tab icon
+    Users, // Keep for tab icon
+    Settings, // Keep for tab icon
+    History, // Keep for tab icon
+    FolderOpen, // Keep for tab icon
+    FileText, // Keep for tab icon
+    Webhook,
+    Globe, // Keep for banner stats
+} from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { formatBytes, formatGB } from "../utils/formatters";
+import InstallationProgress from "../components/InstallationProgress";
+import { useLanguage } from "../contexts/LanguageContext";
+import { usePageTitle } from "../contexts/PageTitleContext";
 
-// ... imports
-import Ansi from 'ansi-to-react';
-import InstallationProgress from '../components/InstallationProgress';
-import { useLanguage } from '../contexts/LanguageContext';
-import { usePageTitle } from '../contexts/PageTitleContext';
+// New Components
+import ServerConsole from "../components/server/ServerConsole";
+import ServerBackups from "../components/server/ServerBackups";
+import ServerFiles from "../components/server/ServerFiles";
+import ServerLogs from "../components/server/ServerLogs";
+import ServerConfig from "../components/server/ServerConfig";
+import ServerPlayers from "../components/server/ServerPlayers";
+import Tabs from "../components/Tabs";
+import WorkInProgress from "../components/WorkInProgress";
 
 interface Backup {
     id: string;
@@ -50,7 +63,6 @@ interface Server {
     status: string;
     working_dir: string;
     executable_path: string;
-    // CLI Arguments
     min_memory?: string;
     max_memory?: string;
     java_path?: string;
@@ -66,12 +78,11 @@ interface Server {
     disk_usage_bytes?: number;
     bind_address?: string;
     port?: number;
-    auth_mode?: 'authenticated' | 'offline';
+    auth_mode?: "authenticated" | "offline";
     allow_op?: boolean;
     backup_enabled?: boolean;
     backup_dir?: string;
     backup_frequency?: number;
-    // World Config (JSON)
     seed?: string;
     world_gen_type?: string;
     world_name?: string;
@@ -97,20 +108,16 @@ interface Server {
     started_at?: string;
 }
 
-// JVM Args Suggestions for the config form
-const JVM_ARGS_SUGGESTIONS = [
-    { key: 'aot', arg: '-XX:AOTCache=HytaleServer.aot', isRecommended: true },
-    { key: 'g1gc', arg: '-XX:+UseG1GC', isRecommended: false },
-    { key: 'zgc', arg: '-XX:+UseZGC', isRecommended: false },
-    { key: 'maxgcpause', arg: '-XX:MaxGCPauseMillis=50', isRecommended: false },
-    { key: 'parallelref', arg: '-XX:+ParallelRefProcEnabled', isRecommended: false },
-    { key: 'disableexplicitgc', arg: '-XX:+DisableExplicitGC', isRecommended: false },
-    { key: 'alwayspretouch', arg: '-XX:+AlwaysPreTouch', isRecommended: false },
-    { key: 'stringdedup', arg: '-XX:+UseStringDeduplication', isRecommended: false },
-    { key: 'encoding', arg: '-Dfile.encoding=UTF-8', isRecommended: false },
-];
-
-type TabId = 'console' | 'logs' | 'schedule' | 'backups' | 'files' | 'config' | 'players' | 'metrics' | 'webhooks';
+type TabId =
+    | "console"
+    | "logs"
+    | "schedule"
+    | "backups"
+    | "files"
+    | "config"
+    | "players"
+    | "metrics"
+    | "webhooks";
 
 interface Tab {
     id: TabId;
@@ -118,48 +125,36 @@ interface Tab {
     icon: React.ReactNode;
 }
 
-const CollapsibleSection = ({ title, icon: Icon, children, badge, defaultOpen = false }: any) => (
-    <details className="card collapsible-section" open={defaultOpen}>
-        <summary className="collapsible-header">
-            <div className="collapsible-header__content">
-                <Icon size={18} className="collapsible-header__icon" />
-                <span className="collapsible-header__title">{title}</span>
-                {badge && (
-                    <span className="collapsible-header__badge">{badge}</span>
-                )}
-            </div>
-            <ChevronDown size={18} className="chevron-icon" />
-        </summary>
-        <div className="collapsible-content pt-4 border-t border-white/5 mt-3">{children}</div>
-    </details>
-);
-
-// Removed inline InstallationProgress component
-
-
-
-
-
-
-
 export default function ServerDetail() {
     const { t } = useLanguage();
     const { setPageTitle } = usePageTitle();
     const { id } = useParams<{ id: string }>();
 
     const [server, setServer] = useState<Server | null>(null);
-    const [activeTab, setActiveTab] = useState<TabId>('console');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const tabParam = searchParams.get("tab") as TabId | null;
+    const [activeTab, setActiveTab] = useState<TabId>(tabParam || "console");
+
+    // Sync activeTab from URL changes (activeTab follows URL)
+    useEffect(() => {
+        const tab = searchParams.get("tab") as TabId | null;
+        if (tab && tabs.some(t => t.id === tab)) {
+            setActiveTab(tab);
+        }
+    }, [searchParams]);
+
+    const handleTabChange = (tabId: TabId) => {
+        setActiveTab(tabId);
+        setSearchParams({ tab: tabId });
+    };
     const [logs, setLogs] = useState<string[]>([]);
-    const [command, setCommand] = useState('');
     const [isConnected, setIsConnected] = useState(false);
     const [startTime, setStartTime] = useState<Date | null>(null);
-    const [uptime, setUptime] = useState('--:--:--');
+    const [uptime, setUptime] = useState("--:--:--");
     const [cpuUsage, setCpuUsage] = useState<number>(0);
     const [ramUsage, setRamUsage] = useState<number>(0);
     const [diskUsage, setDiskUsage] = useState<number | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
-    const consoleEndRef = useRef<HTMLDivElement>(null);
-    const logsEndRef = useRef<HTMLDivElement>(null);
 
     // Backups tab state
     const [backups, setBackups] = useState<Backup[]>([]);
@@ -168,16 +163,16 @@ export default function ServerDetail() {
 
     // Files tab state
     const [files, setFiles] = useState<FileEntry[]>([]);
-    const [currentPath, setCurrentPath] = useState('');
+    const [currentPath, setCurrentPath] = useState("");
     const [filesLoading, setFilesLoading] = useState(false);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
-    const [fileContent, setFileContent] = useState('');
+    const [fileContent, setFileContent] = useState("");
     const [fileSaving, setFileSaving] = useState(false);
 
     // Logs tab state
     const [logFiles, setLogFiles] = useState<FileEntry[]>([]);
     const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
-    const [logContent, setLogContent] = useState('');
+    const [logContent, setLogContent] = useState("");
 
     // Installation state
     const [isInstalling, setIsInstalling] = useState(false);
@@ -186,27 +181,28 @@ export default function ServerDetail() {
     // Config tab state
     const [configFormData, setConfigFormData] = useState<Partial<Server>>({});
     const [configSaving, setConfigSaving] = useState(false);
-    const [configError, setConfigError] = useState('');
-    const [javaVersions, setJavaVersions] = useState<{ path: string; version: string }[]>([]);
+    const [configError, setConfigError] = useState("");
+    const [javaVersions, setJavaVersions] = useState<
+        { path: string; version: string }[]
+    >([]);
 
     // Players tab state
-    const [activePlayerTab, setActivePlayerTab] = useState<'online' | 'history' | 'whitelist' | 'bans' | 'permissions'>('online');
-    const [playerData, setPlayerData] = useState<any[]>([]); // Placeholder for list data
-    const [isPlayerLoading, setIsPlayerLoading] = useState(false);
+    const [activePlayerTab, setActivePlayerTab] = useState<
+        "online" | "whitelist" | "bans" | "ops"
+    >("online");
+    const [playerData, setPlayerData] = useState<any[]>([]); // For file-based lists
+
 
     const tabs: Tab[] = [
-        { id: 'console', label: t('server_detail.tabs.terminal'), icon: <Terminal size={18} /> },
-        { id: 'logs', label: t('server_detail.tabs.logs'), icon: <FileText size={18} /> },
-        { id: 'schedule', label: t('server_detail.tabs.schedule'), icon: <Calendar size={18} /> },
-        { id: 'backups', label: t('server_detail.tabs.backups'), icon: <History size={18} /> },
-        { id: 'files', label: t('server_detail.tabs.files'), icon: <FolderOpen size={18} /> },
-        { id: 'config', label: t('server_detail.tabs.config'), icon: <Settings size={18} /> },
-        { id: 'players', label: t('server_detail.tabs.players'), icon: <Users size={18} /> },
-        { id: 'metrics', label: t('server_detail.tabs.metrics'), icon: <BarChart3 size={18} /> },
-        { id: 'webhooks', label: t('server_detail.tabs.webhooks'), icon: <Webhook size={18} /> },
+        { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
+        { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
+        { id: "backups", label: t("server_detail.tabs.backups"), icon: <History size={18} /> },
+        { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
+        { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
+        { id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> },
+        { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
+        { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
     ];
-
-
 
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const retryCountRef = useRef(0);
@@ -216,30 +212,29 @@ export default function ServerDetail() {
     useEffect(() => {
         serverStatusRef.current = server?.status;
 
-        // Sync local state with authoritative server status
-        setIsInstalling(server?.status === 'installing');
-        setIsAuthRequired(server?.status === 'auth_required');
+        setIsInstalling(server?.status === "installing");
+        setIsAuthRequired(server?.status === "auth_required");
 
-        if ((server?.status === 'running' || server?.status === 'installing' || server?.status === 'auth_required') && !wsRef.current) {
+        if (
+            (server?.status === "running" ||
+                server?.status === "installing" ||
+                server?.status === "auth_required") &&
+            !wsRef.current
+        ) {
             shouldReconnectRef.current = true;
             connectWebSocket();
         }
 
-        // Force reset auth required if server is stopped
-        if (server?.status === 'stopped' || server?.status === 'offline') {
+        if (server?.status === "stopped" || server?.status === "offline") {
             setIsAuthRequired(false);
             setIsInstalling(false);
         }
     }, [server?.status]);
 
     useEffect(() => {
-        // Reset logs on id change
         setLogs([]);
         fetchServer();
-        // Try to fetch existing logs (console.log or install.log)
         fetchConsoleLog();
-
-        // Note: Connection is now handled by the status effect above
 
         return () => {
             shouldReconnectRef.current = false;
@@ -254,75 +249,57 @@ export default function ServerDetail() {
     }, [id]);
 
     const connectWebSocket = () => {
-        // Cleanup existing connection if any
         if (wsRef.current) {
-            if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
-                return; // Already connected or connecting
-            }
-            // Avoid triggering onclose logic if we are manually replacing it
+            if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
             wsRef.current.onclose = null;
             wsRef.current.close();
         }
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const ws = new WebSocket(`${protocol}//${window.location.host}/ws/console/${id}`);
 
         ws.onopen = () => {
             setIsConnected(true);
-            retryCountRef.current = 0; // Reset retries on success
+            retryCountRef.current = 0;
         };
 
         ws.onmessage = (event) => {
             const message = event.data;
 
-            // Handle Control Messages
-            if (message.startsWith('[STATUS]:')) {
-                const status = message.replace('[STATUS]:', '').trim();
-                // Update server status locally without full refetch
-                setServer(prev => prev ? ({ ...prev, status }) : null);
-
-                // If stopped, we don't expect more messages, but let socket close naturally
-                if (status === 'running') setStartTime(new Date());
+            if (message.startsWith("[STATUS]:")) {
+                const status = message.replace("[STATUS]:", "").trim();
+                setServer((prev) => (prev ? { ...prev, status } : null));
+                if (status === "running") setStartTime(new Date());
                 else setStartTime(null);
-
-                // If status changes to running or stopped, we might want to refresh full server data
                 fetchServer();
-                return; // Don't show in logs
+                return;
             }
 
-            // Handle Metrics
-            if (message.trim().startsWith('[METRICS]:')) {
+            if (message.trim().startsWith("[METRICS]:")) {
                 try {
                     const metrics = JSON.parse(message.trim().substring(10));
                     setCpuUsage(metrics.cpu || 0);
                     setRamUsage(metrics.memory || 0);
-                    if (metrics.disk_bytes !== undefined) {
-                        setDiskUsage(metrics.disk_bytes);
-                    }
+                    if (metrics.disk_bytes !== undefined) setDiskUsage(metrics.disk_bytes);
                 } catch (e) {
-                    console.error('Failed to parse metrics', e);
+                    console.error("Failed to parse metrics", e);
                 }
                 return;
             }
 
-            // Handle Installation Detection
-            if (message.includes('Initialization of installation') || message.includes('Initialization de l\'installation')) {
+            if (message.includes("Initialization of installation") || message.includes("Initialization de l'installation")) {
                 setIsInstalling(true);
                 setIsAuthRequired(false);
             }
-            if (message.includes('IMPORTANT') && (message.includes('authentifier') || message.includes('authenticate'))) {
-                // Only enable auth requirement if server is actually running/starting
-                if (server?.status === 'running' || server?.status === 'starting') {
+            if (message.includes("IMPORTANT") && (message.includes("authentifier") || message.includes("authenticate"))) {
+                if (server?.status === "running" || server?.status === "starting") {
                     setIsAuthRequired(true);
                 }
             }
-
-            // Auto-close auth popup on success
-            if (message.includes('Authentication successful!') || message.includes('Success!')) {
+            if (message.includes("Authentication successful!") || message.includes("Success!")) {
                 setIsAuthRequired(false);
             }
-            if (message.includes('Installation terminée') || message.includes('Installation finished')) {
-                // Refresh server state to unlock UI
+            if (message.includes("Installation terminée") || message.includes("Installation finished")) {
                 setIsInstalling(false);
                 fetchServer();
             }
@@ -333,15 +310,9 @@ export default function ServerDetail() {
         ws.onclose = () => {
             setIsConnected(false);
             wsRef.current = null;
-
-            // Only reconnect if we are still on the page AND the server is supposed to be running
-            const shouldRetry = shouldReconnectRef.current
-                && (serverStatusRef.current === 'running' || serverStatusRef.current === 'installing' || serverStatusRef.current === 'auth_required');
-
+            const shouldRetry = shouldReconnectRef.current && (serverStatusRef.current === "running" || serverStatusRef.current === "installing" || serverStatusRef.current === "auth_required");
             if (shouldRetry) {
-                const retryDelay = Math.min(1000 * Math.pow(1.5, retryCountRef.current), 10000); // Cap at 10s
-                console.log(`WebSocket closed. Reconnecting in ${retryDelay}ms...`);
-
+                const retryDelay = Math.min(1000 * Math.pow(1.5, retryCountRef.current), 10000);
                 reconnectTimeoutRef.current = setTimeout(() => {
                     retryCountRef.current++;
                     connectWebSocket();
@@ -349,1683 +320,461 @@ export default function ServerDetail() {
             }
         };
 
-        ws.onerror = (err) => {
-            console.error('WebSocket error:', err);
-            // onclose will be called after onerror, so we handle reconnection there
-        };
-
+        ws.onerror = (err) => console.error("WebSocket error:", err);
         wsRef.current = ws;
     };
 
     const fetchConsoleLog = async () => {
         if (!id) return;
         try {
-            // 1. Always check install.log first to see if an installation is unfinished
-            // This is critical because a stale console.log might exist from a previous run
             let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=logs/install.log`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
 
             if (installRes.ok) {
                 const data = await installRes.json();
                 if (data.content) {
-                    const lines = data.content.split('\n');
-                    // Check logic: Has Start but No End
+                    const lines = data.content.split("\n");
                     const hasStart = lines.some((l: string) => l.includes("Initialization de l'installation") || l.includes("Starting Hytale Server Installation"));
                     const hasEnd = lines.some((l: string) => l.includes("Installation terminée") || l.includes("Installation finished"));
-
-                    if (hasStart && !hasEnd) {
-                        // Ongoing installation detected!
-                        const isFinished = lines.some((l: string) => l.includes("Installation terminée"));
-                        // Only set installing if not finished AND server is not explicitly running (avoid false positives)
-                        if (!isFinished && server?.status !== 'running') {
-                            setIsInstalling(true);
-                        }
-                    }
+                    if (hasStart && !hasEnd && server?.status !== "running") setIsInstalling(true);
                 }
             }
 
-            // 2. If no active installation, fetch standard console.log
             let res = await fetch(`/api/v1/servers/${id}/files/read?path=logs/console.log`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
 
             if (res.ok) {
                 const data = await res.json();
-                if (data.content && data.content.length > 0) {
-                    const lines = data.content.split('\n');
-                    setLogs(lines);
-                }
+                if (data.content && data.content.length > 0) setLogs(data.content.split("\n"));
             } else if (installRes.ok) {
-                // Fallback: If no console.log but we have install.log (even if finished), show it (history)
                 const data = await installRes.json();
-                if (data.content) {
-                    setLogs(data.content.split('\n'));
-                }
+                if (data.content) setLogs(data.content.split("\n"));
             }
-        } catch (e) {
-            // Ignore
-        }
+        } catch (e) { }
     };
 
-    useEffect(() => {
-        if (activeTab === "console") {
-            setTimeout(() => {
-                consoleEndRef.current?.scrollIntoView({ behavior: "instant" });
-            }, 100);
-        }
-        if (activeTab === "logs") {
-            setTimeout(() => {
-                logsEndRef.current?.scrollIntoView({ behavior: "instant" });
-            }, 100);
-        }
-    }, [logs, activeTab]);
-
-    useEffect(() => {
-        if (server) {
-            setPageTitle(server.name, 'Hytale Server', { to: '/servers' });
-        } else {
-            setPageTitle(t('common.loading'), '', { to: '/servers' });
-        }
-    }, [server, setPageTitle, t]);
-
-    useEffect(() => {
-        if (server?.status === 'running' && startTime) {
-            const interval = setInterval(() => {
-                const diff = Date.now() - startTime.getTime();
-                const hours = Math.floor(diff / 3600000);
-                const minutes = Math.floor((diff % 3600000) / 60000);
-                const seconds = Math.floor((diff % 60000) / 1000);
-                setUptime(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-            }, 1000);
-            return () => clearInterval(interval);
-        } else {
-            setUptime('--:--:--');
-        }
-    }, [server?.status, startTime]);
-
-    // Config form logic
-    useEffect(() => {
-        if (activeTab === 'config') {
-            fetchJavaVersions();
-            // Initialize form data from server and its config
-            if (server && configFormData.id !== server.id) {
-                const formData = { ...server };
-                // Map config values to flat form fields if they exist
-                if (server.config) {
-                    if (server.config.MaxPlayers) formData.max_players = server.config.MaxPlayers;
-                    if (server.config.MaxViewRadius) formData.view_distance = server.config.MaxViewRadius;
-                    if (server.config.Seed) formData.seed = server.config.Seed;
-                    if (server.config.ServerName) formData.name = server.config.ServerName;
-
-                    // Pull manager settings from config if missing on top level or just to be sure
-                    if (server.config.port) formData.port = server.config.port;
-                    if (server.config.bind_address) formData.bind_address = server.config.bind_address;
-                    if (server.config.auth_mode) formData.auth_mode = server.config.auth_mode;
-                }
-                setConfigFormData(formData);
-            }
-        }
-    }, [activeTab, server, configFormData.id]);
-
-    const fetchJavaVersions = async () => {
-        try {
-            const response = await fetch('/api/v1/system/java-versions', {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-            });
-            if (response.ok) {
-                setJavaVersions(await response.json());
-            }
-        } catch (error) {
-            console.error('Failed to fetch Java versions:', error);
-        }
-    };
-
-    const updateConfigValue = <K extends keyof Server>(key: K, value: Server[K]) => {
-        setConfigFormData(prev => ({ ...prev, [key]: value }));
-    };
-
-    const toggleJvmArg = (arg: string) => {
-        let currentArgs = configFormData.extra_args || '';
-        let currentArgsParts = currentArgs.trim().split(/\s+/).filter(a => a.length > 0);
-
-        if (currentArgsParts.includes(arg)) {
-            currentArgsParts = currentArgsParts.filter(a => a !== arg);
-        } else {
-            currentArgsParts.push(arg);
-        }
-
-        updateConfigValue('extra_args', currentArgsParts.join(' '));
-    };
-
-    const handleSaveConfig = async (e: React.FormEvent) => {
-        e.preventDefault();
-        configFormData.id = id; // Ensure ID is set
-        setConfigSaving(true);
-        setConfigError('');
-
-        try {
-            // Prepare payload: merge flat fields back into config object where necessary
-            const payload = { ...configFormData };
-
-            // Ensure config object exists
-            if (!payload.config) payload.config = server?.config || {};
-
-            // Update specific config fields for Hytale (config.json)
-            if (payload.max_players) payload.config.MaxPlayers = parseInt(payload.max_players.toString());
-            if (payload.view_distance) payload.config.MaxViewRadius = parseInt(payload.view_distance.toString());
-            if (payload.seed) payload.config.Seed = payload.seed;
-            if (payload.name) payload.config.ServerName = payload.name;
-
-            // IMPORTANT: Manager settings that are stored in config JSON by backend convention
-            if (payload.port) payload.config.port = parseInt(payload.port.toString());
-            if (payload.bind_address) payload.config.bind_address = payload.bind_address;
-            if (payload.auth_mode) payload.config.auth_mode = payload.auth_mode;
-            if (payload.allow_op !== undefined) payload.config.allow_op = payload.allow_op;
-            if (payload.disable_sentry !== undefined) payload.config.disable_sentry = payload.disable_sentry;
-            if (payload.accept_early_plugins !== undefined) payload.config.accept_early_plugins = payload.accept_early_plugins;
-
-
-            const response = await fetch(`/api/v1/servers/${id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
-                },
-                body: JSON.stringify(payload),
-            });
-
-            if (response.ok) {
-                // Refresh server data
-                fetchServer();
-                alert(t('server_detail.messages.config_saved'));
-            } else {
-                const data = await response.json();
-                setConfigError(data.error || t('server_detail.messages.save_error'));
-            }
-        } catch (err) {
-            setConfigError(t('server_detail.messages.connection_error'));
-        } finally {
-            setConfigSaving(false);
-        }
-    };
-
-    const fetchServer = async () => {
-        const response = await fetch(`/api/v1/servers/${id}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        const data = await response.json();
-        setServer(data);
-        if (data.disk_usage_bytes !== undefined) {
-            setDiskUsage(data.disk_usage_bytes);
-        }
-        if (data.status === 'running' && data.started_at) {
-            setStartTime(new Date(data.started_at));
-        } else if (data.status !== 'running') {
-            setStartTime(null);
-        }
-    };
-
-    const handleAction = async (action: 'start' | 'stop' | 'restart' | 'kill') => {
-        // Optimistic checks
-        if (action === 'start' && server?.status === 'running') {
-            alert(t('server_detail.messages.already_running') || "Server is already running");
-            return;
-        }
-
-        try {
-            const res = await fetch(`/api/v1/servers/${id}/${action}`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                if (res.status === 400 && action === 'start' && data.error === 'Server already running') {
-                    // Gracefully handle "Server already running"
-                    fetchServer(); // Just refresh state
-                    return;
-                }
-                alert(t('server_detail.messages.action_error') || `Error: ${data.error || res.statusText}`);
-                return;
-            }
-
-            if (action === 'start') {
-                // Optimistic update or wait for fetchServer
-                setLogs([]); // Clear logs visually to avoid stale auth codes
-                setIsAuthRequired(false); // Reset auth state on new start
-            } else if (action === 'stop' || action === 'kill') {
-                setStartTime(null);
-                setIsAuthRequired(false); // Immediate local reset
-                setLogs([]); // Clear logs to prepare for new stream
-            }
-            fetchServer();
-            setTimeout(fetchServer, 1000);
-            setTimeout(fetchServer, 3000);
-        } catch (e) {
-            console.error(e);
-            alert(t('server_detail.messages.connection_error'));
-        }
-    };
-
-    const handleReinstall = async () => {
-        if (!confirm(t('server_detail.reinstall_confirm'))) {
-            return;
-        }
-
-        try {
-            // Switch to terminal immediately
-            setActiveTab('console');
-            setLogs([]); // Clear logs to prepare for new stream
-            setIsInstalling(true); // Force installing state immediately
-
-            const response = await fetch(`/api/v1/servers/${id}/reinstall`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-            });
-
-            if (response.ok) {
-                // Trigger a log refresh just in case, or wait for WS
-                fetchServer();
-            } else {
-                alert(t('server_detail.messages.reinstall_error'));
-                setIsInstalling(false);
-            }
-        } catch (e) {
-            console.error(e);
-            alert(t('server_detail.messages.connection_error'));
-            setIsInstalling(false);
-        }
-    };
-
-    const handleDelete = async () => {
-        const confirmName = prompt(`${t('server_detail.delete_confirm')} "${server?.name}" :`);
-        if (confirmName !== server?.name) {
-            if (confirmName) alert("Nom incorrect, suppression annulée.");
-            return;
-        }
-
-        try {
-            const response = await fetch(`/api/v1/servers/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-            });
-
-            if (response.ok) {
-                // Redirect to servers list
-                window.location.href = '/servers'; // Simple redirect since we don't have navigate hook setup right here in this view (or we can add it)
-            } else {
-                alert(t('server_detail.messages.delete_error'));
-            }
-        } catch (e) {
-            console.error(e);
-            alert(t('server_detail.messages.connection_error'));
-        }
-    };
-
-    const sendCommand = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (command.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(command);
-            setLogs((prev) => [...prev, `> ${command}`]);
-            setCommand('');
-        }
-    };
-
-    const sendServerCommand = (cmd: string) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
+    const sendCommand = (cmd: string) => {
+        if (cmd.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(cmd);
             setLogs((prev) => [...prev, `> ${cmd}`]);
         }
     };
 
-    // Backup functions
+    // Uptime
+    useEffect(() => {
+        if (server?.status === "running" && startTime) {
+            const interval = setInterval(() => {
+                const diff = Date.now() - startTime.getTime();
+                const hours = Math.floor(diff / 3600000);
+                const minutes = Math.floor((diff % 3600000) / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                setUptime(`${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`);
+            }, 1000);
+            return () => clearInterval(interval);
+        } else {
+            setUptime("--:--:--");
+        }
+    }, [server?.status, startTime]);
+
+    // Data Fetching Handlers
+    const fetchServer = useCallback(async () => {
+        const response = await fetch(`/api/v1/servers/${id}`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        const data = await response.json();
+        setServer(data);
+        if (data.disk_usage_bytes !== undefined) setDiskUsage(data.disk_usage_bytes);
+        if (data.status === "running" && data.started_at) setStartTime(new Date(data.started_at));
+        else if (data.status !== "running") setStartTime(null);
+    }, [id]);
+
+    const handleAction = useCallback(async (action: "start" | "stop" | "restart" | "kill") => {
+        if (action === "start" && server?.status === "running") return;
+        try {
+            const res = await fetch(`/api/v1/servers/${id}/${action}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                if (res.status === 400 && action === "start" && data.error === "Server already running") {
+                    fetchServer();
+                    return;
+                }
+                alert(t("server_detail.messages.action_error"));
+                return;
+            }
+            if (action === "start") { setLogs([]); setIsAuthRequired(false); }
+            else if (action === "stop" || action === "kill") { setStartTime(null); setIsAuthRequired(false); setLogs([]); }
+            fetchServer();
+            setTimeout(fetchServer, 1000);
+            setTimeout(fetchServer, 3000);
+        } catch (e) {
+            console.error(e);
+            alert(t("server_detail.messages.connection_error"));
+        }
+    }, [id, server, t, fetchServer]);
+
     const fetchBackups = useCallback(async () => {
         if (!id) return;
         setBackupsLoading(true);
         try {
             const response = await fetch(`/api/v1/backups?server_id=${id}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             const data = await response.json();
             setBackups(data);
-        } catch (error) {
-            console.error('Failed to fetch backups:', error);
-        } finally {
-            setBackupsLoading(false);
-        }
+        } catch (error) { console.error(error); } finally { setBackupsLoading(false); }
     }, [id]);
 
     const createBackup = async () => {
         if (!id) return;
         setCreatingBackup(true);
         try {
-            await fetch('/api/v1/backups', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
-                },
+            await fetch("/api/v1/backups", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
                 body: JSON.stringify({ server_id: id }),
             });
             fetchBackups();
-        } catch (error) {
-            console.error('Failed to create backup:', error);
-        } finally {
-            setCreatingBackup(false);
-        }
+        } catch (error) { console.error(error); } finally { setCreatingBackup(false); }
     };
 
     const deleteBackup = async (backupId: string) => {
-        if (!confirm(t('server_detail.delete_backup_confirm'))) return;
+        if (!confirm(t("server_detail.delete_backup_confirm"))) return;
         try {
             await fetch(`/api/v1/backups/${backupId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             fetchBackups();
-        } catch (error) {
-            console.error('Failed to delete backup:', error);
-        }
+        } catch (error) { console.error(error); }
     };
 
     const restoreBackup = async (backupId: string) => {
-        if (!confirm(t('server_detail.restore_backup_confirm'))) return;
+        if (!confirm(t("server_detail.restore_backup_confirm"))) return;
         try {
             await fetch(`/api/v1/backups/${backupId}/restore`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                method: "POST",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
-            alert(t('server_detail.messages.backup_restored'));
-        } catch (error) {
-            console.error('Failed to restore backup:', error);
-        }
+            alert(t("server_detail.messages.backup_restored"));
+        } catch (error) { console.error(error); }
     };
 
-
-
-    // Files functions
-    const fetchFiles = useCallback(async (path = '') => {
+    const fetchFiles = useCallback(async (path = "") => {
         if (!id) return;
         setFilesLoading(true);
         try {
             const response = await fetch(`/api/v1/servers/${id}/files?path=${encodeURIComponent(path)}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             const data = await response.json();
             setFiles(data.entries || []);
-            setCurrentPath(data.current_path || '');
-        } catch (error) {
-            console.error('Failed to fetch files:', error);
-        } finally {
-            setFilesLoading(false);
-        }
+            setCurrentPath(data.current_path || "");
+        } catch (error) { console.error(error); } finally { setFilesLoading(false); }
     }, [id]);
 
     const readFile = async (path: string) => {
         if (!id) return;
         try {
             const response = await fetch(`/api/v1/servers/${id}/files/read?path=${encodeURIComponent(path)}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             const data = await response.json();
-            setFileContent(data.content || '');
+            setFileContent(data.content || "");
             setSelectedFile(path);
-        } catch (error) {
-            console.error('Failed to read file:', error);
-        }
+        } catch (error) { console.error(error); }
     };
 
-    const saveFile = async () => {
+    const saveFile = async (content: string) => {
         if (!id || !selectedFile) return;
         setFileSaving(true);
         try {
             await fetch(`/api/v1/servers/${id}/files/write`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
-                },
-                body: JSON.stringify({ path: selectedFile, content: fileContent }),
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify({ path: selectedFile, content }),
             });
-            alert(t('server_detail.messages.file_saved'));
-        } catch (error) {
-            console.error('Failed to save file:', error);
-        } finally {
-            setFileSaving(false);
-        }
+            alert(t("server_detail.messages.file_saved"));
+        } catch (error) { console.error(error); } finally { setFileSaving(false); }
     };
 
-    // Fetch backups/files when tab changes
-    useEffect(() => {
-        if (activeTab === 'backups') {
-            fetchBackups();
-        } else if (activeTab === 'files') {
-            fetchFiles();
-            setSelectedFile(null);
-            setFileContent('');
-        } else if (activeTab === 'logs') {
-            fetchLogFiles();
-        }
-    }, [activeTab, fetchBackups, fetchFiles]);
-
-    // Logs functions
     const fetchLogFiles = async () => {
         if (!id) return;
         try {
             const response = await fetch(`/api/v1/servers/${id}/files?path=logs`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             const data = await response.json();
             let logs = (data.entries || []).filter((f: FileEntry) => !f.is_dir);
-
-            // Sort by name descending (newest dates first)
             logs.sort((a: FileEntry, b: FileEntry) => b.name.localeCompare(a.name));
 
-            // Move specific logs to the bottom (last)
-            const bottomLogs = ['console.log', 'install.log'];
+            const bottomLogs = ["console.log", "install.log"];
             const specialLogs: FileEntry[] = [];
-
-            // Remove them from current list
             logs = logs.filter((l: FileEntry) => {
-                if (bottomLogs.includes(l.name)) {
-                    specialLogs.push(l);
-                    return false;
-                }
+                if (l.name.endsWith(".lck")) return false;
+                if (bottomLogs.includes(l.name)) { specialLogs.push(l); return false; }
                 return true;
             });
-
-            // Ensure console.log exists if not found
-            if (!specialLogs.some(l => l.name === 'console.log')) {
-                specialLogs.push({ name: 'console.log', path: 'logs/console.log', is_dir: false });
+            if (!specialLogs.some((l) => l.name === "console.log")) {
+                specialLogs.push({ name: "console.log", path: "logs/console.log", is_dir: false });
             }
-
-            // Append them to the end (sorted among themselves if needed, or fixed order)
-            // User requested "install.log" and "console.log" at the end. 
-            // We can just append them. The order between them isn't strictly specified but usually console is most important so strictly last or before last?
-            // "console.log met les en dernier" -> "put them last".
-            // Let's sort the special logs too or just append. 
-            // If I append specialLogs, they will be in order they were found (descending name) 
-            // so 'install.log' (i) comes before 'console.log' (c) in descending? No, i > c. 
-            // Let's just append them.
             logs.push(...specialLogs);
-
             setLogFiles(logs);
-            // Auto-select first log file
-            if (logs.length > 0 && !selectedLogFile) {
-                readLogFile(logs[0].path);
-            }
-        } catch (error) {
-            console.error('Failed to fetch log files:', error);
-        }
+            if (logs.length > 0 && !selectedLogFile) readLogFile(logs[0].path);
+        } catch (error) { console.error(error); }
     };
 
     const readLogFile = async (path: string) => {
         if (!id) return;
         try {
             const response = await fetch(`/api/v1/servers/${id}/files/read?path=${encodeURIComponent(path)}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             const data = await response.json();
-            setLogContent(data.content || '');
+            setLogContent(data.content || "");
             setSelectedLogFile(path);
-        } catch (error) {
-            console.error('Failed to read log file:', error);
-        }
+        } catch (error) { console.error(error); }
     };
 
-    // Players Data Logic
-    const fetchPlayerData = useCallback(async () => {
-        if (!id || activePlayerTab === 'online') return;
+    // Config Logic
+    useEffect(() => {
+        if (activeTab === "config") {
+            const fetchJavaVersions = async () => {
+                try {
+                    const response = await fetch("/api/v1/system/java-versions", {
+                        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                    });
+                    if (response.ok) setJavaVersions(await response.json());
+                } catch (error) { }
+            };
+            fetchJavaVersions();
+            if (server && configFormData.id !== server.id) {
+                const formData = { ...server };
+                if (server.config) {
+                    // Map config... (reusing logic from snippet)
+                    Object.assign(formData, server.config); // Simple merge for now as keys match roughly except JSON specific
+                    // Specific mappings if keys differ
+                    if (server.config.MaxPlayers) formData.max_players = server.config.MaxPlayers;
+                    if (server.config.MaxViewRadius) formData.view_distance = server.config.MaxViewRadius;
+                    if (server.config.Seed) formData.seed = server.config.Seed;
+                    if (server.config.ServerName) formData.name = server.config.ServerName;
+                }
+                setConfigFormData(formData);
+            }
+        }
+    }, [activeTab, server, configFormData.id]);
 
-        setIsPlayerLoading(true);
-        let filename = '';
-        if (activePlayerTab === 'whitelist') filename = 'server/whitelist.json';
-        else if (activePlayerTab === 'bans') filename = 'server/bans.json';
-        else if (activePlayerTab === 'permissions') filename = 'server/permissions.json';
+    const updateConfigValue = <K extends keyof Server>(key: K, value: Server[K]) => {
+        setConfigFormData((prev) => ({ ...prev, [key]: value }));
+    };
+
+    const toggleJvmArg = (arg: string) => {
+        let currentArgs = configFormData.extra_args || "";
+        let parts = currentArgs.trim().split(/\s+/).filter((a) => a.length > 0);
+        if (parts.includes(arg)) parts = parts.filter((a) => a !== arg);
+        else parts.push(arg);
+        updateConfigValue("extra_args", parts.join(" "));
+    };
+
+    const handleSaveConfig = async (e: React.FormEvent) => {
+        e.preventDefault();
+        configFormData.id = id;
+        setConfigSaving(true);
+        setConfigError("");
+        try {
+            const payload = { ...configFormData };
+            if (!payload.config) payload.config = server?.config || {};
+
+            // Sync back to config object
+            if (payload.max_players) payload.config.MaxPlayers = Number(payload.max_players);
+            if (payload.view_distance) payload.config.MaxViewRadius = Number(payload.view_distance);
+            if (payload.seed) payload.config.Seed = payload.seed;
+            if (payload.name) payload.config.ServerName = payload.name;
+            if (payload.port) payload.config.port = Number(payload.port);
+            if (payload.bind_address) payload.config.bind_address = payload.bind_address;
+            if (payload.auth_mode) payload.config.auth_mode = payload.auth_mode;
+            if (payload.allow_op !== undefined) payload.config.allow_op = payload.allow_op;
+            if (payload.disable_sentry !== undefined) payload.config.disable_sentry = payload.disable_sentry;
+            if (payload.accept_early_plugins !== undefined) payload.config.accept_early_plugins = payload.accept_early_plugins;
+
+            const response = await fetch(`/api/v1/servers/${id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) { fetchServer(); alert(t("server_detail.messages.config_saved")); }
+            else { const data = await response.json(); setConfigError(data.error || t("server_detail.messages.save_error")); }
+        } catch (err) { setConfigError(t("server_detail.messages.connection_error")); }
+        finally { setConfigSaving(false); }
+    };
+
+    // Players Logic
+    const fetchPlayerData = useCallback(async () => {
+        if (!id || activePlayerTab === "online") return;
+        let filename = "";
+        if (activePlayerTab === "whitelist") filename = "server/whitelist.json";
+        else if (activePlayerTab === "bans") filename = "server/bans.json";
+        else if (activePlayerTab === "ops") filename = "server/ops.json";
 
         try {
             const response = await fetch(`/api/v1/servers/${id}/files/read?path=${filename}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             if (response.ok) {
                 const data = await response.json();
                 try {
                     const parsed = JSON.parse(data.content);
                     setPlayerData(Array.isArray(parsed) ? parsed : []);
-                } catch (e) {
-                    console.warn('Failed to parse player file, strictly not an array or invalid JSON', e);
-                    setPlayerData([]);
-                }
-            } else {
-                setPlayerData([]); // File might not exist yet
-            }
-        } catch (error) {
-            console.error('Failed to fetch player data:', error);
-            setPlayerData([]);
-        } finally {
-            setIsPlayerLoading(false);
-        }
+                } catch (e) { setPlayerData([]); }
+            } else { setPlayerData([]); }
+        } catch (error) { setPlayerData([]); }
     }, [id, activePlayerTab]);
 
-    const savePlayerData = async (newData: any[]) => {
-        if (!id) return;
-        let filename = '';
-        if (activePlayerTab === 'whitelist') filename = 'server/whitelist.json';
-        else if (activePlayerTab === 'bans') filename = 'server/bans.json';
-        else if (activePlayerTab === 'permissions') filename = 'server/permissions.json';
-
-        try {
-            await fetch(`/api/v1/servers/${id}/files/write`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
-                },
-                body: JSON.stringify({
-                    path: filename,
-                    content: JSON.stringify(newData, null, 4)
-                }),
-            });
-            setPlayerData(newData);
-            alert('Données sauvegardées !');
-        } catch (error) {
-            console.error('Failed to save player data:', error);
-            alert('Erreur lors de la sauvegarde.');
-        }
+    // Simple handler mocks for players since logic was complex and file-based
+    const onPlayerAction = (action: string, name: string) => {
+        // Implement kick/ban/op via API or Console Command
+        if (action === "op") sendCommand(`op ${name}`);
+        else if (action === "kick") sendCommand(`kick ${name}`);
+        else if (action === "ban") sendCommand(`ban ${name}`);
     };
 
+    // Effect triggers
     useEffect(() => {
-        if (activeTab === 'players') {
-            fetchPlayerData();
+        if (activeTab === "backups") fetchBackups();
+        else if (activeTab === "files") { fetchFiles(); setSelectedFile(null); setFileContent(""); }
+        else if (activeTab === "logs") fetchLogFiles();
+        else if (activeTab === "players") { /* fetch players list */ }
+    }, [activeTab, fetchBackups, fetchFiles]);
+
+    // Page Title
+    useEffect(() => {
+        if (server) {
+            setPageTitle(server.name, `${server.game_type} Server`, { to: "/servers" },
+                <div className="header-actions-group">
+                    <div className={`status-badge-large ${server.status === "running" ? "status-badge-large--online" : server.status === "missing" ? "status-badge-large--error" : "status-badge-large--offline"}`}>
+                        <span className="status-dot"></span>
+                        {server.status}
+                    </div>
+                    <div className="header-controls">
+                        <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running"}><Play size={16} /> Start</button>
+                        <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running"}><RotateCw size={16} /></button>
+                        <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running"}><Square size={16} /></button>
+                    </div>
+                </div>
+            );
         }
-    }, [activeTab, fetchPlayerData]);
+    }, [server, setPageTitle, handleAction, t]);
 
-    if (!server) {
-        return (
-            <div className="loading-screen">
-                <div className="spinner"></div>
-            </div>
-        );
-    }
-
-    const isRunning = server.status === 'running' || server.status === 'auth_required';
-    const isMissing = server.status === 'missing';
-    // Fix: Removed server.config usage as fields are now on root or removed
-    const maxPlayers = 100; // Default or fetched from metrics/query if implemented
-    const port = server.port || 5520;
-    const bindAddress = server.bind_address || '0.0.0.0';
+    if (!server) return <div className="loading-screen"><div className="spinner"></div></div>;
 
     return (
         <div className="server-detail-page">
-
-            {/* Server Info Block */}
-            <div className="server-stats">
-                {/* Status */}
-                <div className="stat-card">
-                    <div className="stat-icon bg-blue-500/20 text-blue-400">
-                        <Globe size={24} />
-                    </div>
-                    <div>
-                        <div className="stat-label">STATUS</div>
-                        {isInstalling ? (
-                            <div className="text-xl font-bold text-orange-400 flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
-                                Installing
-                            </div>
-                        ) : isAuthRequired ? (
-                            <div className="text-xl font-bold text-yellow-400 flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-                                Auth Required
-                            </div>
-                        ) : (
-                            <div className={`text-xl font-bold ${isRunning ? 'text-green-400' : isMissing ? 'text-red-400' : 'text-gray-400'}`}>
-                                {isMissing ? 'Missing' : isRunning ? 'Online' : 'Offline'}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Uptime */}
-                <div className="stat-card">
-                    <div className="stat-card__icon">
-                        <Clock size={18} />
-                    </div>
-                    <div className="stat-card__content">
-                        <div className="stat-card__label">Temps de fonctionnement</div>
-                        <div className="stat-card__value stat-card__value--mono">{uptime}</div>
-                    </div>
-                </div>
-
-                {/* CPU */}
-                <div className="stat-card">
-                    <div className="stat-card__icon">
-                        <Cpu size={18} />
-                    </div>
-                    <div className="stat-card__content">
-                        <div className="stat-card__label">Processeur (CPU)</div>
-                        <div className="stat-card__value">{isRunning ? `${cpuUsage.toFixed(1)}` : '0'}%</div>
-                    </div>
-                </div>
-
-                {/* Memory */}
-                <div className="stat-card" title={`RSS: ${formatBytes(ramUsage)}${server.max_heap_bytes ? ` / Heap: ${formatBytes(server.max_heap_bytes)} + Overhead: ${formatBytes(server.max_memory_bytes! - server.max_heap_bytes)}` : ''}`}>
-                    <div className="stat-card__icon">
-                        <HardDrive size={18} />
-                    </div>
-                    <div className="stat-card__content">
-                        <div className="stat-card__label">Mémoire (RAM RSS)</div>
-                        <div className="stat-card__value" style={{ color: isRunning && server.max_memory_bytes && ramUsage > server.max_memory_bytes ? 'var(--color-danger)' : 'inherit' }}>
-                            {isRunning ? formatGB(ramUsage) : '0.0 GB'} / {formatGB(server.max_memory_bytes || 0)}
-                        </div>
-                        {isRunning && server.max_heap_bytes && (
-                            <div className="stat-card__subtitle" style={{ fontSize: '0.75rem', opacity: 0.8 }}>
-                                Heap: {formatGB(server.max_heap_bytes)} + Java: {formatGB(server.max_memory_bytes! - server.max_heap_bytes)}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Players */}
-                <div className="stat-card">
-                    <div className="stat-card__icon">
-                        <Users size={18} />
-                    </div>
-                    <div className="stat-card__content">
-                        <div className="stat-card__label">Joueurs</div>
-                        <div className="stat-card__value">{server.players?.filter(p => p.is_online).length || 0} / {maxPlayers}</div>
-                    </div>
-                </div>
-
-                {/* Address */}
-                <div className="stat-card">
-                    <div className="stat-card__icon">
-                        <Terminal size={18} />
-                    </div>
-                    <div className="stat-card__content">
-                        <div className="stat-card__label">Adresse IP</div>
-                        <div className="stat-card__value stat-card__value--mono">{bindAddress}:{port}</div>
-                    </div>
-                </div>
-
-                {/* Disk Usage */}
-                <div className="stat-card">
-                    <div className="stat-card__icon">
-                        <HardDrive size={18} />
-                    </div>
-                    <div className="stat-card__content">
-                        <div className="stat-card__label">Disque</div>
-                        <div className="stat-card__value">{diskUsage !== null ? formatBytes(diskUsage) : '--'}</div>
-                    </div>
-                </div>
+            <div className="server-header-stats">
+                {/* ... Stats Pills (Keep as is, they were fine) ... */}
+                <div className="stat-pill"><div className="stat-pill__icon"><Clock size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">UPTIME</div><div className="stat-pill__value">{uptime}</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><Users size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">PLAYERS</div><div className="stat-pill__value">{server.players?.filter(p => p.is_online).length || 0} / {server.max_players || 100}</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><Globe size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">ADDRESS</div><div className="stat-pill__value">{server.bind_address}:{server.port}</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><Cpu size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">CPU</div><div className="stat-pill__value">{Math.round(cpuUsage)}%</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">RAM</div><div className="stat-pill__value">{formatGB(ramUsage)}</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">DISK</div><div className="stat-pill__value">{diskUsage !== null ? formatBytes(diskUsage) : "0 B"}</div></div></div>
             </div>
 
-            {/* Tabs - Navbar Style */}
-            <div className="server-tabs">
-                {tabs.map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`tab-btn ${activeTab === tab.id ? 'tab-btn--active' : ''}`}
-                    >
-                        {tab.icon}
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
+            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
-            {/* Installation Wizard Overlay */}
+            {isInstalling && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => setIsInstalling(false)} onSendAuth={() => sendCommand("auth")} />}
 
-
-            {/* Tab Content */}
             <div className="tab-content">
-                {activeTab === 'console' && (
-                    <div className="card">
-                        <div className="panel-header">
-                            <h3 className="panel-header__title"><Terminal size={20} /> Terminal</h3>
-                            <div className={`status-badge ${isConnected ? 'status-badge--success' : 'status-badge--error'}`}>
-                                {isConnected ? 'Connecté' : 'Déconnecté'}
-                            </div>
-                        </div>
-                        <div className="console-container">
-
-                            {/* Console Viewport */}
-                            <div className="console-output">
-                                {logs.length === 0 ? (
-                                    <div className="console-output__empty">
-                                        <Terminal size={36} />
-                                        <span>
-                                            {isRunning ? 'En attente des logs...' : 'Le serveur est hors ligne.'}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    logs.map((log, i) => {
-                                        // Auto-translate known Hytale keys
-                                        let displayLog = log;
-                                        if (log.includes('server.commands.auth.login.device.success')) {
-                                            displayLog = displayLog.replace('server.commands.auth.login.device.success', t('hytale.server.commands.auth.login.device.success'));
-                                        }
-                                        if (log.includes('server.commands.auth.login.persistence.saved')) {
-                                            // Handle potential parameters in the key string
-                                            // Regex to match key + optional {...} garbage
-                                            displayLog = displayLog.replace(/server\.commands\.auth\.login\.persistence\.saved(?:\{.*?\})?/, t('hytale.server.commands.auth.login.persistence.saved'));
-                                        }
-
-                                        return (
-                                            <div
-                                                key={i}
-                                                className={`console-output__line ${log.includes('[ERROR]') || log.includes('ERROR') || log.includes('Exception')
-                                                    ? 'console-output__line--error'
-                                                    : log.includes('[WARN]') || log.includes('WARN')
-                                                        ? 'console-output__line--warning'
-                                                        : log.includes('[INFO]')
-                                                            ? 'console-output__line--info'
-                                                            : log.startsWith('>')
-                                                                ? 'console-output__line--command'
-                                                                : ''
-                                                    }`}
-                                            >
-                                                <Ansi useClasses={false}>{enhanceLogContent(displayLog, server?.game_type || 'hytale')}</Ansi>
-                                            </div>
-                                        )
-                                    })
-                                )}
-                                <div ref={consoleEndRef} />
-                            </div>
-
-                            {/* Command Input Area */}
-                            <form onSubmit={sendCommand} className="command-form">
-                                <input
-                                    type="text"
-                                    value={command}
-                                    onChange={(e) => setCommand(e.target.value)}
-                                    placeholder="Enter your command..."
-                                    disabled={!isConnected || !isRunning}
-                                    className="form-input"
-                                />
-                                <button
-                                    type="submit"
-                                    className="btn btn--primary"
-                                    disabled={!isConnected || !isRunning}
-                                >
-                                    Send
-                                </button>
-                            </form>
-
-                            {/* Action Buttons */}
-                            <div className="action-buttons">
-                                <button
-                                    className="btn btn--primary btn--lg"
-                                    onClick={() => handleAction('start')}
-                                    disabled={isMissing || isRunning}
-                                >
-                                    Start
-                                </button>
-
-                                <button
-                                    className="btn btn--secondary btn--lg"
-                                    onClick={() => handleAction('restart')}
-                                    disabled={!isRunning}
-                                >
-                                    Restart
-                                </button>
-
-                                <button
-                                    className="btn btn--danger-solid btn--lg"
-                                    onClick={() => handleAction('stop')}
-                                    disabled={!isRunning}
-                                >
-                                    Stop
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'backups' && (
-                    <div>
-                        {/* Header */}
-                        <div className="panel-header">
-                            <h3 className="panel-header__title"><History size={20} /> Sauvegardes</h3>
-                            <button
-                                onClick={createBackup}
-                                disabled={creatingBackup}
-                                className="btn btn--primary btn--sm"
-                            >
-                                <Plus size={16} />
-                                {creatingBackup ? 'Création...' : 'Nouveau backup'}
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="list-container">
-                            {backupsLoading ? (
-                                <div className="loading-screen relative">
-                                    <div className="spinner"></div>
-                                </div>
-                            ) : backups.length === 0 ? (
-                                <div className="empty-state">
-                                    <History size={48} className="empty-state-icon" />
-                                    <p className="font-medium">Aucune sauvegarde</p>
-                                    <p className="text-sm text-muted">Créez votre première sauvegarde pour protéger vos données.</p>
-                                </div>
-                            ) : (
-                                backups.map((backup) => (
-                                    <div key={backup.id} className="list-item">
-                                        <div className="list-item__info">
-                                            <History size={20} className="text-muted" />
-                                            <div className="list-item__details">
-                                                <div className="list-item__name">{backup.filename}</div>
-                                                <div className="list-item__meta">
-                                                    {formatBytes(backup.size_bytes)} • {new Date(backup.created_at).toLocaleString('fr-FR')}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="list-item__actions">
-                                            <button
-                                                onClick={() => restoreBackup(backup.id)}
-                                                title="Restaurer"
-                                                className="btn btn--icon btn--ghost"
-                                            >
-                                                <Download size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => deleteBackup(backup.id)}
-                                                title="Supprimer"
-                                                className="btn btn--icon btn--ghost btn--danger"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'files' && (
-                    <div className="card">
-                        {/* Breadcrumb & Quick Links */}
-                        <div className="panel-header flex-col items-start gap-4">
-                            <div className="flex items-center gap-2 w-full justify-between">
-                                <div className="panel-header__title">
-                                    <FolderOpen size={20} />
-                                    <span className="panel-header__path">
-                                        /{server.name} ({server.id}){currentPath ? `/${currentPath}` : ''}
-                                    </span>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => fetchFiles('')} className="btn btn--sm btn--ghost" title="Racine">
-                                        <Folder size={14} /> /
-                                    </button>
-                                    <button onClick={() => fetchFiles('mods')} className="btn btn--sm btn--ghost" title="Mods">
-                                        Mods
-                                    </button>
-                                    <button onClick={() => fetchFiles('universe')} className="btn btn--sm btn--ghost" title="Mondes (Universe)">
-                                        Universe
-                                    </button>
-                                    <button onClick={() => fetchFiles('logs')} className="btn btn--sm btn--ghost" title="Logs">
-                                        Logs
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Two column layout */}
-                        <div className={`file-manager ${selectedFile ? 'file-manager--with-editor' : ''}`}>
-                            {/* File list */}
-                            <div className="file-manager__list">
-                                {filesLoading ? (
-                                    <div className="loading-screen relative">
-                                        <div className="spinner"></div>
-                                    </div>
-                                ) : files.length === 0 ? (
-                                    <div className="empty-state">
-                                        <FolderOpen size={32} className="icon-faded" />
-                                        <p>Dossier vide</p>
-                                    </div>
-                                ) : (
-                                    <div className="list-container">
-                                        {files.map((file) => (
-                                            <div
-                                                key={file.path}
-                                                onClick={() => {
-                                                    if (file.is_dir) {
-                                                        fetchFiles(file.path);
-                                                        setSelectedFile(null);
-                                                        setFileContent('');
-                                                    } else {
-                                                        readFile(file.path);
-                                                    }
-                                                }}
-                                                className={`list-item cursor-pointer ${selectedFile === file.path ? 'list-item--selected' : ''}`}
-                                            >
-                                                <div className="list-item__info">
-                                                    {file.is_dir ? (
-                                                        <Folder size={16} className="list-item__icon--folder" />
-                                                    ) : (
-                                                        <File size={16} className="list-item__icon--file" />
-                                                    )}
-                                                    <span className="list-item__name">{file.name}</span>
-                                                </div>
-                                                <div className="file-item-meta">
-                                                    {!file.is_dir && file.size !== undefined && (
-                                                        <span className="list-item__meta">
-                                                            {formatBytes(file.size)}
-                                                        </span>
-                                                    )}
-                                                    {file.is_dir && <ChevronRight size={14} className="text-muted" />}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* File editor */}
-                            {selectedFile && (
-                                <div className="file-manager__editor">
-                                    <div className="file-manager__editor-toolbar">
-                                        <span className="panel-header__path">
-                                            {selectedFile}
-                                        </span>
-                                        <button
-                                            onClick={saveFile}
-                                            disabled={fileSaving}
-                                            className="btn btn--primary btn--sm"
-                                        >
-                                            <Save size={14} />
-                                            {fileSaving ? 'Saving...' : 'Save'}
-                                        </button>
-                                    </div>
-                                    <textarea
-                                        value={fileContent}
-                                        onChange={(e) => setFileContent(e.target.value)}
-                                        spellCheck={false}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'logs' && (
-                    <div className="card">
-                        {/* Header */}
-                        <div className="panel-header">
-                            <h3 className="panel-header__title"><FileText size={20} /> Fichiers de log</h3>
-                            {logFiles.length > 0 && (
-                                <div className="select-wrapper">
-                                    <Select
-                                        options={logFiles.map(f => ({ label: f.name, value: f.path }))}
-                                        value={selectedLogFile || ''}
-                                        onChange={(v) => readLogFile(v)}
-                                        className="min-w-[200px]"
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Log content */}
-                        <div className="console-container console-logs-file">
-                            <div className="console-output">
-                                {logFiles.length === 0 ? (
-                                    <div className="console-output__empty">
-                                        <AlertCircle size={32} />
-                                        <p className="font-medium">Aucun fichier de log trouvé</p>
-                                        <p className="text-sm">
-                                            Le dossier <code className="bg-dark px-1 rounded">logs</code> est vide ou n'existe pas.
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <pre className="log-content-pre">
-                                        <Ansi useClasses={false}>
-                                            {enhanceLogContent(logContent || 'Chargement... ou fichier vide.', server?.game_type || 'hytale')}
-                                        </Ansi>
-                                    </pre>
-                                )}
-                                <div ref={logsEndRef} />
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'config' && (
-                    <div className="card">
-                        <div className="panel-header">
-                            <h3 className="panel-header__title"><Settings size={20} /> Configuration</h3>
-                        </div>
-                        <div className="config-tab-content">
-                            <form onSubmit={handleSaveConfig}>
-                                <div className="content-container">
-
-                                    {/* General (Manager Only) */}
-                                    <div className="card form-section p-0 border-0 shadow-none bg-transparent">
-                                        <h3 className="form-section-title">
-                                            <ServerIcon size={18} />
-                                            {t('server_detail.headers.general')}
-                                        </h3>
-                                        <div className="form-column">
-                                            <div className="form-group">
-                                                <label>Nom du serveur (Interne)</label>
-                                                <input
-                                                    type="text"
-                                                    value={configFormData.name || ''}
-                                                    onChange={(e) => updateConfigValue('name', e.target.value)}
-                                                    className="input"
-                                                    required
-                                                    placeholder="Mon Serveur"
-                                                />
-                                            </div>
-                                            <div className="form-grid-2">
-                                                <div className="form-group">
-                                                    <label>Répertoire de travail</label>
-                                                    <input type="text" value={configFormData.working_dir || ''} onChange={(e) => updateConfigValue('working_dir', e.target.value)} className="input font-mono" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Launch Arguments (CLI) */}
-                                    <div className="card form-section p-0 border-0 shadow-none bg-transparent mt-6">
-                                        <h3 className="form-section-title">
-                                            <Terminal size={18} />
-                                            {t('server_detail.headers.launch_args')}
-                                        </h3>
-                                        <div className="form-grid-2">
-                                            <div className="form-group">
-                                                <label>Exécutable (JAR)</label>
-                                                <input type="text" value={configFormData.executable_path || ''} onChange={(e) => updateConfigValue('executable_path', e.target.value)} className="input font-mono" />
-                                                <p className="helper-text">ex: <code className="bg-dark px-1 rounded">HytaleServer.jar</code></p>
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Assets (ZIP)</label>
-                                                <input type="text" value={configFormData.assets_path || ''} onChange={(e) => updateConfigValue('assets_path', e.target.value)} className="input font-mono" />
-                                                <p className="helper-text">--assets &lt;Path&gt;</p>
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Adresse IP (--bind)</label>
-                                                <input type="text" value={configFormData.bind_address || '0.0.0.0'} onChange={(e) => updateConfigValue('bind_address', e.target.value)} className="input" />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Port UDP (QUIC)</label>
-                                                <input type="number" value={configFormData.port || 5520} onChange={(e) => updateConfigValue('port', parseInt(e.target.value))} className="input" />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Mode d'Authentification</label>
-                                                <Select
-                                                    options={[{ label: 'Authenticated', value: 'authenticated' }, { label: 'Offline', value: 'offline' }]}
-                                                    value={configFormData.auth_mode || 'authenticated'}
-                                                    onChange={(v) => updateConfigValue('auth_mode', v as any)}
-                                                />
-                                            </div>
-                                            <div className="checkbox-group full-width">
-                                                <Checkbox
-                                                    checked={configFormData.allow_op || false}
-                                                    onChange={(v) => updateConfigValue('allow_op', v)}
-                                                    label="Autoriser les opérateurs (--allow-op)"
-                                                    description="Permet aux administrateurs désignés d'utiliser les commandes sensibles."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group full-width">
-                                                <Checkbox
-                                                    checked={configFormData.disable_sentry || false}
-                                                    onChange={(v) => updateConfigValue('disable_sentry', v)}
-                                                    label="Désactiver Sentry (--disable-sentry)"
-                                                    description="Désactive l'envoi de rapports d'erreurs automatique (recommandé pour le dev)."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group full-width">
-                                                <Checkbox
-                                                    checked={configFormData.accept_early_plugins || false}
-                                                    onChange={(v) => updateConfigValue('accept_early_plugins', v)}
-                                                    label="Accepter les early-plugins"
-                                                    description="Autorise le chargement de plugins instables ou en développement."
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Resources (JVM) */}
-                                    <CollapsibleSection title={t('server_detail.headers.resources')} icon={Cpu} defaultOpen={true}>
-                                        <div className="form-grid-2">
-                                            <div className="form-group">
-                                                <label>RAM Minimale (-Xms)</label>
-                                                <input type="text" value={configFormData.min_memory || ''} onChange={(e) => updateConfigValue('min_memory', e.target.value)} className="input" placeholder="ex: 1G" />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>RAM Maximale (-Xmx)</label>
-                                                <input type="text" value={configFormData.max_memory || ''} onChange={(e) => updateConfigValue('max_memory', e.target.value)} className="input" placeholder="ex: 4G" />
-                                            </div>
-                                            <div className="form-group full-width">
-                                                <label>Chemin Java</label>
-                                                <Select
-                                                    options={[{ label: 'Défaut Système', value: '' }, ...javaVersions.map(j => ({ label: `Java ${j.version} (${j.path})`, value: j.path }))]}
-                                                    value={configFormData.java_path || ''}
-                                                    onChange={(v) => updateConfigValue('java_path', v)}
-                                                />
-                                            </div>
-                                            <div className="form-group full-width">
-                                                <label>Arguments JVM</label>
-                                                <input type="text" value={configFormData.extra_args || ''} onChange={(e) => updateConfigValue('extra_args', e.target.value)} className="input font-mono" />
-                                                <div className="jvm-args-shortcuts flex flex-col gap-2 mt-3">
-                                                    {JVM_ARGS_SUGGESTIONS.map(({ arg, key, isRecommended }) => (
-                                                        <Checkbox
-                                                            key={arg}
-                                                            checked={configFormData.extra_args?.includes(arg) || false}
-                                                            onChange={() => toggleJvmArg(arg)}
-                                                            label={
-                                                                <span className="font-mono text-sm">
-                                                                    {arg}
-                                                                    {isRecommended && <span className="ml-2 text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">Recommandé</span>}
-                                                                </span>
-                                                            }
-                                                            description={t(`server_detail.jvm.${key}`)}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </CollapsibleSection>
-
-                                    {/* World Configuration (JSON) */}
-                                    <CollapsibleSection title={t('server_detail.headers.world_config')} icon={Globe}>
-                                        <div className="form-grid-2">
-                                            <div className="form-group">
-                                                <label>Joueurs Maximum</label>
-                                                <input
-                                                    type="number"
-                                                    value={configFormData.max_players || 100}
-                                                    onChange={(e) => updateConfigValue('max_players', parseInt(e.target.value))}
-                                                    className="input"
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Seed</label>
-                                                <input type="text" value={configFormData.seed || ''} onChange={(e) => updateConfigValue('seed', e.target.value)} className="input font-mono" />
-                                                <p className="helper-text">Graine de génération du monde. Laisser vide pour une génération aléatoire.</p>
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Distance de vue (Chunks)</label>
-                                                <RangeSlider
-                                                    min={4}
-                                                    max={32}
-                                                    value={configFormData.view_distance || 12}
-                                                    onChange={(v) => updateConfigValue('view_distance', v)}
-                                                />
-                                                <p className="helper-text">
-                                                    {(configFormData.view_distance || 12) * 32} blocs. Hytale recommande 12 chunks (384 blocs) max pour la performance.
-                                                </p>
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Type de Génération</label>
-                                                <Select
-                                                    options={[{ label: 'Hytale', value: 'Hytale' }, { label: 'Flat', value: 'Flat' }]}
-                                                    value={configFormData.world_gen_type || 'Hytale'}
-                                                    onChange={(v) => updateConfigValue('world_gen_type', v)}
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Nom de la Génération</label>
-                                                <input type="text" value={configFormData.world_name || 'Default'} onChange={(e) => updateConfigValue('world_name', e.target.value)} className="input" />
-                                            </div>
-
-                                            {/* Booleans Grid */}
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_pvp_enabled !== false}
-                                                    onChange={(v) => updateConfigValue('is_pvp_enabled', v)}
-                                                    label="PvP Enabled"
-                                                    description="Active le combat entre joueurs sur le serveur."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_fall_damage_enabled !== false}
-                                                    onChange={(v) => updateConfigValue('is_fall_damage_enabled', v)}
-                                                    label="Fall Damage"
-                                                    description="Les joueurs subissent des dégâts de chute."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_ticking !== false}
-                                                    onChange={(v) => updateConfigValue('is_ticking', v)}
-                                                    label="Is Ticking"
-                                                    description="Active la boucle de jeu principale (physique, IA, etc.)."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_block_ticking !== false}
-                                                    onChange={(v) => updateConfigValue('is_block_ticking', v)}
-                                                    label="Is Block Ticking"
-                                                    description="Active les mises à jour aléatoires des blocs (feu, plantes)."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_game_time_paused !== true}
-                                                    onChange={(v) => updateConfigValue('is_game_time_paused', v)}
-                                                    label="Is Game Time Paused"
-                                                    description="Met en pause le cycle jour/nuit."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_spawning_npc !== false}
-                                                    onChange={(v) => updateConfigValue('is_spawning_npc', v)}
-                                                    label="Spawning NPC"
-                                                    description="Autorise l'apparition de nouvelles créatures et PNJs."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_spawn_markers_enabled !== false}
-                                                    onChange={(v) => updateConfigValue('is_spawn_markers_enabled', v)}
-                                                    label="Spawn Markers"
-                                                    description="Utilise les points d'apparition définis dans la carte."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_all_npc_frozen !== true}
-                                                    onChange={(v) => updateConfigValue('is_all_npc_frozen', v)}
-                                                    label="Freeze All NPCs"
-                                                    description="Fige l'IA et les mouvements de tous les PNJs."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_compass_updating !== false}
-                                                    onChange={(v) => updateConfigValue('is_compass_updating', v)}
-                                                    label="Compass Updating"
-                                                    description="Met à jour la boussole des joueurs."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_saving_players !== false}
-                                                    onChange={(v) => updateConfigValue('is_saving_players', v)}
-                                                    label="Save Players"
-                                                    description="Sauvegarde les données des joueurs (inventaire, pos)."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_saving_chunks !== false}
-                                                    onChange={(v) => updateConfigValue('is_saving_chunks', v)}
-                                                    label="Save Chunks"
-                                                    description="Sauvegarde les modifications du monde sur le disque."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_unloading_chunks !== false}
-                                                    onChange={(v) => updateConfigValue('is_unloading_chunks', v)}
-                                                    label="Unload Chunks"
-                                                    description="Décharge les chunks inutilisés pour libérer la RAM."
-                                                />
-                                            </div>
-                                            <div className="checkbox-group mt-2">
-                                                <Checkbox
-                                                    checked={configFormData.is_objective_markers_enabled !== false}
-                                                    onChange={(v) => updateConfigValue('is_objective_markers_enabled', v)}
-                                                    label="Objective Markers"
-                                                    description="Affiche les marqueurs d'objectifs en jeu."
-                                                />
-                                            </div>
-                                        </div>
-                                    </CollapsibleSection>
-
-
-
-                                    {configError && <div className="alert alert--error">{configError}</div>}
-
-                                    <div className="action-bar">
-                                        <button type="submit" className="btn btn--primary" disabled={configSaving}>
-                                            <Save size={18} />
-                                            {configSaving ? 'Sauvegarde...' : 'Enregistrer les modifications'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </form>
-
-                            {/* Danger Zone */}
-                            <div className="card form-section p-0 border-0 shadow-none bg-transparent mt-8 border-t border-danger/20 pt-6">
-                                <h3 className="form-section-title text-danger">
-                                    <AlertCircle size={18} />
-                                    Zone de Danger
-                                </h3>
-                                <div className="danger-zone-grid grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="danger-item p-4 border border-white/5 rounded bg-white/5">
-                                        <h4 className="font-semibold mb-2">Réinstaller le serveur</h4>
-                                        <p className="text-sm text-muted mb-4">
-                                            Supprime et télécharge à nouveau les fichiers du serveur. Vos données (mondes, backups) devraient être préservées, mais une sauvegarde est recommandée.
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={handleReinstall}
-                                            className="btn btn--secondary w-full"
-                                        >
-                                            <Download size={16} /> Réinstaller
-                                        </button>
-                                    </div>
-                                    <div className="danger-item p-4 border border-danger/20 rounded bg-danger/5">
-                                        <h4 className="font-semibold mb-2 text-danger">Supprimer le serveur</h4>
-                                        <p className="text-sm text-muted mb-4">
-                                            Cette action est irréversible. Toutes les données, fichiers et sauvegardes seront définitivement effacés.
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={handleDelete}
-                                            className="btn btn--danger w-full"
-                                        >
-                                            <Trash2 size={16} /> Supprimer
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div >
-                    </div >
-                )
-                }
-
-                {
-                    activeTab === 'players' && (
-                        <div className="card">
-                            <div className="panel-header">
-                                <h3 className="panel-header__title"><Users size={20} /> Gestion des Joueurs</h3>
-                            </div>
-                            <div className="players-tab-container">
-                                {/* Sub-nav */}
-                                <div className="server-tabs server-tabs--sub">
-                                    <button
-                                        onClick={() => setActivePlayerTab('online')}
-                                        className={`tab-btn ${activePlayerTab === 'online' ? 'tab-btn--active' : ''}`}
-                                    >
-                                        <Users size={16} /> En ligne
-                                    </button>
-                                    <button
-                                        onClick={() => setActivePlayerTab('history')}
-                                        className={`tab-btn ${activePlayerTab === 'history' ? 'tab-btn--active' : ''}`}
-                                    >
-                                        <History size={16} /> Historique
-                                    </button>
-                                    <button
-                                        onClick={() => setActivePlayerTab('whitelist')}
-                                        className={`tab-btn ${activePlayerTab === 'whitelist' ? 'tab-btn--active' : ''}`}
-                                    >
-                                        <Check size={16} /> Whitelist
-                                    </button>
-                                    <button
-                                        onClick={() => setActivePlayerTab('bans')}
-                                        className={`tab-btn ${activePlayerTab === 'bans' ? 'tab-btn--active' : ''}`}
-                                    >
-                                        <AlertCircle size={16} /> Bannissements
-                                    </button>
-                                    <button
-                                        onClick={() => setActivePlayerTab('permissions')}
-                                        className={`tab-btn ${activePlayerTab === 'permissions' ? 'tab-btn--active' : ''}`}
-                                    >
-                                        <Settings size={16} /> Permissions
-                                    </button>
-                                </div>
-
-                                <div className="tab-content p-6">
-                                    {(activePlayerTab === 'online' || activePlayerTab === 'history') && (
-                                        server?.players && server.players.length > 0 ? (
-                                            <div className="player-list-manager">
-                                                <table className="data-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th style={{ width: '35%' }}>Pseudo</th>
-                                                            <th style={{ width: '25%' }}>Statut</th>
-                                                            <th style={{ width: '20%' }}>Dernière connexion</th>
-                                                            <th className="text-right">Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {server.players.filter(p => activePlayerTab === 'history' || p.is_online).length === 0 ? (
-                                                            <tr><td colSpan={4} className="p-4 text-center text-muted">
-                                                                {activePlayerTab === 'online' ? 'Aucun joueur en ligne' : 'Aucun historique de joueur'}
-                                                            </td></tr>
-                                                        ) : (
-                                                            server.players
-                                                                .filter(p => activePlayerTab === 'history' || p.is_online)
-                                                                .map((player, idx) => (
-                                                                    <tr key={idx}>
-                                                                        <td>
-                                                                            <div className="player-info">
-                                                                                <div className="avatar">
-                                                                                    {player.name.charAt(0).toUpperCase()}
-                                                                                </div>
-                                                                                <div className="flex-col">
-                                                                                    <span className="name">{player.name}</span>
-                                                                                    <div className="flex gap-1 mt-1">
-                                                                                        {player.is_op && <span style={{ fontSize: '0.65rem', background: 'var(--color-primary)', color: 'white', padding: '1px 4px', borderRadius: '4px' }}>OP</span>}
-                                                                                        {player.is_banned && <span style={{ fontSize: '0.65rem', background: 'var(--color-danger)', color: 'white', padding: '1px 4px', borderRadius: '4px' }}>BAN</span>}
-                                                                                        {player.is_whitelisted && <span style={{ fontSize: '0.65rem', background: 'var(--color-success)', color: 'white', padding: '1px 4px', borderRadius: '4px' }}>WL</span>}
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                        </td>
-                                                                        <td>
-                                                                            {player.is_online ? (
-                                                                                <div className="status-badge">
-                                                                                    En ligne
-                                                                                </div>
-                                                                            ) : (
-                                                                                <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Hors ligne</span>
-                                                                            )}
-                                                                        </td>
-                                                                        <td>
-                                                                            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                                                                                {player.is_online ? '-' : (player.last_seen === 'Jamais' ? 'Jamais' : new Date(player.last_seen).toLocaleString())}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td className="text-right">
-                                                                            <div className="player-actions">
-                                                                                <button
-                                                                                    className={`btn btn--icon ${player.is_op ? 'btn--primary' : 'btn--secondary'} btn--sm`}
-                                                                                    onClick={() => {
-                                                                                        const action = player.is_op ? 'deop' : 'op';
-                                                                                        const msg = player.is_op ? `Retirer les droits d'administration à ${player.name} ?` : `Donner les droits d'administration à ${player.name} ?`;
-                                                                                        if (confirm(msg)) {
-                                                                                            sendServerCommand(`${action} ${player.name}`);
-                                                                                        }
-                                                                                    }}
-                                                                                    title={player.is_op ? "Retirer OP" : "Donner OP"}
-                                                                                >
-                                                                                    <Shield size={14} />
-                                                                                </button>
-                                                                                <button
-                                                                                    className={`btn btn--icon ${player.is_banned ? 'btn--success' : 'btn--danger'} btn--sm`}
-                                                                                    onClick={() => {
-                                                                                        const action = player.is_banned ? 'unban' : 'ban';
-                                                                                        const msg = player.is_banned ? `Pardonner ${player.name} ?` : `Bannir ${player.name} ?`;
-                                                                                        if (confirm(msg)) {
-                                                                                            sendServerCommand(`${action} ${player.name}`);
-                                                                                        }
-                                                                                    }}
-                                                                                    title={player.is_banned ? "Unban" : "Ban"}
-                                                                                >
-                                                                                    <Ban size={14} />
-                                                                                </button>
-                                                                                <button
-                                                                                    className="btn btn--icon btn--danger btn--sm"
-                                                                                    onClick={() => {
-                                                                                        if (confirm(`Kicker ${player.name} ?`)) {
-                                                                                            sendServerCommand(`kick ${player.name}`);
-                                                                                        }
-                                                                                    }}
-                                                                                    title="Kick"
-                                                                                >
-                                                                                    <LogOut size={14} />
-                                                                                </button>
-                                                                            </div>
-                                                                        </td>
-                                                                    </tr>
-                                                                )))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        ) : (
-                                            <div className="empty-state">
-                                                <Users size={32} className="icon-faded" />
-                                                <p>{activePlayerTab === 'online' ? 'Aucun joueur connecté.' : 'Aucun historique de joueur.'}</p>
-                                            </div>
-                                        )
-                                    )}
-
-                                    {(activePlayerTab === 'whitelist' || activePlayerTab === 'bans' || activePlayerTab === 'permissions') && (
-                                        <div className="player-list-manager">
-                                            <div className="list-toolbar mb-4 flex gap-2">
-                                                <button
-                                                    className="btn btn--primary btn--sm"
-                                                    onClick={() => {
-                                                        const name = prompt('Nom du joueur :');
-                                                        if (name) {
-                                                            const newItem = activePlayerTab === 'bans'
-                                                                ? { name, created: new Date().toISOString(), reason: 'Banned by admin' }
-                                                                : activePlayerTab === 'permissions'
-                                                                    ? { name, level: 4, bypassesPlayerLimit: false }
-                                                                    : { name }; // whitelist
-                                                            savePlayerData([...playerData, newItem]);
-                                                        }
-                                                    }}
-                                                >
-                                                    <Plus size={16} /> Ajouter un joueur
-                                                </button>
-                                                <button className="btn btn--secondary btn--sm" onClick={fetchPlayerData}>
-                                                    Actualiser
-                                                </button>
-                                            </div>
-
-                                            {isPlayerLoading ? (
-                                                <div className="loading-container py-8 flex justify-center">
-                                                    <div className="spinner"></div>
-                                                </div>
-                                            ) : playerData.length === 0 ? (
-                                                <div className="empty-state p-8 border rounded-lg border-dashed">
-                                                    <p className="text-muted">La liste est vide.</p>
-                                                </div>
-                                            ) : (
-                                                <div className="data-table-container">
-                                                    <table className="data-table w-full text-left">
-                                                        <thead>
-                                                            <tr className="border-b border-border">
-                                                                <th className="p-2">Nom</th>
-                                                                {activePlayerTab === 'bans' && <th className="p-2">Raison</th>}
-                                                                {activePlayerTab === 'permissions' && <th className="p-2">Niveau</th>}
-                                                                <th className="p-2 text-right">Actions</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {playerData.map((player, idx) => (
-                                                                <tr key={idx} className="border-b border-border hover:bg-white/5">
-                                                                    <td className="p-2 font-medium">{player.name}</td>
-                                                                    {activePlayerTab === 'bans' && <td className="p-2 text-sm text-muted">{player.reason || '-'}</td>}
-                                                                    {activePlayerTab === 'permissions' && <td className="p-2 text-sm">{player.level || '1'}</td>}
-                                                                    <td className="p-2 text-right">
-                                                                        <button
-                                                                            className="btn btn--icon btn--danger btn--sm"
-                                                                            onClick={() => {
-                                                                                if (confirm(`Retirer ${player.name} de la liste ?`)) {
-                                                                                    savePlayerData(playerData.filter((_, i) => i !== idx));
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            <Trash2 size={14} />
-                                                                        </button>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )
-                }
-
-                {
-                    activeTab === 'webhooks' && (
-                        <div className="card">
-                            <div className="panel-header">
-                                <h3 className="panel-header__title"><Webhook size={20} /> Webhooks Discord</h3>
-                            </div>
-                            <div className="empty-state">
-                                <Webhook size={48} className="empty-state-icon" />
-                                <p className="font-medium">Configurez les notifications Discord</p>
-                                <p className="text-sm text-muted mb-4">
-                                    Les webhooks sont stockés dans la configuration du serveur (base de données).
-                                </p>
-                                <button
-                                    onClick={() => setActiveTab('files')}
-                                    className="btn btn--primary"
-                                >
-                                    Ouvrir l'éditeur de fichiers
-                                </button>
-                            </div>
-                        </div>
-                    )
-                }
-
-                {/* Placeholder for unimplemented tabs */}
-                {
-                    !['console', 'backups', 'files', 'logs', 'config', 'webhooks', 'players'].includes(activeTab) && (
-                        <div className="card empty-state">
-                            <div className="coming-soon-placeholder">
-                                {tabs.find(t => t.id === activeTab)?.icon}
-                            </div>
-                            <h3 className="text-xl mb-2 text-muted">Coming Soon</h3>
-                            <p>{tabs.find(t => t.id === activeTab)?.label} functionality is under development.</p>
-                        </div>
-                    )
-                }
-            </div>
-
-            {/* Components Overlays */}
-            {
-                (isInstalling || isAuthRequired) && (
-                    <InstallationProgress
+                {activeTab === "console" && (
+                    <ServerConsole
                         logs={logs}
-                        isInstalling={isInstalling}
-                        isAuthRequired={isAuthRequired}
-                        onSendAuth={() => sendServerCommand('/auth login device')}
-                        onClose={() => {
-                            // Check if installation was finished
-                            const isFinished = logs.some(l => l.includes('Installation terminée') || l.includes('Installation finished'));
+                        isConnected={isConnected}
+                        isRunning={server.status === "running" || server.status === "starting"}
+                        onSendCommand={sendCommand}
+                    />
+                )}
 
-                            if (!isFinished) {
-                                // User cancelled or closed before finish -> Delete install.log to prevent persistent popup
-                                fetch(`/api/v1/servers/${id}/files/delete`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        Authorization: `Bearer ${localStorage.getItem('token')}`,
-                                    },
-                                    body: JSON.stringify({ path: 'server/logs/install.log' })
-                                }).catch(err => console.error("Failed to cleanup install.log", err));
-                            }
-                            setIsInstalling(false);
-                            // Also clear auth flag if closed manually (although it will re-appear if status persists)
-                            setIsAuthRequired(false);
+                {activeTab === "backups" && (
+                    <ServerBackups
+                        backups={backups}
+                        isLoading={backupsLoading}
+                        isCreating={creatingBackup}
+                        onCreateBackup={createBackup}
+                        onRestoreBackup={restoreBackup}
+                        onDeleteBackup={deleteBackup}
+                    />
+                )}
+
+                {activeTab === "files" && (
+                    <ServerFiles
+                        files={files}
+                        currentPath={currentPath}
+                        isLoading={filesLoading}
+                        selectedFile={selectedFile}
+                        fileContent={fileContent}
+                        isSaving={fileSaving}
+                        onNavigate={fetchFiles}
+                        onReadFile={readFile}
+                        onSaveFile={saveFile}
+                        onCloseEditor={() => setSelectedFile(null)}
+                        onRefresh={() => fetchFiles(currentPath)}
+                    />
+                )}
+
+                {activeTab === "logs" && (
+                    <ServerLogs
+                        logFiles={logFiles}
+                        selectedLogFile={selectedLogFile}
+                        logContent={logContent}
+                        onSelectLogFile={readLogFile}
+                        onRefresh={fetchLogFiles}
+                    />
+                )}
+
+                {activeTab === "config" && (
+                    <ServerConfig
+                        configFormData={configFormData}
+                        configSaving={configSaving}
+                        configError={configError}
+                        javaVersions={javaVersions}
+                        updateConfigValue={updateConfigValue}
+                        toggleJvmArg={toggleJvmArg}
+                        handleSaveConfig={handleSaveConfig}
+                        t={t}
+                    />
+                )}
+
+                {activeTab === "players" && (
+                    <ServerPlayers
+                        players={server.players || []} // Online players
+                        playerList={playerData} // Whitelist/Ban lists
+                        activeTab={activePlayerTab}
+                        onTabChange={setActivePlayerTab}
+                        isLoading={false}
+                        onAction={onPlayerAction}
+                        onAddPlayer={(name) => {
+                            if (activePlayerTab === "whitelist") sendCommand(`whitelist add ${name}`);
+                            else if (activePlayerTab === "ops") sendCommand(`op ${name}`);
+                        }}
+                        onRemovePlayer={(name) => {
+                            if (activePlayerTab === "whitelist") sendCommand(`whitelist remove ${name}`);
+                            else if (activePlayerTab === "ops") sendCommand(`deop ${name}`);
+                            else if (activePlayerTab === "bans") sendCommand(`pardon ${name}`);
+                        }}
+                        onRefresh={() => {
+                            fetchServer();
+                            fetchPlayerData();
                         }}
                     />
-                )
-            }
+                )}
 
-            {/* Quick Actions / FAB */}
-            <div className="fixed bottom-8 right-8 flex flex-col gap-3">
-                {/* ... existing FABs if any ... */}
+                {(activeTab === "metrics" || activeTab === "webhooks") && (
+                    <WorkInProgress />
+                )}
             </div>
-        </div >
+        </div>
     );
 }

@@ -13,7 +13,7 @@ import {
 
 export default function Layout() {
     const { user, logout } = useAuth();
-    const { title, subtitle, backLink } = usePageTitle();
+    const { title, subtitle, backLink, headerActions } = usePageTitle();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -75,6 +75,12 @@ export default function Layout() {
                 </div>
 
                 <div className="topbar__right">
+                    {/* Header Actions (injected from pages) */}
+                    {headerActions && (
+                        <div className="topbar__actions">
+                            {headerActions}
+                        </div>
+                    )}
                     {/* Notifications */}
                     <button className="topbar__icon-btn" title="Notifications">
                         <Bell size={20} />
@@ -127,7 +133,9 @@ export default function Layout() {
 
             {/* Main Content */}
             <main className="main-content">
-                <Outlet />
+                <div className="page-container">
+                    <Outlet />
+                </div>
             </main>
         </div>
     );

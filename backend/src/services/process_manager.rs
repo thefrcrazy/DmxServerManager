@@ -672,6 +672,10 @@ impl ProcessManager {
         }
         (0.0, 0, 0)
     }
+
+    pub async fn get_processes_read_guard(&self) -> tokio::sync::RwLockReadGuard<'_, HashMap<String, ServerProcess>> {
+        self.processes.read().await
+    }
 }
 
 impl Default for ProcessManager {

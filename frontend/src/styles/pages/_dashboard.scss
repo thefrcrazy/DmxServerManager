@@ -1,162 +1,229 @@
 @use '../mixins' as *;
 
 // ========================================
-// Dashboard Page Styles
+// Dashboard Page Styles (Reworked)
 // ========================================
 
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.875rem;
-    margin-bottom: 1.5rem;
-
-    &--3col {
-        grid-template-columns: repeat(3, 1fr);
-
-        @media (max-width: 900px) {
-            grid-template-columns: repeat(2, 1fr);
-        }
-
-        @media (max-width: 600px) {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    &--4col {
-        grid-template-columns: repeat(4, 1fr);
-
-        @media (max-width: 1100px) {
-            grid-template-columns: repeat(2, 1fr);
-        }
-
-        @media (max-width: 600px) {
-            grid-template-columns: 1fr;
-        }
-    }
+.dashboard-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
-.stat-card {
-    padding: 1rem;
+// 1. Header Stat Pills (Compact Overview)
+.dashboard-header-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem; // Match Server Detail
+}
 
-    &--progress {
-        padding-bottom: 0.75rem;
-    }
+.stat-pill {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem; // Tighter gap
+    transition: all var(--transition-base);
+    min-width: 0; // Prevent overflow
 
-    &__header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 0.625rem;
-    }
-
-    &__label {
-        color: var(--color-text-muted);
-        font-size: 0.75rem;
-        font-weight: 500;
+    &:hover {
+        border-color: var(--color-border-hover);
+        background: var(--color-bg-tertiary); // Match Server Detail hover
+        transform: translateY(-1px); // Subtle lift
     }
 
     &__icon {
-        width: 36px;
+        width: 36px; // Match Server Detail
         height: 36px;
+        border-radius: var(--radius-md);
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 8px;
-        transition: all 0.2s ease;
-        background: transparent;
-
-        svg {
-            width: 18px;
-            height: 18px;
-        }
+        background: var(--color-bg-primary); // Consistent with Server Detail
+        flex-shrink: 0;
 
         &--default {
-            color: var(--color-text-primary);
-
-            &:hover {
-                background: var(--color-bg-elevated);
-            }
+            color: var(--color-text-secondary);
         }
 
         &--success {
             color: #10b981;
-
-            &:hover {
-                background: rgba(16, 185, 129, 0.1);
-            }
+            background: rgba(16, 185, 129, 0.1);
         }
 
-        &--warning {
-            color: #f59e0b;
-
-            &:hover {
-                background: rgba(245, 158, 11, 0.1);
-            }
-        }
-
-        &--danger {
-            color: #ef4444;
-
-            &:hover {
-                background: rgba(239, 68, 68, 0.1);
-            }
+        &--muted {
+            color: var(--color-text-muted);
         }
 
         &--purple {
             color: #8b5cf6;
-
-            &:hover {
-                background: rgba(139, 92, 246, 0.1);
-            }
+            background: rgba(139, 92, 246, 0.1);
         }
     }
 
+    &__content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    &__label {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.125rem;
+    }
+
     &__value {
-        font-size: 1.5rem;
-        font-weight: 700;
-        line-height: 1;
+        font-size: 0.9375rem; // Match Server Detail
+        font-weight: 600;
+        color: var(--color-text-primary);
+        display: flex;
+        align-items: baseline;
+        gap: 0.375rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
 
         &--success {
             color: #10b981;
         }
 
-        &--warning {
-            color: #f59e0b;
-        }
-
-        &--danger {
-            color: #ef4444;
-        }
-
         &--muted {
-            color: var(--color-text-secondary);
-        }
-
-        &--suffix {
-            font-size: 0.875rem;
-            font-weight: 500;
             color: var(--color-text-muted);
         }
     }
 
-    &__meta {
-        font-size: 0.6875rem;
+    &__sublabel {
+        font-size: 0.75rem;
+        font-weight: 500;
         color: var(--color-text-muted);
-        margin-top: 0.125rem;
+        text-transform: none;
+        margin-left: auto; // Push to right if space permits, or close
     }
 
-    &__progress {
-        height: 3px;
+    &__suffix {
+        font-size: 0.8125rem;
+        color: var(--color-text-muted);
+    }
+}
+
+// 2. Resource Grid (System vs Servers)
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+
+    @media (max-width: 1300px) {
+        grid-template-columns: repeat(2, 1fr);
+
+        // Make the last item span full width for better symmetry
+        > :last-child {
+            grid-column: 1 / -1;
+        }
+    }
+
+    @media (max-width: 768px) {
+        grid-template-columns: 1fr;
+
+        > :last-child {
+            grid-column: auto;
+        }
+    }
+}
+
+.stat-card--resource {
+    background: var(--color-bg-secondary); // Match pills base
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: all var(--transition-base);
+
+    &:hover {
+        border-color: var(--color-border-hover);
+        background: var(--color-bg-tertiary);
+        transform: translateY(-1px);
+    }
+
+    .stat-card__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-card__title-group {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+    }
+
+    .stat-card__label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+
+    .stat-card__value--large {
+        font-size: 1.5rem; // Slightly cleaner
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .resource-usage {
+        display: flex;
+        flex-direction: column;
+        gap: 0.875rem;
+
+        &__row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8125rem;
+            margin-bottom: 0.375rem;
+            color: var(--color-text-secondary);
+
+            &--managed {
+                color: var(--color-text-muted);
+                margin-top: 0.25rem;
+            }
+        }
+
+        &__label {
+            font-weight: 500;
+        }
+
+        &__value {
+            font-family: var(--font-mono);
+            font-weight: 600;
+        }
+    }
+
+    .progress-container {
+        height: 6px;
         background: var(--color-bg-elevated);
-        border-radius: 2px;
-        margin-top: 0.75rem;
+        border-radius: 3px;
         overflow: hidden;
+
+        &--dimmed {
+            background: rgba(255, 255, 255, 0.03);
+            height: 4px;
+        }
     }
 
-    &__progress-bar {
+    .progress-bar {
         height: 100%;
-        border-radius: 2px;
-        transition: width 0.5s ease-out;
+        border-radius: 3px;
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 
         &--success {
             background: linear-gradient(90deg, #10b981, #34d399);
@@ -169,143 +236,44 @@
         &--danger {
             background: linear-gradient(90deg, #ef4444, #f87171);
         }
-    }
-}
 
-.section-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-}
-
-.section-title {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    margin: 0;
-}
-
-.section-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.125rem 0.5rem;
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
-    font-size: 0.6875rem;
-    font-weight: 500;
-    border-radius: 9999px;
-}
-
-.empty-state {
-    text-align: center;
-    padding: 2rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-
-    &__icon {
-        padding: 0.75rem;
-        background: var(--color-bg-elevated);
-        border-radius: 50%;
-        margin-bottom: 1rem;
-        color: var(--color-text-muted);
-
-        svg {
-            width: 24px;
-            height: 24px;
+        &--info {
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
         }
     }
 
-    &__title {
-        font-size: 1rem;
-        font-weight: 600;
-        margin-bottom: 0.375rem;
-    }
-
-    &__description {
-        color: var(--color-text-muted);
-        font-size: 0.8125rem;
-        margin-bottom: 1rem;
-        max-width: 350px;
-    }
-}
-
-.servers-list {
-    display: grid;
-    gap: 0.625rem;
-}
-
-.server-item {
-    padding: 0.875rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    &--running {
-        border-left: 3px solid #10b981;
-    }
-
-    &--stopped {
-        border-left: 3px solid var(--color-bg-elevated);
-    }
-
-    &__info {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-
-    &__icon {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        background: var(--color-bg-elevated);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        img {
-            filter: grayscale(100%);
-            width: 18px;
-            height: 18px;
-        }
-
-        svg {
-            width: 16px;
-            height: 16px;
-        }
-    }
-
-    &__name {
-        font-weight: 600;
-        font-size: 0.875rem;
-    }
-
-    &__meta {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
+    .stat-card__footer {
+        margin-top: auto;
+        padding-top: 1rem;
+        border-top: 1px solid var(--color-border);
         font-size: 0.75rem;
+        display: flex;
+        justify-content: flex-end;
         color: var(--color-text-muted);
     }
+}
 
-    &__players {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        color: var(--color-danger);
-        font-weight: 700;
-    }
+// 3. Helpers (Kept minimal)
+.text-success {
+    color: #10b981;
+}
 
-    &__status {
-        &--running {
-            color: #10b981;
-        }
-    }
+.text-warning {
+    color: #f59e0b;
+}
 
-    &__actions {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
+.text-danger {
+    color: #ef4444;
+}
+
+.text-info {
+    color: #3b82f6;
+}
+
+.mt-2 {
+    margin-top: 0.5rem;
+}
+
+.mt-4 {
+    margin-top: 1.5rem;
 }

@@ -137,6 +137,13 @@
     }
 }
 
+// Mobile specific
+@mixin mobile {
+    @media (max-width: 768px) {
+        @content;
+    }
+}
+
 // Animation keyframes
 @mixin shimmer {
     background: linear-gradient(90deg,

@@ -9,6 +9,7 @@ import Table from '../components/Table';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { PRESET_COLORS } from '../constants/theme';
+import Tabs from '../components/Tabs';
 
 interface PanelInfo {
     version: string;
@@ -302,27 +303,21 @@ export default function PanelSettings() {
     }
 
     const tabs = [
-        { id: 'general' as ActiveTab, label: 'Général', icon: FolderOpen },
-        { id: 'users' as ActiveTab, label: 'Utilisateurs', icon: Users },
-        { id: 'roles' as ActiveTab, label: 'Rôles', icon: Shield },
+        { id: 'general', label: 'Général', icon: <FolderOpen size={18} /> },
+        { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
+        { id: 'roles', label: 'Rôles', icon: <Shield size={18} /> },
     ];
 
     return (
         <div className="settings-page">
 
             {/* Tabs */}
-            <div className="tabs-nav">
-                {tabs.map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => handleTabChange(tab.id)}
-                        className={`tab-btn ${activeTab === tab.id ? 'tab-btn--active' : ''}`}
-                    >
-                        <tab.icon size={18} />
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
+            <Tabs
+                tabs={tabs}
+                activeTab={activeTab}
+                onTabChange={handleTabChange}
+                className="tabs-nav"
+            />
 
             {/* General Tab */}
             {activeTab === 'general' && (

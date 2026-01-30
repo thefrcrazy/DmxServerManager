@@ -19,6 +19,9 @@ pub struct SystemStatsResponse {
     pub players_current: u32,
     pub players_max: u32,
     pub cpu_cores: usize,
+    pub managed_cpu: f32,
+    pub managed_ram: u64,
+    pub managed_disk: u64,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -196,6 +199,25 @@ async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse,
         sys.cpus().len()
     };
 
+    // Managed resource usage
+    let mut managed_cpu = 0.0;
+    let mut managed_ram = 0;
+    let mut managed_disk = 0;
+
+    // Get all servers to calculate total managed disk
+    // Actually ProcessManager already has metrics for running processes.
+    // For disk, we might want it for all servers, not just running ones? 
+    // The request said "total of all servers".
+    
+    // We can get metrics for running servers from PM
+    if let Ok(procs) = pm.get_processes_read_guard().await {
+        for proc in procs.values() {
+            managed_cpu += *proc.last_cpu.read().unwrap();
+            managed_ram += *proc.last_memory.read().unwrap();
+            managed_disk += *proc.last_disk.read().unwrap();
+        }
+    }
+
     Ok(HttpResponse::Ok().json(SystemStatsResponse {
         cpu: cpu_usage,
         ram: ram_percent,
@@ -207,6 +229,9 @@ async fn get_system_stats(pm: web::Data<ProcessManager>) -> Result<HttpResponse,
         players_current,
         players_max,
         cpu_cores,
+        managed_cpu,
+        managed_ram,
+        managed_disk,
     }))
 }
 

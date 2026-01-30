@@ -23,6 +23,9 @@ interface SystemStats {
     disk_used: number;
     disk_total: number;
     cpu_cores?: number;
+    managed_cpu: number;
+    managed_ram: number;
+    managed_disk: number;
 }
 
 interface PlayersStats {
@@ -34,7 +37,8 @@ export default function Dashboard() {
     const { t } = useLanguage();
     const [stats, setStats] = useState<ServerStats>({ total: 0, running: 0, stopped: 0 });
     const [systemStats, setSystemStats] = useState<SystemStats>({
-        cpu: 0, ram: 0, ram_used: 0, ram_total: 0, disk: 0, disk_used: 0, disk_total: 0
+        cpu: 0, ram: 0, ram_used: 0, ram_total: 0, disk: 0, disk_used: 0, disk_total: 0,
+        managed_cpu: 0, managed_ram: 0, managed_disk: 0
     });
     const [playersStats, setPlayersStats] = useState<PlayersStats>({ current: 0, max: 0 });
     const [servers, setServers] = useState<Server[]>([]);
@@ -111,6 +115,9 @@ export default function Dashboard() {
                     disk_used: data.disk_used || 0,
                     disk_total: data.disk_total || 0,
                     cpu_cores: data.cpu_cores,
+                    managed_cpu: data.managed_cpu || 0,
+                    managed_ram: data.managed_ram || 0,
+                    managed_disk: data.managed_disk || 0,
                 });
                 setPlayersStats({
                     current: data.players_current || 0,
@@ -170,166 +177,194 @@ export default function Dashboard() {
     // Dashboard usually shows all servers or maybe favorites? I will show all for now.
 
     return (
-        <div>
-            {/* Server Stats */}
-            <div className="stats-grid stats-grid--4col">
-                <div className="card stat-card">
-                    <div className="stat-card__header">
-                        <div className="stat-card__label">{t('dashboard.total_servers')}</div>
-                        <div className="stat-card__icon stat-card__icon--default">
-                            <ServerIcon size={20} />
-                        </div>
+        <div className="dashboard-page">
+            <div className="dashboard-header-stats">
+                <div className="stat-pill">
+                    <div className="stat-pill__icon stat-pill__icon--default">
+                        <ServerIcon size={16} />
                     </div>
-                    <div className="stat-card__value">{stats.total}</div>
-                </div>
-
-                <div className="card stat-card">
-                    <div className="stat-card__header">
-                        <div className="stat-card__label">{t('servers.status')}</div>
-                        <div className="stat-card__icon stat-card__icon--success">
-                            <Activity size={20} />
-                        </div>
-                    </div>
-                    <div className="stat-card__value stat-card__value--success">{stats.running}</div>
-                </div>
-
-                <div className="card stat-card">
-                    <div className="stat-card__header">
-                        <div className="stat-card__label">{t('servers.stop')}</div>
-                        <div className="stat-card__icon stat-card__icon--default">
-                            <Square size={20} />
-                        </div>
-                    </div>
-                    <div className="stat-card__value stat-card__value--muted">{stats.stopped}</div>
-                </div>
-
-                <div className="card stat-card">
-                    <div className="stat-card__header">
-                        <div className="stat-card__label">{t('servers.players')}</div>
-                        <div className="stat-card__icon stat-card__icon--purple">
-                            <Users size={20} />
-                        </div>
-                    </div>
-                    <div className="stat-card__value">
-                        {playersStats.current}
-                        {playersStats.max > 0 && <span className="stat-card__value--suffix">/{playersStats.max}</span>}
-                    </div>
-                </div>
-            </div>
-
-            {/* System Stats */}
-            <div className="section-header">
-                <h2 className="section-title">{t('dashboard.system_status')}</h2>
-                {stats.running > 0 && (
-                    <span className="section-badge">
-                        {t('dashboard.active_servers_status').replace('{{count}}', stats.running.toString())}
-                    </span>
-                )}
-            </div>
-            <div className="stats-grid stats-grid--3col">
-                <div className="card stat-card stat-card--progress">
-                    <div className="stat-card__header">
-                        <div className="stat-card__label">{t('dashboard.cpu_usage')}</div>
-                        <div className={`stat-card__icon stat-card__icon--${getStatColor(systemStats.cpu)}`}>
-                            <Cpu size={20} />
-                        </div>
-                    </div>
-                    <div className={`stat-card__value stat-card__value--${getStatColor(systemStats.cpu)}`}>
-                        {systemStats.cpu.toFixed(1)}%
-                    </div>
-                    <div className="stat-card__meta">
-                        {systemStats.cpu_cores ? `${systemStats.cpu_cores} Cores` : 'Loading...'}
-                    </div>
-                    <div className="stat-card__progress">
-                        <div
-                            className={`stat-card__progress-bar stat-card__progress-bar--${getStatColor(systemStats.cpu)}`}
-                            style={{ width: `${systemStats.cpu}%` }}
-                        />
+                    <div className="stat-pill__content">
+                        <span className="stat-pill__label">{t('dashboard.total_servers')}</span>
+                        <span className="stat-pill__value">{stats.total}</span>
                     </div>
                 </div>
 
-                <div className="card stat-card stat-card--progress">
-                    <div className="stat-card__header">
-                        <div className="stat-card__label">{t('dashboard.ram_usage')}</div>
-                        <div className={`stat-card__icon stat-card__icon--${getStatColor(systemStats.ram)}`}>
-                            <MemoryStick size={20} />
-                        </div>
+                <div className="stat-pill">
+                    <div className="stat-pill__icon stat-pill__icon--success">
+                        <Activity size={16} />
                     </div>
-                    <div className={`stat-card__value stat-card__value--${getStatColor(systemStats.ram)}`}>
-                        {systemStats.ram.toFixed(1)}%
-                    </div>
-                    <div className="stat-card__meta">
-                        {formatBytes(systemStats.ram_used)} / {formatBytes(systemStats.ram_total)}
-                    </div>
-                    <div className="stat-card__progress">
-                        <div
-                            className={`stat-card__progress-bar stat-card__progress-bar--${getStatColor(systemStats.ram)}`}
-                            style={{ width: `${systemStats.ram}%` }}
-                        />
+                    <div className="stat-pill__content">
+                        <span className="stat-pill__label">{t('servers.status')}</span>
+                        <span className="stat-pill__value stat-pill__value--success">{stats.running} <span className="stat-pill__sublabel">running</span></span>
                     </div>
                 </div>
 
-                <div className="card stat-card stat-card--progress">
-                    <div className="stat-card__header">
-                        <div className="stat-card__label">{t('dashboard.disk_usage')}</div>
-                        <div className={`stat-card__icon stat-card__icon--${getStatColor(systemStats.disk)}`}>
-                            <HardDrive size={20} />
-                        </div>
+                <div className="stat-pill">
+                    <div className="stat-pill__icon stat-pill__icon--muted">
+                        <Square size={16} />
                     </div>
-                    <div className={`stat-card__value stat-card__value--${getStatColor(systemStats.disk)}`}>
-                        {systemStats.disk.toFixed(1)}%
+                    <div className="stat-pill__content">
+                        <span className="stat-pill__label">{t('servers.stop')}</span>
+                        <span className="stat-pill__value stat-pill__value--muted">{stats.stopped} <span className="stat-pill__sublabel">stopped</span></span>
                     </div>
-                    <div className="stat-card__meta">
-                        {formatBytes(systemStats.disk_used)} / {formatBytes(systemStats.disk_total)}
+                </div>
+
+                <div className="stat-pill">
+                    <div className="stat-pill__icon stat-pill__icon--purple">
+                        <Users size={16} />
                     </div>
-                    <div className="stat-card__progress">
-                        <div
-                            className={`stat-card__progress-bar stat-card__progress-bar--${getStatColor(systemStats.disk)}`}
-                            style={{ width: `${systemStats.disk}%` }}
-                        />
+                    <div className="stat-pill__content">
+                        <span className="stat-pill__label">{t('servers.players')}</span>
+                        <span className="stat-pill__value">
+                            {playersStats.current}
+                            {playersStats.max > 0 && <span className="stat-pill__suffix">/{playersStats.max}</span>}
+                        </span>
                     </div>
                 </div>
             </div>
 
-            <ServerFilters
-                search={search}
-                onSearchChange={setSearch}
-                gameType={gameType}
-                onGameTypeChange={setGameType}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                gameTypes={uniqueGameTypes}
-                action={
-                    <Link to="/servers/create" className="btn btn--primary">
-                        <Plus size={18} />
-                        {t('servers.create_new')}
-                    </Link>
-                }
-            />
-
-            {filteredServers.length === 0 ? (
-                <div className="card empty-state">
-                    <div className="empty-state__icon">
-                        <ServerIcon size={32} />
+            <div className="dashboard-grid">
+                <div className="card stat-card stat-card--resource">
+                    <div className="stat-card__header">
+                        <div className="stat-card__title-group">
+                            <Cpu size={18} className={`text-${getStatColor(systemStats.cpu)}`} />
+                            <span className="stat-card__label">{t('dashboard.cpu_usage')}</span>
+                        </div>
+                        <span className={`stat-card__value stat-card__value--large text-${getStatColor(systemStats.cpu)}`}>
+                            {systemStats.cpu.toFixed(1)}%
+                        </span>
                     </div>
-                    <h3 className="empty-state__title">{t('servers.no_servers')}</h3>
-                    <p className="empty-state__description">
-                        {search || gameType !== 'all' ? 'No servers match your filters.' : t('dashboard.welcome')}
-                    </p>
-                    {(search === '' && gameType === 'all') && (
+
+                    <div className="stat-card__content">
+                        <div className="resource-usage">
+                            <div className="resource-usage__row">
+                                <span className="resource-usage__label">Global System</span>
+                                <span className="resource-usage__value">{systemStats.cpu.toFixed(1)}%</span>
+                            </div>
+                            <div className="progress-container">
+                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.cpu)}`} style={{ width: `${systemStats.cpu}%` }}></div>
+                            </div>
+
+                            <div className="resource-usage__row resource-usage__row--managed">
+                                <span className="resource-usage__label">Managed Servers</span>
+                                <span className="resource-usage__value">{systemStats.managed_cpu.toFixed(1)}%</span>
+                            </div>
+                            <div className="progress-container progress-container--dimmed">
+                                <div className="progress-bar progress-bar--info" style={{ width: `${Math.min(100, systemStats.managed_cpu)}%` }}></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="stat-card__footer">
+                        <span className="text-muted">{systemStats.cpu_cores ? `${systemStats.cpu_cores} Cores` : '---'}</span>
+                    </div>
+                </div>
+
+                <div className="card stat-card stat-card--resource">
+                    <div className="stat-card__header">
+                        <div className="stat-card__title-group">
+                            <MemoryStick size={18} className={`text-${getStatColor(systemStats.ram)}`} />
+                            <span className="stat-card__label">{t('dashboard.ram_usage')}</span>
+                        </div>
+                        <span className={`stat-card__value stat-card__value--large text-${getStatColor(systemStats.ram)}`}>
+                            {systemStats.ram.toFixed(1)}%
+                        </span>
+                    </div>
+
+                    <div className="stat-card__content">
+                        <div className="resource-usage">
+                            <div className="resource-usage__row">
+                                <span className="resource-usage__label">Global System</span>
+                                <span className="resource-usage__value">{formatBytes(systemStats.ram_used)} / {formatBytes(systemStats.ram_total)}</span>
+                            </div>
+                            <div className="progress-container">
+                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.ram)}`} style={{ width: `${systemStats.ram}%` }}></div>
+                            </div>
+
+                            <div className="resource-usage__row resource-usage__row--managed">
+                                <span className="resource-usage__label">Managed Servers</span>
+                                <span className="resource-usage__value">{formatBytes(systemStats.managed_ram)}</span>
+                            </div>
+                            <div className="progress-container progress-container--dimmed">
+                                <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_ram / systemStats.ram_total) * 100}%` }}></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="card stat-card stat-card--resource">
+                    <div className="stat-card__header">
+                        <div className="stat-card__title-group">
+                            <HardDrive size={18} className={`text-${getStatColor(systemStats.disk)}`} />
+                            <span className="stat-card__label">{t('dashboard.disk_usage')}</span>
+                        </div>
+                        <span className={`stat-card__value stat-card__value--large text-${getStatColor(systemStats.disk)}`}>
+                            {systemStats.disk.toFixed(1)}%
+                        </span>
+                    </div>
+
+                    <div className="stat-card__content">
+                        <div className="resource-usage">
+                            <div className="resource-usage__row">
+                                <span className="resource-usage__label">Global System</span>
+                                <span className="resource-usage__value">{formatBytes(systemStats.disk_used)} / {formatBytes(systemStats.disk_total)}</span>
+                            </div>
+                            <div className="progress-container">
+                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.disk)}`} style={{ width: `${systemStats.disk}%` }}></div>
+                            </div>
+
+                            <div className="resource-usage__row resource-usage__row--managed">
+                                <span className="resource-usage__label">Managed Servers</span>
+                                <span className="resource-usage__value">{formatBytes(systemStats.managed_disk)}</span>
+                            </div>
+                            <div className="progress-container progress-container--dimmed">
+                                <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_disk / systemStats.disk_total) * 100}%` }}></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="dashboard-content">
+                <ServerFilters
+                    search={search}
+                    onSearchChange={setSearch}
+                    gameType={gameType}
+                    onGameTypeChange={setGameType}
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    gameTypes={uniqueGameTypes}
+                    action={
                         <Link to="/servers/create" className="btn btn--primary">
                             <Plus size={18} />
                             {t('servers.create_new')}
                         </Link>
-                    )}
-                </div>
-            ) : (
-                <ServerList
-                    servers={filteredServers}
-                    viewMode={viewMode}
-                    onAction={handleServerAction}
+                    }
                 />
-            )}
+
+                {filteredServers.length === 0 ? (
+                    <div className="card empty-state mt-4">
+                        <div className="empty-state__icon">
+                            <ServerIcon size={32} />
+                        </div>
+                        <h3 className="empty-state__title">{t('servers.no_servers')}</h3>
+                        <p className="empty-state__description">
+                            {search || gameType !== 'all' ? 'No servers match your filters.' : t('dashboard.welcome')}
+                        </p>
+                        {(search === '' && gameType === 'all') && (
+                            <Link to="/servers/create" className="btn btn--primary">
+                                <Plus size={18} />
+                                {t('servers.create_new')}
+                            </Link>
+                        )}
+                    </div>
+                ) : (
+                    <ServerList
+                        servers={filteredServers}
+                        viewMode={viewMode}
+                        onAction={handleServerAction}
+                    />
+                )}
+            </div>
         </div>
     );
 }
