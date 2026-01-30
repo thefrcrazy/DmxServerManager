@@ -1,5 +1,5 @@
 import React from "react";
-import { Server as ServerIcon, Terminal, Cpu, Globe, Save, ChevronDown, Check } from "lucide-react";
+import { Server as ServerIcon, Terminal, Cpu, Globe, Save, ChevronDown, Check, AlertTriangle, RotateCw, Trash2 } from "lucide-react";
 import Checkbox from "../../components/Checkbox";
 import RangeSlider from "../../components/RangeSlider";
 import Select from "../../components/Select";
@@ -13,6 +13,9 @@ interface ServerConfigProps {
     toggleJvmArg: (arg: string) => void;
     handleSaveConfig: (e: React.FormEvent) => void;
     t: any;
+    onDelete: () => void;
+    onReinstall: () => void;
+    hasChanges?: boolean;
 }
 
 const JVM_ARGS_SUGGESTIONS = [
@@ -33,8 +36,9 @@ const CollapsibleSection = ({
     children,
     badge,
     defaultOpen = false,
+    className = ""
 }: any) => (
-    <details className="config-section" open={defaultOpen}>
+    <details className={`config-section ${className}`} open={defaultOpen}>
         <summary className="config-section-header">
             <div className="header-left">
                 <Icon size={18} className="text-primary" />
@@ -57,14 +61,19 @@ export default function ServerConfig({
     updateConfigValue,
     toggleJvmArg,
     handleSaveConfig,
-    t
+    t,
+    onDelete,
+    onReinstall,
+    hasChanges = false
 }: ServerConfigProps) {
+    console.log("DEBUG: ServerConfig rendered. hasChanges =", hasChanges);
     return (
         <div className="config-wrapper">
             <form onSubmit={handleSaveConfig} className="config-form">
 
                 {/* Header Action Bar */}
-                <div className="config-action-bar">
+                {/* Header Action Bar */}
+                <div className={`config-action-bar ${hasChanges ? "is-visible" : ""}`}>
                     <div className="action-info">
                         <div className="icon-circle">
                             <Save size={20} />
@@ -300,6 +309,39 @@ export default function ServerConfig({
                                 <Checkbox checked={configFormData.is_game_time_paused !== true} onChange={v => updateConfigValue("is_game_time_paused", v)} label="Cycle Jour/Nuit" />
                                 <Checkbox checked={configFormData.is_saving_players !== false} onChange={v => updateConfigValue("is_saving_players", v)} label="Save Players" />
                                 <Checkbox checked={configFormData.is_saving_chunks !== false} onChange={v => updateConfigValue("is_saving_chunks", v)} label="Save World" />
+                            </div>
+                        </CollapsibleSection>
+                    </div>
+
+                    {/* Danger Zone */}
+                    <div className="grid-full">
+                        <CollapsibleSection
+                            title="Zone de Danger"
+                            icon={AlertTriangle}
+                            defaultOpen={true}
+                            badge="Zone Sensible"
+                            className="danger-section"
+                        >
+                            <div className="danger-zone">
+                                <p className="text-sm text-muted mb-4">
+                                    Ces actions sont irréversibles ou potentiellement destructrices.
+                                </p>
+                                <div className="danger-actions">
+                                    <button
+                                        type="button"
+                                        onClick={onReinstall}
+                                        className="btn btn--danger-outline"
+                                    >
+                                        <RotateCw size={16} /> Réinstaller le serveur
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={onDelete}
+                                        className="btn btn--danger"
+                                    >
+                                        <Trash2 size={16} /> Supprimer le serveur
+                                    </button>
+                                </div>
                             </div>
                         </CollapsibleSection>
                     </div>

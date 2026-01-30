@@ -858,7 +858,7 @@
     background-color: var(--color-bg-tertiary);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    overflow: hidden;
+    border-radius: var(--radius-lg);
     transition: all var(--transition-base);
 
     &[open] {
@@ -1384,4 +1384,182 @@
         overflow-y: auto;
         @include custom-scrollbar;
     }
+}
+
+// ==========================================
+// Danger Zone Styling (Red Aesthetic)
+// ==========================================
+.danger-section {
+    background-color: rgba(220, 38, 38, 0.08) !important; // Red-900 tint
+    border: 1px solid rgba(239, 68, 68, 0.3) !important; // Red-500 border
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.1);
+
+    .config-section-header {
+        .header-left {
+            .text-primary {
+                color: #EF4444 !important; // Force red icon
+            }
+
+            .title {
+                color: #EF4444;
+                font-weight: 700;
+            }
+
+            .badge {
+                background-color: rgba(239, 68, 68, 0.2);
+                color: #FCA5A5; // Red-300
+                border: 1px solid rgba(239, 68, 68, 0.3);
+            }
+        }
+
+        &:hover {
+            background-color: rgba(220, 38, 38, 0.12);
+        }
+    }
+}
+
+.danger-zone {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+
+    .text-muted {
+        color: #FCA5A5 !important; // Light Red text
+        font-weight: 500;
+    }
+}
+
+.danger-actions {
+    display: flex;
+    gap: var(--spacing-4);
+
+    @include mobile {
+        flex-direction: column;
+    }
+
+    .btn--danger-outline {
+        background-color: rgba(239, 68, 68, 0.05);
+        border: 1px solid #EF4444;
+        color: #EF4444;
+        font-weight: 600;
+
+        &:hover {
+            background-color: rgba(239, 68, 68, 0.15);
+            border-color: #DC2626;
+            color: #DC2626;
+        }
+    }
+
+    .btn--danger {
+        background-color: #DC2626 !important; // Solid Red
+        color: #FFFFFF !important; // White Text
+        border: 1px solid #B91C1C;
+        font-weight: 600;
+
+        &:hover {
+            background-color: #B91C1C !important; // Darker Red
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+        }
+    }
+}
+
+// ==========================================
+// Floating Save Bar Styling
+// ==========================================
+.config-action-bar {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    min-width: 400px;
+    max-width: 90%;
+    z-index: 999;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-3) var(--spacing-5);
+    gap: var(--spacing-6);
+
+    // Glassmorphism & High Contrast
+    background-color: rgba(20, 20, 20, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 100px; // Pill shape
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+
+    // Default hidden state
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 100px);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &.is-visible {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(-50%, 0);
+    }
+
+    .action-info {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-4);
+
+        .icon-circle {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background-color: rgba(255, 120, 0, 0.15); // Orange tint
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ff7800;
+            border: 1px solid rgba(255, 120, 0, 0.2);
+        }
+
+        .text-group {
+            display: flex;
+            flex-direction: column;
+
+            h3 {
+                font-size: var(--font-size-sm);
+                font-weight: 700;
+                color: #ffffff;
+                margin: 0;
+            }
+
+            p {
+                font-size: 11px;
+                color: rgba(255, 255, 255, 0.6);
+                margin: 0;
+            }
+        }
+    }
+
+    .btn {
+        border-radius: 100px;
+        padding-left: var(--spacing-6);
+        padding-right: var(--spacing-6);
+        font-weight: 600;
+        box-shadow: 0 4px 12px rgba(255, 120, 0, 0.3);
+    }
+}
+
+@keyframes slideUpFade {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 40px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+// Adjust padding for content to account for floating bar
+.config-wrapper {
+    padding-bottom: 120px !important;
 }

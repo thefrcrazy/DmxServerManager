@@ -795,160 +795,177 @@ pub async fn reinstall_server(
 // Helpers
 fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, server_path: PathBuf) {
     tokio::spawn(async move {
-        let working_dir_str = server_path.to_string_lossy().to_string();
-        if let Err(e) = pm.register_installing(&id, &working_dir_str).await {
-            error!("Failed to register installing process: {}", e);
-            return;
-        }
+        let (tx_start, rx_start) = tokio::sync::oneshot::channel::<()>();
         
-        let logs_dir = server_path.join("logs");
-        if !logs_dir.exists() {
-             let _ = tokio::fs::create_dir_all(&logs_dir).await;
-        }
-        let install_log_path = logs_dir.join("install.log");
-        let _ = tokio::fs::write(&install_log_path, "Starting Hytale Server Installation...\n").await;
+        let pm_inner = pm.clone();
+        let id_inner = id.clone();
+        let server_path_inner = server_path.clone();
         
-        let log_file = tokio::fs::OpenOptions::new()
-            .create(true).append(true).open(&install_log_path).await.ok()
-            .map(|f| std::sync::Arc::new(tokio::sync::Mutex::new(f)));
+        let handle = tokio::spawn(async move {
+            // Wait for registration to complete
+            if rx_start.await.is_err() {
+                return; // Aborted before start
+            }
+            
+            let working_dir_str = server_path_inner.to_string_lossy().to_string();
+            // Note: register_installing is done by parent
+            
+            let logs_dir = server_path_inner.join("logs");
+            if !logs_dir.exists() {
+                 let _ = tokio::fs::create_dir_all(&logs_dir).await;
+            }
+            let install_log_path = logs_dir.join("install.log");
+            let _ = tokio::fs::write(&install_log_path, "Starting Hytale Server Installation...\n").await;
+            
+            let log_file = tokio::fs::OpenOptions::new()
+                .create(true).append(true).open(&install_log_path).await.ok()
+                .map(|f| std::sync::Arc::new(tokio::sync::Mutex::new(f)));
 
-        // Helper that must not be generic to use pm
-        // We define a small macro or just repeat code since closures with async are tricky
-        
-        let broadcast = |msg: String| {
-            let pm = pm.clone();
-            let id = id.clone();
-            let log_file = log_file.clone();
-            async move {
-                if (msg.contains("IMPORTANT") && (msg.contains("authentifier") || msg.contains("authenticate"))) ||
-                   (msg.contains("[HytaleServer] No server tokens configured")) ||
-                   (msg.contains("/auth login to authenticate")) {
-                    pm.set_auth_required(&id, true);
+            let broadcast = |msg: String| {
+                let pm = pm_inner.clone();
+                let id = id_inner.clone();
+                let log_file = log_file.clone();
+                async move {
+                    if (msg.contains("IMPORTANT") && (msg.contains("authentifier") || msg.contains("authenticate"))) ||
+                       (msg.contains("[HytaleServer] No server tokens configured")) ||
+                       (msg.contains("/auth login to authenticate")) {
+                        pm.set_auth_required(&id, true);
+                    }
+                    pm.broadcast_log(&id, msg.clone()).await;
+                    if let Some(f) = log_file {
+                        let mut guard = f.lock().await;
+                        let _ = guard.write_all(format!("{}\n", msg).as_bytes()).await;
+                    }
                 }
-                pm.broadcast_log(&id, msg.clone()).await;
-                if let Some(f) = log_file {
-                    let mut guard = f.lock().await;
-                    let _ = guard.write_all(format!("{}\n", msg).as_bytes()).await;
+            };
+
+            broadcast("🚀 Initialization de l'installation du serveur...".to_string()).await;
+
+            let zip_url = "https://downloader.hytale.com/hytale-downloader.zip";
+            let zip_name = "hytale-downloader.zip";
+            let dest_path = server_path_inner.join(zip_name);
+
+            broadcast(format!("⬇️ Téléchargement de Hytale Downloader depuis {}...", zip_url)).await;
+            
+            // 1. Download
+            if let Err(e) = run_with_logs(
+                &mut tokio::process::Command::new("curl")
+                    .arg("-L").arg("-o").arg(&dest_path).arg(zip_url),
+                pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
+            ).await {
+                 broadcast(format!("❌ {}", e)).await;
+                 pm_inner.remove(&id_inner).await;
+                 return;
+            }
+            
+            broadcast("✅ Téléchargement terminé.".to_string()).await;
+            broadcast("📦 Extraction de l'archive...".to_string()).await;
+            
+            // 2. Unzip
+            if let Err(e) = run_with_logs(
+                &mut tokio::process::Command::new("unzip")
+                    .arg("-o").arg(&dest_path).arg("-d").arg(&server_path_inner),
+                pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
+            ).await {
+                broadcast(format!("❌ {}", e)).await;
+                pm_inner.remove(&id_inner).await;
+                return;
+            }
+            broadcast("✅ Extraction terminée.".to_string()).await;
+            broadcast("🧹 Nettoyage des fichiers temporaires...".to_string()).await;
+            
+            let _ = tokio::fs::remove_file(&dest_path).await;
+            let _ = tokio::fs::remove_file(server_path_inner.join("QUICKSTART.md")).await;
+
+            let mut executable_name = "hytale-downloader-linux-amd64".to_string();
+            let windows_binary = "hytale-downloader-windows-amd64.exe";
+            let linux_binary = "hytale-downloader-linux-amd64";
+
+            if std::env::consts::OS == "linux" {
+                executable_name = linux_binary.to_string();
+                let _ = tokio::fs::remove_file(server_path_inner.join(windows_binary)).await;
+            } else if std::env::consts::OS == "windows" {
+                 executable_name = windows_binary.to_string();
+                 let _ = tokio::fs::remove_file(server_path_inner.join(linux_binary)).await;
+            } else {
+                 if cfg!(target_os = "macos") {
+                     broadcast("⚠️ Attention : macOS détecté. Le Hytale Downloader (Linux binary) peut ne pas fonctionner nativement.".to_string()).await;
+                     executable_name = linux_binary.to_string(); 
+                     let _ = tokio::fs::remove_file(server_path_inner.join(windows_binary)).await;
                 }
             }
-        };
-
-        broadcast("🚀 Initialization de l'installation du serveur...".to_string()).await;
-
-        let zip_url = "https://downloader.hytale.com/hytale-downloader.zip";
-        let zip_name = "hytale-downloader.zip";
-        let dest_path = server_path.join(zip_name);
-
-        broadcast(format!("⬇️ Téléchargement de Hytale Downloader depuis {}...", zip_url)).await;
-        
-        // 1. Download
-        if let Err(e) = run_with_logs(
-            &mut tokio::process::Command::new("curl")
-                .arg("-L").arg("-o").arg(&dest_path).arg(zip_url),
-            pm.clone(), id.clone(), "", Some(install_log_path.clone())
-        ).await {
-             broadcast(format!("❌ {}", e)).await;
-             pm.remove(&id).await;
-             return;
-        }
-        
-        broadcast("✅ Téléchargement terminé.".to_string()).await;
-        broadcast("📦 Extraction de l'archive...".to_string()).await;
-        
-        // 2. Unzip
-        if let Err(e) = run_with_logs(
-            &mut tokio::process::Command::new("unzip")
-                .arg("-o").arg(&dest_path).arg("-d").arg(&server_path),
-            pm.clone(), id.clone(), "", Some(install_log_path.clone())
-        ).await {
-            broadcast(format!("❌ {}", e)).await;
-            pm.remove(&id).await;
-            return;
-        }
-        broadcast("✅ Extraction terminée.".to_string()).await;
-        broadcast("🧹 Nettoyage des fichiers temporaires...".to_string()).await;
-        
-        let _ = tokio::fs::remove_file(&dest_path).await;
-        let _ = tokio::fs::remove_file(server_path.join("QUICKSTART.md")).await;
-
-        let mut executable_name = "hytale-downloader-linux-amd64".to_string();
-        let windows_binary = "hytale-downloader-windows-amd64.exe";
-        let linux_binary = "hytale-downloader-linux-amd64";
-
-        if std::env::consts::OS == "linux" {
-            executable_name = linux_binary.to_string();
-            let _ = tokio::fs::remove_file(server_path.join(windows_binary)).await;
-        } else if std::env::consts::OS == "windows" {
-             executable_name = windows_binary.to_string();
-             let _ = tokio::fs::remove_file(server_path.join(linux_binary)).await;
-        } else {
-             if cfg!(target_os = "macos") {
-                 broadcast("⚠️ Attention : macOS détecté. Le Hytale Downloader (Linux binary) peut ne pas fonctionner nativement.".to_string()).await;
-                 executable_name = linux_binary.to_string(); 
-                 let _ = tokio::fs::remove_file(server_path.join(windows_binary)).await;
+            
+            let executable_path = server_path_inner.join(&executable_name);
+            if std::env::consts::OS != "windows" {
+                let _ = tokio::process::Command::new("chmod").arg("+x").arg(&executable_path).status().await;
             }
-        }
-        
-        let executable_path = server_path.join(&executable_name);
-        if std::env::consts::OS != "windows" {
-            let _ = tokio::process::Command::new("chmod").arg("+x").arg(&executable_path).status().await;
-        }
 
-        broadcast(format!("⏳ Exécution du downloader ({}) pour récupérer le serveur...", executable_name)).await;
-        broadcast("⚠️ IMPORTANT : Le downloader va vous demander de vous authentifier via une URL.".to_string()).await;
-        
-        if let Err(e) = run_with_logs(
-            &mut tokio::process::Command::new(&executable_path).current_dir(&server_path),
-            pm.clone(), id.clone(), "", Some(install_log_path.clone())
-        ).await {
-            broadcast(format!("❌ {}", e)).await;
-        } else {
-            broadcast("✅ Downloader terminé avec succès.".to_string()).await;
-        }
+            broadcast(format!("⏳ Exécution du downloader ({}) pour récupérer le serveur...", executable_name)).await;
+            broadcast("⚠️ IMPORTANT : Le downloader va vous demander de vous authentifier via une URL.".to_string()).await;
+            
+            if let Err(e) = run_with_logs(
+                &mut tokio::process::Command::new(&executable_path).current_dir(&server_path_inner),
+                pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
+            ).await {
+                broadcast(format!("❌ {}", e)).await;
+            } else {
+                broadcast("✅ Downloader terminé avec succès.".to_string()).await;
+            }
 
-        if let Ok(mut entries) = tokio::fs::read_dir(&server_path).await {
-             while let Ok(Some(entry)) = entries.next_entry().await {
-                 let path = entry.path();
-                 if let Some(ext) = path.extension() {
-                     if ext == "zip" {
-                          let file_name = path.file_name().unwrap().to_string_lossy();
-                          if file_name != "hytale-downloader.zip" && file_name != "Assets.zip" {
-                              broadcast(format!("📦 Décompression du serveur : {}...", file_name)).await;
-                              if let Err(e) = run_with_logs(
-                                 &mut tokio::process::Command::new("unzip").arg("-o").arg(&path).arg("-d").arg(&server_path),
-                                 pm.clone(), id.clone(), "", Some(install_log_path.clone())
-                              ).await {
-                                  broadcast(format!("❌ Erreur extraction: {}", e)).await;
-                              } else {
-                                 broadcast("✅ Décompression terminée.".to_string()).await;
-                                 let _ = tokio::fs::remove_file(&path).await;
-                             }
-                          }
+            if let Ok(mut entries) = tokio::fs::read_dir(&server_path_inner).await {
+                 while let Ok(Some(entry)) = entries.next_entry().await {
+                     let path = entry.path();
+                     if let Some(ext) = path.extension() {
+                         if ext == "zip" {
+                              let file_name = path.file_name().unwrap().to_string_lossy();
+                              if file_name != "hytale-downloader.zip" && file_name != "Assets.zip" {
+                                  broadcast(format!("📦 Décompression du serveur : {}...", file_name)).await;
+                                  if let Err(e) = run_with_logs(
+                                     &mut tokio::process::Command::new("unzip").arg("-o").arg(&path).arg("-d").arg(&server_path_inner),
+                                     pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
+                                  ).await {
+                                      broadcast(format!("❌ Erreur extraction: {}", e)).await;
+                                  } else {
+                                     broadcast("✅ Décompression terminée.".to_string()).await;
+                                     let _ = tokio::fs::remove_file(&path).await;
+                                 }
+                              }
+                         }
                      }
                  }
-             }
-        }
+            }
 
-        let nested_bundle_dir = server_path.join("Server");
-        let _ = tokio::fs::remove_file(server_path.join("start.bat")).await;
-        let _ = tokio::fs::remove_file(server_path.join("start.sh")).await;
-        if nested_bundle_dir.exists() {
-             let _ = tokio::fs::remove_file(nested_bundle_dir.join("start.bat")).await;
-             let _ = tokio::fs::remove_file(nested_bundle_dir.join("start.sh")).await;
-        }
+            let nested_bundle_dir = server_path_inner.join("Server");
+            let _ = tokio::fs::remove_file(server_path_inner.join("start.bat")).await;
+            let _ = tokio::fs::remove_file(server_path_inner.join("start.sh")).await;
+            if nested_bundle_dir.exists() {
+                 let _ = tokio::fs::remove_file(nested_bundle_dir.join("start.bat")).await;
+                 let _ = tokio::fs::remove_file(nested_bundle_dir.join("start.sh")).await;
+            }
 
-        let nested_jar_path = nested_bundle_dir.join("HytaleServer.jar");
-        if nested_jar_path.exists() {
-             broadcast("✨ HytaleServer.jar présent. Installation terminée !".to_string()).await;
-             let _ = sqlx::query("UPDATE servers SET executable_path = ? WHERE id = ?")
-                .bind("Server/HytaleServer.jar")
-                .bind(&id)
-                .execute(&pool)
-                .await;
+            let nested_jar_path = nested_bundle_dir.join("HytaleServer.jar");
+            if nested_jar_path.exists() {
+                 broadcast("✨ HytaleServer.jar présent. Installation terminée !".to_string()).await;
+                 let _ = sqlx::query("UPDATE servers SET executable_path = ? WHERE id = ?")
+                    .bind("Server/HytaleServer.jar")
+                    .bind(&id_inner)
+                    .execute(&pool)
+                    .await;
+            } else {
+                 broadcast("⚠️ Attention: HytaleServer.jar non trouvé après exécution.".to_string()).await;
+            }
+            pm_inner.remove(&id_inner).await;
+        });
+
+        // Register the task
+        let working_dir_str = server_path.to_string_lossy().to_string();
+        if let Err(e) = pm.register_installing(&id, &working_dir_str, Some(handle.abort_handle())).await {
+            error!("Failed to register installing process: {}", e);
+            handle.abort(); // Cancel the task since we couldn't register it
         } else {
-             broadcast("⚠️ Attention: HytaleServer.jar non trouvé après exécution.".to_string()).await;
+            // Signal the task to start
+            let _ = tx_start.send(());
         }
-        pm.remove(&id).await;
     });
 }
 

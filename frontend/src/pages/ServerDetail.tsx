@@ -180,6 +180,7 @@ export default function ServerDetail() {
 
     // Config tab state
     const [configFormData, setConfigFormData] = useState<Partial<Server>>({});
+    const [initialConfigFormData, setInitialConfigFormData] = useState<Partial<Server>>({});
     const [configSaving, setConfigSaving] = useState(false);
     const [configError, setConfigError] = useState("");
     const [javaVersions, setJavaVersions] = useState<
@@ -556,17 +557,38 @@ export default function ServerDetail() {
             };
             fetchJavaVersions();
             if (server && configFormData.id !== server.id) {
-                const formData = { ...server };
+                // Create a temporary object with all possible data merged
+                const fullData: any = { ...server };
                 if (server.config) {
-                    // Map config... (reusing logic from snippet)
-                    Object.assign(formData, server.config); // Simple merge for now as keys match roughly except JSON specific
-                    // Specific mappings if keys differ
-                    if (server.config.MaxPlayers) formData.max_players = server.config.MaxPlayers;
-                    if (server.config.MaxViewRadius) formData.view_distance = server.config.MaxViewRadius;
-                    if (server.config.Seed) formData.seed = server.config.Seed;
-                    if (server.config.ServerName) formData.name = server.config.ServerName;
+                    Object.assign(fullData, server.config);
+                    if (server.config.MaxPlayers) fullData.max_players = server.config.MaxPlayers;
+                    if (server.config.MaxViewRadius) fullData.view_distance = server.config.MaxViewRadius;
+                    if (server.config.Seed) fullData.seed = server.config.Seed;
+                    if (server.config.ServerName) fullData.name = server.config.ServerName;
                 }
-                setConfigFormData(formData);
+
+                // Whitelist only the fields we edit in the form to avoid noise from other server props
+                const configKeys = [
+                    "id",
+                    "name", "auth_mode",
+                    "min_memory", "max_memory", "java_path", "extra_args",
+                    "bind_address", "port",
+                    "allow_op", "disable_sentry", "accept_early_plugins",
+                    "world_gen_type", "seed", "view_distance", "max_players",
+                    "is_pvp_enabled", "is_fall_damage_enabled", "is_spawning_npc",
+                    "is_game_time_paused", "is_saving_players", "is_saving_chunks"
+                ];
+
+                const cleanData: Partial<Server> = {};
+                configKeys.forEach(key => {
+                    if (fullData[key] !== undefined) {
+                        // @ts-ignore
+                        cleanData[key] = fullData[key];
+                    }
+                });
+
+                setConfigFormData(cleanData);
+                setInitialConfigFormData(JSON.parse(JSON.stringify(cleanData)));
             }
         }
     }, [activeTab, server, configFormData.id]);
@@ -613,6 +635,49 @@ export default function ServerDetail() {
             else { const data = await response.json(); setConfigError(data.error || t("server_detail.messages.save_error")); }
         } catch (err) { setConfigError(t("server_detail.messages.connection_error")); }
         finally { setConfigSaving(false); }
+    };
+
+    // DEBUG: Trace state updates
+    useEffect(() => {
+        console.log("DEBUG: configFormData UPDATED", configFormData);
+    }, [configFormData]);
+
+    useEffect(() => {
+        console.log("DEBUG: initialConfigFormData UPDATED", initialConfigFormData);
+    }, [initialConfigFormData]);
+
+    const handleDeleteServer = async () => {
+        if (!confirm(t("server_detail.messages.delete_confirm"))) return;
+        try {
+            const res = await fetch(`/api/v1/servers/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (res.ok) {
+                alert(t("server_detail.messages.delete_success"));
+                setPageTitle("Dashboard", "", { to: "/" }); // Reset title
+                window.location.href = "/";
+            } else {
+                alert(t("server_detail.messages.delete_error"));
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const handleReinstallServer = async () => {
+        if (!confirm(t("server_detail.messages.reinstall_confirm"))) return;
+        try {
+            const res = await fetch(`/api/v1/servers/${id}/reinstall`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (res.ok) {
+                setIsInstalling(true);
+                setLogs([]);
+                // Re-fetch server to get updated status if needed, though socket will do it
+            } else {
+                alert(t("server_detail.messages.action_error"));
+            }
+        } catch (e) { console.error(e); }
     };
 
     // Players Logic
@@ -671,6 +736,52 @@ export default function ServerDetail() {
             );
         }
     }, [server, setPageTitle, handleAction, t]);
+
+    const configHasChanges = (() => {
+        if (!configFormData.id || !initialConfigFormData.id) return false;
+
+        const keys = Array.from(new Set([...Object.keys(configFormData), ...Object.keys(initialConfigFormData)]));
+        const changes: string[] = [];
+
+        for (const key of keys) {
+            // @ts-ignore
+            const val1 = configFormData[key];
+            // @ts-ignore
+            const val2 = initialConfigFormData[key];
+
+            // Custom equality check
+            const areEqual = (v1: any, v2: any) => {
+                // Treat null, undefined, empty string as equivalent
+                const isEmpty1 = v1 === null || v1 === undefined || v1 === "";
+                const isEmpty2 = v2 === null || v2 === undefined || v2 === "";
+                if (isEmpty1 && isEmpty2) return true;
+                if (isEmpty1 !== isEmpty2) return false;
+
+                // Loose equality
+                // eslint-disable-next-line eqeqeq
+                if (v1 == v2) return true;
+
+                // Deep compare
+                if (typeof v1 === 'object' && typeof v2 === 'object') {
+                    if (v1 === null || v2 === null) return v1 === v2; // Should be caught by isEmpty but being safe
+                    return JSON.stringify(v1) === JSON.stringify(v2);
+                }
+
+                return false;
+            };
+
+            if (!areEqual(val1, val2)) {
+                console.error(`Diff detected for key '${key}':`, { val1, val2, type1: typeof val1, type2: typeof val2 });
+                changes.push(`${key}: ${JSON.stringify(val2)} -> ${JSON.stringify(val1)}`);
+            }
+        }
+
+        if (changes.length > 0) {
+            console.error("DEBUG: Config changes detected (FINAL):", changes);
+            return true;
+        }
+        return false;
+    })();
 
     if (!server) return <div className="loading-screen"><div className="spinner"></div></div>;
 
@@ -747,6 +858,9 @@ export default function ServerDetail() {
                         toggleJvmArg={toggleJvmArg}
                         handleSaveConfig={handleSaveConfig}
                         t={t}
+                        onDelete={handleDeleteServer}
+                        onReinstall={handleReinstallServer}
+                        hasChanges={configHasChanges}
                     />
                 )}
 

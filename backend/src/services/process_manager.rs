@@ -16,7 +16,6 @@ use walkdir::WalkDir;
 /// Manages game server processes
 use crate::db::DbPool;
 
-/// Manages game server processes
 #[derive(Clone)]
 pub struct ProcessManager {
     processes: Arc<RwLock<HashMap<String, ServerProcess>>>,
@@ -25,6 +24,7 @@ pub struct ProcessManager {
 
 pub struct ServerProcess {
     child: Option<Child>,
+    install_task: Option<tokio::task::AbortHandle>,
     log_tx: broadcast::Sender<String>,
     players: Arc<std::sync::RwLock<HashSet<String>>>,
     pub last_metrics: Arc<std::sync::RwLock<Option<String>>>,
@@ -114,7 +114,11 @@ impl ProcessManager {
         if let Ok(mut processes) = self.processes.try_write() {
             if let Some(proc) = processes.get_mut(server_id) {
                 // If child is None, it means it's a virtual process (installing/updating)
-                // So it is technically "running"
+                // So it is technically "running" if install_task is active
+                if proc.child.is_none() {
+                    return true;
+                }
+                
                 if let Some(child) = &mut proc.child {
                     // Check if process is still running
                     match child.try_wait() {
@@ -133,8 +137,6 @@ impl ProcessManager {
                             return false;
                         }
                     }
-                } else {
-                    return true; 
                 }
             }
         }
@@ -191,7 +193,7 @@ impl ProcessManager {
         rx
     }
 
-    pub async fn register_installing(&self, server_id: &str, working_dir: &str) -> Result<(), AppError> {
+    pub async fn register_installing(&self, server_id: &str, working_dir: &str, abort_handle: Option<tokio::task::AbortHandle>) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
          if processes.contains_key(server_id) {
              return Err(AppError::BadRequest("Server already active".into()));
@@ -203,7 +205,8 @@ impl ProcessManager {
          processes.insert(
              server_id.to_string(),
              ServerProcess { 
-                 child: None, 
+                 child: None,
+                 install_task: abort_handle,
                  log_tx, 
                  players,
                  last_metrics: Arc::new(std::sync::RwLock::new(None)),
@@ -494,6 +497,7 @@ impl ProcessManager {
             server_id.to_string(),
             ServerProcess { 
                 child: Some(child), 
+                install_task: None,
                 log_tx, 
                 players,
                 last_metrics: Arc::new(std::sync::RwLock::new(None)),
@@ -515,6 +519,13 @@ impl ProcessManager {
         let proc = processes
             .get_mut(server_id)
             .ok_or_else(|| AppError::NotFound("Server not running".into()))?;
+
+        // If it's an installation task, abort it
+        if let Some(task) = &proc.install_task {
+            task.abort();
+            info!("Aborted installation task for server {}", server_id);
+            // We can return early or continue to cleanup
+        }
 
         if let Some(child) = &mut proc.child {
              // Try graceful shutdown first (send quit command)

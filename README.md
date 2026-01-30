@@ -77,12 +77,22 @@ irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/wi
 ## 🎯 Roadmap
 
 - [x] Structure du projet
+- [x] Docker Compose
 - [ ] Backend API REST
 - [ ] Console WebSocket
 - [ ] Interface Dashboard
+- [ ] Configuration Dashboard
 - [ ] Support Hytale
-- [x] Docker Compose
-- [ ] Support Minecraft (v1.1)
+    - [x] Gestion Installation / Edit / Delete
+    - [x] Gestion Console
+    - [x] Gestion Log
+    - [ ] Intégrations backups
+    - [ ] Meilleur FTP interne
+    - [ ] Configuration temps réel avec les fichiers server
+    - [ ] Meilleur affichage joueurs
+    - [ ] Ajout des métriques
+    - [ ] Gestion webhook
+- [ ] Support Minecraft
 - [ ] Support Palworld
 - [ ] Support Valheim
 - [ ] Support Custom Steam Server

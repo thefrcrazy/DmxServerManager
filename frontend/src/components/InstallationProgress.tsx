@@ -36,13 +36,15 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
     }, [logs]);
 
     useEffect(() => {
-        const lastLog = logs[logs.length - 1] || '';
-
-        // Simple state machine based on log messages
-        if (lastLog.includes('Initialization de l\'installation') || lastLog.includes('Starting Hytale Server Installation')) setCurrentStep(0);
-        else if (lastLog.includes('Téléchargement')) setCurrentStep(1);
-        else if (lastLog.includes('Extraction') || lastLog.includes('Décompression')) setCurrentStep(2);
-        else if (lastLog.includes('Installation terminée') || lastLog.includes('Installation finished')) setCurrentStep(3);
+        // Determine max step from ALL logs
+        let maxStep = 0;
+        for (const log of logs) {
+            if (log.includes('Initialization de l\'installation') || log.includes('Starting Hytale Server Installation')) maxStep = Math.max(maxStep, 0);
+            if (log.includes('Téléchargement')) maxStep = Math.max(maxStep, 1);
+            if (log.includes('Extraction') || log.includes('Décompression')) maxStep = Math.max(maxStep, 2);
+            if (log.includes('Installation terminée') || log.includes('Installation finished')) maxStep = Math.max(maxStep, 3);
+        }
+        setCurrentStep(maxStep);
 
         // Helper to strip ANSI codes
         const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
