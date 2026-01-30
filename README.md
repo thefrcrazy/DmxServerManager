@@ -78,15 +78,16 @@ irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/wi
 
 - [x] Structure du projet
 - [x] Docker Compose
-- [ ] Backend API REST
-- [ ] Console WebSocket
-- [ ] Interface Dashboard
+- [x] Backend API REST
+- [x] Console WebSocket
+- [x] Interface Dashboard
 - [ ] Configuration Dashboard
 - [ ] Support Hytale
     - [x] Gestion Installation / Edit / Delete
     - [x] Gestion Console
     - [x] Gestion Log
     - [ ] Intégrations backups
+    - [ ] Planification Tâches 
     - [ ] Meilleur FTP interne
     - [ ] Configuration temps réel avec les fichiers server
     - [ ] Meilleur affichage joueurs
