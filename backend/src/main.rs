@@ -84,11 +84,14 @@ async fn main() -> anyhow::Result<()> {
         .nest_service("/uploads", get_service(ServeDir::new(&uploads_dir)))
         
         // Serve frontend in production (static files)
-        .nest_service("/", get_service(ServeDir::new("./static")))
+        // With fallback to index.html for SPA routing
+        .nest_service("/", get_service(
+            ServeDir::new("./static")
+                .fallback(tower_http::services::ServeFile::new("./static/index.html"))
+        ))
         
         .layer(TraceLayer::new_for_http())
         .layer(cors)
-        .fallback_service(get_service(ServeDir::new("./static").fallback(tower_http::services::ServeFile::new("./static/index.html"))))
         .with_state(state);
 
     let addr = format!("{}:{}", settings.host, settings.port);

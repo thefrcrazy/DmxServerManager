@@ -256,11 +256,14 @@ export default function ServerDetail() {
         }
 
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const ws = new WebSocket(`${protocol}//${window.location.host}/ws/console/${id}`);
+        // Fix: Backend WS endpoint is under /api/v1
+        const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/console/${id}`);
 
         ws.onopen = () => {
             setIsConnected(true);
             retryCountRef.current = 0;
+            // Fix: Re-fetch full logs history on connection/reconnection to ensure we didn't miss anything
+            fetchConsoleLog();
         };
 
         ws.onmessage = (event) => {

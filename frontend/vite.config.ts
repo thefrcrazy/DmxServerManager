@@ -18,10 +18,7 @@ export default defineConfig({
             '/api': {
                 target: 'http://localhost:5500',
                 changeOrigin: true,
-            },
-            '/ws': {
-                target: 'ws://localhost:5500',
-                ws: true,
+                ws: true, // Enable WS support for /api/v1/ws/...
             },
         },
     },
