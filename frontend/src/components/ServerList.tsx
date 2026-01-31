@@ -152,7 +152,7 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
                                             style={{ width: `${Math.min(100, server.cpu_usage_normalized || 0)}%` }}
                                         />
                                     </div>
-                                    <span className="usage-bar__text">{server.cpu_usage.toFixed(1)}%</span>
+                                    <span className="usage-bar__text">{(server.cpu_usage_normalized || 0).toFixed(1)}%</span>
                                 </div>
                             </td>
                             <td title={`Heap: ${formatBytes(server.max_heap_bytes)} + Java: ${formatBytes(server.max_memory_bytes - server.max_heap_bytes)}`}>
