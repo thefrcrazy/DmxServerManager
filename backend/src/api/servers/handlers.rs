@@ -82,7 +82,7 @@ pub async fn list_servers(
         }
 
         let started_at = pm.get_server_started_at(&s.id).await;
-        let (cpu, mem, mut disk) = pm.get_metrics_data(&s.id).await;
+        let (cpu, cpu_norm, mem, mut disk) = pm.get_metrics_data(&s.id).await;
 
         // Fallback for offline disk usage
         if disk == 0 {
@@ -136,6 +136,7 @@ pub async fn list_servers(
             auth_mode: s.auth_mode,
 
             cpu_usage: cpu,
+            cpu_usage_normalized: cpu_norm,
             memory_usage_bytes: mem,
             max_memory_bytes: total_bytes,
             max_heap_bytes: heap_bytes,
@@ -372,7 +373,7 @@ pub async fn get_server(
     let bind_address = Some(server.bind_address.clone());
 
     let started_at = pm.get_server_started_at(&server.id).await;
-    let (cpu, mem, mut disk) = pm.get_metrics_data(&server.id).await;
+    let (cpu, cpu_norm, mem, mut disk) = pm.get_metrics_data(&server.id).await;
 
     if disk == 0 {
         disk = WalkDir::new(&server.working_dir)
@@ -424,6 +425,7 @@ pub async fn get_server(
         auth_mode: server.auth_mode,
 
         cpu_usage: cpu,
+        cpu_usage_normalized: cpu_norm,
         memory_usage_bytes: mem,
         max_memory_bytes: total_bytes,
         max_heap_bytes: heap_bytes,

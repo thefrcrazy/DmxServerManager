@@ -78,6 +78,7 @@ pub struct ServerResponse {
     pub auth_mode: String,
 
     pub cpu_usage: f32,
+    pub cpu_usage_normalized: f32, // New field
     pub memory_usage_bytes: u64,
     pub max_memory_bytes: u64,
     pub max_heap_bytes: u64,

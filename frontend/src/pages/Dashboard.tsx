@@ -24,6 +24,7 @@ interface SystemStats {
     disk_total: number;
     cpu_cores?: number;
     managed_cpu: number;
+    managed_cpu_normalized?: number; // Optional as it comes from API
     managed_ram: number;
     managed_disk: number;
 }
@@ -116,6 +117,7 @@ export default function Dashboard() {
                     disk_total: data.disk_total || 0,
                     cpu_cores: data.cpu_cores,
                     managed_cpu: data.managed_cpu || 0,
+                    managed_cpu_normalized: data.managed_cpu_normalized || 0,
                     managed_ram: data.managed_ram || 0,
                     managed_disk: data.managed_disk || 0,
                 });
@@ -250,7 +252,7 @@ export default function Dashboard() {
                                 <span className="resource-usage__value">{systemStats.managed_cpu.toFixed(1)}%</span>
                             </div>
                             <div className="progress-container progress-container--dimmed">
-                                <div className="progress-bar progress-bar--info" style={{ width: `${Math.min(100, systemStats.managed_cpu)}%` }}></div>
+                                <div className="progress-bar progress-bar--info" style={{ width: `${Math.min(100, systemStats.managed_cpu_normalized || 0)}%` }}></div>
                             </div>
                         </div>
                     </div>

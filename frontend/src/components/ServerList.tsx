@@ -149,7 +149,7 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
                                     <div className="usage-bar__track">
                                         <div
                                             className="usage-bar__fill usage-bar__fill--cpu"
-                                            style={{ width: `${Math.min(100, server.cpu_usage)}%` }}
+                                            style={{ width: `${Math.min(100, server.cpu_usage_normalized || 0)}%` }}
                                         />
                                     </div>
                                     <span className="usage-bar__text">{server.cpu_usage.toFixed(1)}%</span>

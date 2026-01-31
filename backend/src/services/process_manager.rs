@@ -29,6 +29,7 @@ pub struct ServerProcess {
     players: Arc<std::sync::RwLock<HashSet<String>>>,
     pub last_metrics: Arc<std::sync::RwLock<Option<String>>>,
     pub last_cpu: Arc<std::sync::RwLock<f32>>,
+    pub last_cpu_normalized: Arc<std::sync::RwLock<f32>>,
     pub last_memory: Arc<std::sync::RwLock<u64>>,
     pub last_disk: Arc<std::sync::RwLock<u64>>,
     pub working_dir: String,
@@ -56,10 +57,13 @@ impl ProcessManager {
                             let pid = sysinfo::Pid::from_u32(child.id());
                             if let Some(process) = system.process(pid) {
                                 let cpu = process.cpu_usage();
+                                let cores = system.cpus().len() as f32;
+                                let cpu_normalized = if cores > 0.0 { cpu / cores } else { 0.0 };
                                 let memory = process.memory(); // in bytes
                                 
                                 let mut metrics_json = serde_json::json!({
                                     "cpu": cpu,
+                                    "cpu_normalized": cpu_normalized,
                                     "memory": memory
                                 });
 
@@ -89,6 +93,9 @@ impl ProcessManager {
                                 }
                                 if let Ok(mut cpu_cache) = server_proc.last_cpu.write() {
                                     *cpu_cache = cpu;
+                                }
+                                if let Ok(mut cpu_norm_cache) = server_proc.last_cpu_normalized.write() {
+                                    *cpu_norm_cache = cpu_normalized;
                                 }
                                 if let Ok(mut mem_cache) = server_proc.last_memory.write() {
                                     *mem_cache = memory;
@@ -211,6 +218,7 @@ impl ProcessManager {
                  players,
                  last_metrics: Arc::new(std::sync::RwLock::new(None)),
                  last_cpu: Arc::new(std::sync::RwLock::new(0.0)),
+                 last_cpu_normalized: Arc::new(std::sync::RwLock::new(0.0)),
                  last_memory: Arc::new(std::sync::RwLock::new(0)),
                  last_disk: Arc::new(std::sync::RwLock::new(0)),
                  working_dir: working_dir.to_string(),
@@ -502,6 +510,7 @@ impl ProcessManager {
                 players,
                 last_metrics: Arc::new(std::sync::RwLock::new(None)),
                 last_cpu: Arc::new(std::sync::RwLock::new(0.0)),
+                last_cpu_normalized: Arc::new(std::sync::RwLock::new(0.0)),
                 last_memory: Arc::new(std::sync::RwLock::new(0)),
                 last_disk: Arc::new(std::sync::RwLock::new(0)),
                 working_dir: working_dir.to_string(),
@@ -673,15 +682,16 @@ impl ProcessManager {
         None
     }
 
-    pub async fn get_metrics_data(&self, server_id: &str) -> (f32, u64, u64) {
+    pub async fn get_metrics_data(&self, server_id: &str) -> (f32, f32, u64, u64) {
         let processes = self.processes.read().await;
         if let Some(proc) = processes.get(server_id) {
             let cpu = proc.last_cpu.read().map(|g| *g).unwrap_or(0.0);
+            let cpu_norm = proc.last_cpu_normalized.read().map(|g| *g).unwrap_or(0.0);
             let mem = proc.last_memory.read().map(|g| *g).unwrap_or(0);
             let disk = proc.last_disk.read().map(|g| *g).unwrap_or(0);
-            return (cpu, mem, disk);
+            return (cpu, cpu_norm, mem, disk);
         }
-        (0.0, 0, 0)
+        (0.0, 0.0, 0, 0)
     }
 
     pub async fn get_processes_read_guard(&self) -> tokio::sync::RwLockReadGuard<'_, HashMap<String, ServerProcess>> {

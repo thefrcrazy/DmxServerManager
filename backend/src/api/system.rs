@@ -25,6 +25,7 @@ pub struct SystemStatsResponse {
     pub players_max: u32,
     pub cpu_cores: usize,
     pub managed_cpu: f32,
+    pub managed_cpu_normalized: f32, // New field for normalized display (0-100%)
     pub managed_ram: u64,
     pub managed_disk: u64,
 }
@@ -225,6 +226,7 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
         players_max,
         cpu_cores,
         managed_cpu,
+        managed_cpu_normalized: if cpu_cores > 0 { managed_cpu / cpu_cores as f32 } else { 0.0 },
         managed_ram,
         managed_disk,
     }))
