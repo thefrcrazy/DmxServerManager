@@ -556,39 +556,48 @@ export default function ServerDetail() {
                 } catch (error) { }
             };
             fetchJavaVersions();
-            if (server && configFormData.id !== server.id) {
-                // Create a temporary object with all possible data merged
-                const fullData: any = { ...server };
-                if (server.config) {
-                    Object.assign(fullData, server.config);
-                    if (server.config.MaxPlayers) fullData.max_players = server.config.MaxPlayers;
-                    if (server.config.MaxViewRadius) fullData.view_distance = server.config.MaxViewRadius;
-                    if (server.config.Seed) fullData.seed = server.config.Seed;
-                    if (server.config.ServerName) fullData.name = server.config.ServerName;
-                }
+            if (server) {
+                // If we haven't initialized yet, OR if the server ID changed (e.g. navigation)
+                const isNewServer = configFormData.id !== server.id;
 
-                // Whitelist only the fields we edit in the form to avoid noise from other server props
-                const configKeys = [
-                    "id",
-                    "name", "auth_mode",
-                    "min_memory", "max_memory", "java_path", "extra_args",
-                    "bind_address", "port",
-                    "allow_op", "disable_sentry", "accept_early_plugins",
-                    "world_gen_type", "seed", "view_distance", "max_players",
-                    "is_pvp_enabled", "is_fall_damage_enabled", "is_spawning_npc",
-                    "is_game_time_paused", "is_saving_players", "is_saving_chunks"
-                ];
-
-                const cleanData: Partial<Server> = {};
-                configKeys.forEach(key => {
-                    if (fullData[key] !== undefined) {
-                        // @ts-ignore
-                        cleanData[key] = fullData[key];
+                // Only reset if it's a new server or we explicitly want to re-sync (e.g. after external update)
+                // Note: We don't want to overwrite user inputs if they are typing, but here we only sync on mount/tab-change/id-change or explicit flush.
+                if (isNewServer) {
+                    // Create a temporary object with all possible data merged
+                    const fullData: any = { ...server };
+                    if (server.config) {
+                        Object.assign(fullData, server.config);
+                        if (server.config.MaxPlayers) fullData.max_players = server.config.MaxPlayers;
+                        if (server.config.MaxViewRadius) fullData.view_distance = server.config.MaxViewRadius;
+                        if (server.config.Seed) fullData.seed = server.config.Seed;
+                        if (server.config.ServerName) fullData.name = server.config.ServerName;
                     }
-                });
 
-                setConfigFormData(cleanData);
-                setInitialConfigFormData(JSON.parse(JSON.stringify(cleanData)));
+                    // Whitelist only the fields we edit in the form to avoid noise from other server props
+                    const configKeys = [
+                        "id",
+                        // Mandatory fields for backend validation (CreateServerRequest)
+                        "name", "game_type", "executable_path", "working_dir",
+                        "auth_mode",
+                        "min_memory", "max_memory", "java_path", "extra_args",
+                        "bind_address", "port",
+                        "allow_op", "disable_sentry", "accept_early_plugins",
+                        "world_gen_type", "seed", "view_distance", "max_players",
+                        "is_pvp_enabled", "is_fall_damage_enabled", "is_spawning_npc",
+                        "is_game_time_paused", "is_saving_players", "is_saving_chunks"
+                    ];
+
+                    const cleanData: Partial<Server> = {};
+                    configKeys.forEach(key => {
+                        if (fullData[key] !== undefined) {
+                            // @ts-ignore
+                            cleanData[key] = fullData[key];
+                        }
+                    });
+
+                    setConfigFormData(cleanData);
+                    setInitialConfigFormData(JSON.parse(JSON.stringify(cleanData)));
+                }
             }
         }
     }, [activeTab, server, configFormData.id]);
@@ -631,20 +640,18 @@ export default function ServerDetail() {
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
                 body: JSON.stringify(payload),
             });
-            if (response.ok) { fetchServer(); alert(t("server_detail.messages.config_saved")); }
+            if (response.ok) {
+                fetchServer();
+                // Fix: Update initial state to match the saved state so "has changes" becomes false
+                setInitialConfigFormData(JSON.parse(JSON.stringify(configFormData)));
+                alert(t("server_detail.messages.config_saved"));
+            }
             else { const data = await response.json(); setConfigError(data.error || t("server_detail.messages.save_error")); }
         } catch (err) { setConfigError(t("server_detail.messages.connection_error")); }
         finally { setConfigSaving(false); }
     };
 
-    // DEBUG: Trace state updates
-    useEffect(() => {
-        console.log("DEBUG: configFormData UPDATED", configFormData);
-    }, [configFormData]);
 
-    useEffect(() => {
-        console.log("DEBUG: initialConfigFormData UPDATED", initialConfigFormData);
-    }, [initialConfigFormData]);
 
     const handleDeleteServer = async () => {
         if (!confirm(t("server_detail.messages.delete_confirm"))) return;
@@ -741,7 +748,6 @@ export default function ServerDetail() {
         if (!configFormData.id || !initialConfigFormData.id) return false;
 
         const keys = Array.from(new Set([...Object.keys(configFormData), ...Object.keys(initialConfigFormData)]));
-        const changes: string[] = [];
 
         for (const key of keys) {
             // @ts-ignore
@@ -771,14 +777,8 @@ export default function ServerDetail() {
             };
 
             if (!areEqual(val1, val2)) {
-                console.error(`Diff detected for key '${key}':`, { val1, val2, type1: typeof val1, type2: typeof val2 });
-                changes.push(`${key}: ${JSON.stringify(val2)} -> ${JSON.stringify(val1)}`);
+                return true;
             }
-        }
-
-        if (changes.length > 0) {
-            console.error("DEBUG: Config changes detected (FINAL):", changes);
-            return true;
         }
         return false;
     })();
