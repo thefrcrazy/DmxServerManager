@@ -216,6 +216,7 @@ export const en: TranslationType = {
             backup_created: "Backup created!",
             backup_restored: "Backup restored successfully!",
             file_saved: "File saved!",
+            delete_file_confirm: "Are you sure you want to delete this file?",
             already_running: "Server is already running",
             action_error: "Action failed"
         },

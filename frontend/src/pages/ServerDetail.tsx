@@ -506,6 +506,138 @@ export default function ServerDetail() {
         } catch (error) { console.error(error); } finally { setFileSaving(false); }
     };
 
+    const createFolder = async (name: string) => {
+        if (!id || !name.trim()) return;
+        try {
+            const folderPath = currentPath ? `${currentPath}/${name}` : name;
+            const response = await fetch(`/api/v1/servers/${id}/files/mkdir`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify({ path: folderPath }),
+            });
+            if (response.ok) {
+                fetchFiles(currentPath);
+            } else {
+                const data = await response.json();
+                alert(data.error || t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const createFile = async (name: string) => {
+        if (!id || !name.trim()) return;
+        try {
+            const filePath = currentPath ? `${currentPath}/${name}` : name;
+            const response = await fetch(`/api/v1/servers/${id}/files/create`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify({ path: filePath }),
+            });
+            if (response.ok) {
+                fetchFiles(currentPath);
+                readFile(filePath);
+            } else {
+                const data = await response.json();
+                alert(data.error || t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const uploadFiles = async (files: FileList) => {
+        if (!id || files.length === 0) return;
+        try {
+            const formData = new FormData();
+            formData.append("path", currentPath);
+            for (let i = 0; i < files.length; i++) {
+                formData.append("files", files[i]);
+            }
+            const response = await fetch(`/api/v1/servers/${id}/files/upload`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: formData,
+            });
+            if (response.ok) {
+                fetchFiles(currentPath);
+            } else {
+                const data = await response.json();
+                alert(data.error || t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const deleteFile = async (path: string) => {
+        if (!id || !path) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/files/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify({ path }),
+            });
+            if (response.ok) {
+                if (selectedFile === path) {
+                    setSelectedFile(null);
+                    setFileContent("");
+                }
+                fetchFiles(currentPath);
+            } else {
+                const data = await response.json();
+                alert(data.error || t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const renameFile = async (path: string, newName: string) => {
+        if (!id || !path || !newName.trim()) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/files/rename`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify({ path, new_name: newName }),
+            });
+            if (response.ok) {
+                fetchFiles(currentPath);
+            } else {
+                const data = await response.json();
+                alert(data.error || t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const copyFile = async (source: string, destination: string) => {
+        if (!id || !source || !destination) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/files/copy`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify({ source, destination }),
+            });
+            if (response.ok) {
+                fetchFiles(currentPath);
+            } else {
+                const data = await response.json();
+                alert(data.error || t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const moveFile = async (source: string, destination: string) => {
+        if (!id || !source || !destination) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/files/move`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+                body: JSON.stringify({ source, destination }),
+            });
+            if (response.ok) {
+                fetchFiles(currentPath);
+            } else {
+                const data = await response.json();
+                alert(data.error || t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+
     const fetchLogFiles = async () => {
         if (!id) return;
         try {
@@ -835,6 +967,13 @@ export default function ServerDetail() {
                         onSaveFile={saveFile}
                         onCloseEditor={() => setSelectedFile(null)}
                         onRefresh={() => fetchFiles(currentPath)}
+                        onCreateFolder={createFolder}
+                        onCreateFile={createFile}
+                        onUploadFiles={uploadFiles}
+                        onDeleteFile={deleteFile}
+                        onRenameFile={renameFile}
+                        onCopyFile={copyFile}
+                        onMoveFile={moveFile}
                     />
                 )}
 

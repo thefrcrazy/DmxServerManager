@@ -193,6 +193,7 @@ export const fr = {
             backup_created: "Backup créé !",
             backup_restored: "Backup restauré avec succès !",
             file_saved: "Fichier sauvegardé !",
+            delete_file_confirm: "Êtes-vous sûr de vouloir supprimer ce fichier ?",
             already_running: "Le serveur est déjà en cours d'exécution",
             action_error: "L'action a échoué"
         },

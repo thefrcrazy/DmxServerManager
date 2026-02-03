@@ -30,4 +30,11 @@ pub fn routes() -> Router<AppState> {
         .route("/:id/files/read", get(read_server_file))
         .route("/:id/files/write", post(write_server_file))
         .route("/:id/files/delete", post(delete_server_file))
+        .route("/:id/files/mkdir", post(create_folder))
+        .route("/:id/files/create", post(create_file))
+        .route("/:id/files/upload", post(upload_file))
+        .route("/:id/files/download", get(download_file))
+        .route("/:id/files/rename", post(rename_file))
+        .route("/:id/files/copy", post(copy_file))
+        .route("/:id/files/move", post(move_file))
 }

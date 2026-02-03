@@ -151,6 +151,7 @@ pub struct FileEntry {
     pub path: String,
     pub is_dir: bool,
     pub size: Option<u64>,
+    pub modified_at: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,4 +173,34 @@ pub struct WriteFileRequest {
 #[derive(Debug, Deserialize)]
 pub struct DeleteFileRequest {
     pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateFolderRequest {
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateFileRequest {
+    pub path: String,
+    #[serde(default)]
+    pub content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RenameFileRequest {
+    pub path: String,
+    pub new_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CopyFileRequest {
+    pub source: String,
+    pub destination: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveFileRequest {
+    pub source: String,
+    pub destination: String,
 }

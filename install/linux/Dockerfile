@@ -19,7 +19,7 @@ WORKDIR /app/backend
 COPY backend/Cargo.toml backend/Cargo.lock* ./
 COPY backend/src ./src
 
-RUN cargo build --release
+RUN nice -n 19 cargo build --release --jobs 2
 
 # ==========================================
 # Stage 3: Runtime
