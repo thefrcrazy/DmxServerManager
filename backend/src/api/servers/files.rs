@@ -7,7 +7,7 @@ use axum::{
 };
 use std::path::Path as StdPath;
 use tracing::info;
-use tokio::io::AsyncReadExt;
+
 use crate::{AppState, error::AppError};
 use super::models::{FileEntry, FilesQuery, ReadFileQuery, WriteFileRequest, DeleteFileRequest, CreateFolderRequest, CreateFileRequest, RenameFileRequest, CopyFileRequest, MoveFileRequest};
 
@@ -452,12 +452,11 @@ pub async fn download_file(
         return Err(AppError::BadRequest("Cannot download a directory".into()));
     }
     
-    let mut file = tokio::fs::File::open(&full_path).await
+    let file = tokio::fs::File::open(&full_path).await
         .map_err(|e| AppError::Internal(format!("Failed to open file: {e}")))?;
     
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents).await
-        .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?;
+    let stream = tokio_util::io::ReaderStream::new(file);
+    let body = Body::from_stream(stream);
     
     let file_name = full_path.file_name()
         .map(|s| s.to_string_lossy().to_string())
@@ -468,7 +467,7 @@ pub async fn download_file(
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_DISPOSITION, content_disposition)
-        .body(Body::from(contents))
+        .body(body)
         .unwrap())
 }
 

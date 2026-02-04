@@ -321,7 +321,14 @@ export default function ServerFiles({
                 break;
             case "download":
                 if (!file.is_dir) {
-                    window.open(`/api/v1/servers/${window.location.pathname.split("/")[2]}/files/download?path=${encodeURIComponent(file.path)}`, "_blank");
+                    const serverId = window.location.pathname.split("/")[2];
+                    const url = `/api/v1/servers/${serverId}/files/download?path=${encodeURIComponent(file.path)}`;
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = file.name;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
                 }
                 break;
             case "rename":

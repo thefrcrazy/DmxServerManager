@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Ansi from "ansi-to-react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, Download } from "lucide-react";
 import Select from "../../components/Select";
 import { enhanceLogContent } from "../../utils/logUtils";
 
@@ -36,6 +36,18 @@ export default function ServerLogs({
         }
     }, [logContent, selectedLogFile]);
 
+    const handleDownload = () => {
+        if (!selectedLogFile) return;
+        const serverId = window.location.pathname.split("/")[2];
+        const url = `/api/v1/servers/${serverId}/files/download?path=${encodeURIComponent(selectedLogFile)}`;
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = selectedLogFile.split("/").pop() || "log.txt";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="logs-wrapper">
 
@@ -60,6 +72,14 @@ export default function ServerLogs({
                                 />
                             </div>
                         )}
+                        <button
+                            onClick={handleDownload}
+                            className="btn btn--secondary btn--icon btn--xs"
+                            title="Télécharger"
+                            disabled={!selectedLogFile}
+                        >
+                            <Download size={14} />
+                        </button>
                         <button onClick={onRefresh} className="btn btn--secondary btn--icon btn--xs" title="Rafraîchir">
                             <RefreshCw size={14} />
                         </button>

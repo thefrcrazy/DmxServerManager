@@ -6,7 +6,7 @@ use tokio::sync::{broadcast, RwLock};
 
 use tracing::info;
 
-use regex::Regex;
+use super::player_detection::PlayerDetectionPatterns;
 
 use crate::error::AppError;
 use walkdir::WalkDir;
@@ -300,6 +300,7 @@ impl ProcessManager {
         max_memory: Option<&str>,
         extra_args: Option<&str>,
         config: Option<&serde_json::Value>,
+        game_type: &str,
     ) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
 
@@ -409,16 +410,14 @@ impl ProcessManager {
             let pool_clone_opt = self.pool.clone();
             let auth_required_clone = auth_required.clone();
             
+            let game_type_clone = game_type.to_string();
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
-                let join_re = Regex::new(r"\[.*\] \[.*\]: (.*) joined the game").unwrap();
-                let leave_re = Regex::new(r"\[.*\] \[.*\]: (.*) left the game").unwrap();
-                // Also match "Authentication successful! Welcome, [Player]!" logic if needed?
-                // Actually server emits "Player joined" essentially.
-
-                // Regex for "Server started" or similar if we want to change status?
-                // Hytale: "[HytaleServer] Universe ready!"
-                let server_started_re = Regex::new(r"Universe ready!").unwrap();
+                // Use game-specific detection patterns
+                let patterns = PlayerDetectionPatterns::for_game_type(&game_type_clone);
+                let join_re = patterns.join_regex;
+                let leave_re = patterns.leave_regex;
+                let server_started_re = patterns.server_ready_regex;
 
                 let pool_clone = pool_clone_opt; // Capture optional pool
 
@@ -639,6 +638,7 @@ impl ProcessManager {
         max_memory: Option<&str>,
         extra_args: Option<&str>,
         config: Option<&serde_json::Value>,
+        game_type: &str,
     ) -> Result<(), AppError> {
         // Stop if running
         if self.is_running(server_id) {
@@ -655,6 +655,7 @@ impl ProcessManager {
             max_memory,
             extra_args,
             config,
+            game_type,
         )
         .await
     }

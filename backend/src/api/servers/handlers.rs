@@ -620,6 +620,7 @@ pub async fn start_server(
         server.max_memory.as_deref(),
         server.extra_args.as_deref(),
         Some(&pm_config),
+        &server.game_type,
     )
     .await?;
 
@@ -699,6 +700,7 @@ pub async fn restart_server(
         server.max_memory.as_deref(),
         server.extra_args.as_deref(),
         server.config.as_ref().and_then(|c| serde_json::from_str(c).ok()).as_ref(),
+        &server.game_type,
     )
     .await?;
 
