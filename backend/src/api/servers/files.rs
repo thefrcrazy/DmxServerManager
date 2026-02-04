@@ -191,7 +191,7 @@ pub async fn read_server_file(
         
         // Strategy: Read last 256KB or whole file if smaller
         let max_bytes = 256 * 1024; // 256KB
-        let start_pos = if len > max_bytes { len - max_bytes } else { 0 };
+        let start_pos = len.saturating_sub(max_bytes);
         
         file.seek(SeekFrom::Start(start_pos))
             .map_err(|e| AppError::Internal(format!("Failed to seek: {e}")))?;

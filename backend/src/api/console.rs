@@ -59,8 +59,8 @@ async fn handle_socket(socket: WebSocket, server_id: String, state: AppState) {
                         return; // Client disconnected
                     }
                 }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                    // Lagged, skip
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    error!("WebSocket lagged, skipped {} messages for server {}", n, server_id);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     return; // Channel closed
