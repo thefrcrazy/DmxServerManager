@@ -26,7 +26,7 @@ pub struct SystemStatsResponse {
     pub players_max: u32,
     pub cpu_cores: usize,
     pub managed_cpu: f32,
-    pub managed_cpu_normalized: f32, // New field for normalized display (0-100%)
+    pub managed_cpu_normalized: f32,
     pub managed_ram: u64,
     pub managed_disk: u64,
 }
@@ -99,9 +99,7 @@ async fn get_java_versions() -> Result<Json<Vec<JavaVersion>>, AppError> {
         for path in std::env::split_paths(&path_var) {
             let java_bin = path.join("java");
             if java_bin.exists() {
-                // Resolve symlink to get real path
                 let real_path = std::fs::canonicalize(&java_bin).unwrap_or_else(|_| java_bin.clone());
-                
                 if !checked_paths.contains(&real_path.to_string_lossy().to_string()) {
                     if let Some(v) = check_java_version(&real_path) {
                         checked_paths.insert(real_path.to_string_lossy().to_string());
@@ -112,27 +110,24 @@ async fn get_java_versions() -> Result<Json<Vec<JavaVersion>>, AppError> {
         }
     }
 
-    // 3. Scan common directories (Linux/macOS)
+    // 3. Scan common directories
     let common_dirs = [
-        "/usr/lib/jvm",                        // Linux standard
-        "/usr/java",                           // Linux alternative
-        "/opt/java",                           // Linux opt
-        "/Library/Java/JavaVirtualMachines",   // macOS
-        "C:\\Program Files\\Java",             // Windows
-        "C:\\Program Files (x86)\\Java",       // Windows x86
+        "/usr/lib/jvm",
+        "/usr/java",
+        "/opt/java",
+        "/Library/Java/JavaVirtualMachines",
+        "C:\\Program Files\\Java",
+        "C:\\Program Files (x86)\\Java",
     ];
 
     for dir in common_dirs {
         let path = std::path::Path::new(dir);
         if path.exists() && path.is_dir() {
-            // Find "java" binaries recursively but with limited depth
             for entry in WalkDir::new(path).max_depth(3).into_iter().filter_map(|e| e.ok()) {
                 if entry.file_name() == "java" || entry.file_name() == "java.exe" {
                     let java_path = entry.path();
-                    // Ensure it is executable/binary (rudimentary check by path name ending in bin/java)
                     if java_path.parent().map(|p| p.file_name().unwrap_or_default() == "bin").unwrap_or(false) {
                         let real_path = std::fs::canonicalize(java_path).unwrap_or_else(|_| java_path.to_path_buf());
-                         
                         if !checked_paths.contains(&real_path.to_string_lossy().to_string()) {
                             if let Some(v) = check_java_version(&real_path) {
                                 checked_paths.insert(real_path.to_string_lossy().to_string());
@@ -149,16 +144,8 @@ async fn get_java_versions() -> Result<Json<Vec<JavaVersion>>, AppError> {
 }
 
 fn check_java_version(path: &std::path::Path) -> Option<JavaVersion> {
-    let output = Command::new(path)
-        .arg("-version")
-        .output()
-        .ok()?;
-    
-    // Java version info is often in stderr
+    let output = Command::new(path).arg("-version").output().ok()?;
     let output_str = String::from_utf8_lossy(&output.stderr);
-    
-    // Parse version from string like: "openjdk version \"17.0.8\" 2023-07-18"
-    // or "java version \"1.8.0_381\""
     for line in output_str.lines() {
         if line.contains("version") {
             let parts: Vec<&str> = line.split('"').collect();
@@ -170,25 +157,19 @@ fn check_java_version(path: &std::path::Path) -> Option<JavaVersion> {
             }
         }
     }
-    
     None
 }
 
 async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemStatsResponse>, AppError> {
     let pm = &state.process_manager;
-    
-    // Get cached or fresh system stats
     let (cpu_usage, ram_percent, ram_used, ram_total, cpu_cores) = get_cached_system_stats().await;
 
-
-    // Disk usage - only count the main disk (mounted at "/" on macOS/Linux)
     let disks = Disks::new_with_refreshed_list();
     let mut disk_total: u64 = 0;
     let mut disk_used: u64 = 0;
 
     for disk in disks.list() {
         let mount_point = disk.mount_point().to_string_lossy();
-        // Only count the root filesystem
         if mount_point == "/" {
             disk_total = disk.total_space();
             disk_used = disk.total_space() - disk.available_space();
@@ -196,7 +177,6 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
         }
     }
 
-    // Fallback: if no root disk found, use the first disk
     if disk_total == 0 && !disks.list().is_empty() {
         let first_disk = &disks.list()[0];
         disk_total = first_disk.total_space();
@@ -209,12 +189,9 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
         0.0
     };
 
-    // Players
     let players_current = pm.get_total_online_players().await;
     let players_max = 0; 
 
-
-    // Managed resource usage
     let mut managed_cpu = 0.0;
     let mut managed_ram = 0;
     
@@ -224,15 +201,10 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
         managed_ram += proc.last_memory.read().map(|g| *g).unwrap_or(0);
     }
 
-    // Calculate managed_disk by scanning all server directories in database
     let mut managed_disk = 0;
-    if let Ok(server_rows) = sqlx::query!("SELECT working_dir FROM servers")
-        .fetch_all(&state.pool)
-        .await {
+    if let Ok(server_rows) = sqlx::query!("SELECT working_dir FROM servers").fetch_all(&state.pool).await {
         for row in server_rows {
-            if let Some(dir) = row.working_dir {
-                managed_disk += get_dir_size(&dir).await;
-            }
+            managed_disk += get_dir_size(&row.working_dir).await;
         }
     }
 
@@ -254,23 +226,14 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
     }))
 }
 
-/// Get system stats with caching to reduce lock contention
 async fn get_cached_system_stats() -> (f32, f32, u64, u64, usize) {
-    // Check cache first
     {
         let cache = SYSTEM_CACHE.read().await;
         if cache.last_update.elapsed() < CACHE_DURATION {
-            return (
-                cache.cpu_usage,
-                cache.ram_percent,
-                cache.ram_used,
-                cache.ram_total,
-                cache.cpu_cores,
-            );
+            return (cache.cpu_usage, cache.ram_percent, cache.ram_used, cache.ram_total, cache.cpu_cores);
         }
     }
 
-    // Cache expired, refresh data
     let (cpu_usage, ram_percent, ram_used, ram_total, cpu_cores) = {
         let sys_lock = SYSTEM.lock();
         let mut sys = match sys_lock {
@@ -279,68 +242,14 @@ async fn get_cached_system_stats() -> (f32, f32, u64, u64, usize) {
         };
         sys.refresh_all();
 
-        // CPU usage (average across all CPUs)
-        let cpu: f32 = sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>()
-            / sys.cpus().len().max(1) as f32;
-
-        // RAM usage
+        let cpu: f32 = sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() / sys.cpus().len().max(1) as f32;
         let total = sys.total_memory();
         let used = sys.used_memory();
-        let percent = if total > 0 {
-            (used as f64 / total as f64 * 100.0) as f32
-        } else {
-            0.0
-        };
-
+        let percent = if total > 0 { (used as f64 / total as f64 * 100.0) as f32 } else { 0.0 };
         let cores = sys.cpus().len();
-        
-            (cpu, percent, used, total, cores)
-        
-        }
-        
-        
-        
-        /// Recursively calculates the size of a directory in bytes
-        
-        async fn get_dir_size(path: &str) -> u64 {
-        
-            let path = std::path::Path::new(path);
-        
-            if !path.exists() || !path.is_dir() {
-        
-                return 0;
-        
-            }
-        
-        
-        
-            // Use a blocking thread for file system traversal to avoid blocking the async executor
-        
-            let path_buf = path.to_path_buf();
-        
-            tokio::task::spawn_blocking(move || {
-        
-                WalkDir::new(path_buf)
-        
-                    .into_iter()
-        
-                    .filter_map(|e| e.ok())
-        
-                    .filter(|e| e.file_type().is_file())
-        
-                    .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
-        
-                    .sum()
-        
-            })
-        
-            .await
-        
-            .unwrap_or(0)
-        
-        };
+        (cpu, percent, used, total, cores)
+    };
 
-    // Update cache
     {
         let mut cache = SYSTEM_CACHE.write().await;
         cache.cpu_usage = cpu_usage;
@@ -352,4 +261,23 @@ async fn get_cached_system_stats() -> (f32, f32, u64, u64, usize) {
     }
 
     (cpu_usage, ram_percent, ram_used, ram_total, cpu_cores)
+}
+
+/// Recursively calculates the size of a directory in bytes
+async fn get_dir_size(path: &str) -> u64 {
+    let path_buf = std::path::PathBuf::from(path);
+    if !path_buf.exists() || !path_buf.is_dir() {
+        return 0;
+    }
+
+    tokio::task::spawn_blocking(move || {
+        WalkDir::new(path_buf)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
+            .sum()
+    })
+    .await
+    .unwrap_or(0)
 }
