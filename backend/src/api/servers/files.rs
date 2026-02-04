@@ -180,8 +180,38 @@ pub async fn read_server_file(
         return Err(AppError::BadRequest("Cannot read a directory".into()));
     }
     
-    let content = std::fs::read_to_string(&full_path)
-        .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?;
+    let content = if let Some(n) = query.tail {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut file = std::fs::File::open(&full_path)
+            .map_err(|e| AppError::Internal(format!("Failed to open file: {e}")))?;
+        
+        let metadata = file.metadata()
+            .map_err(|e| AppError::Internal(format!("Failed to get metadata: {e}")))?;
+        let len = metadata.len();
+        
+        // Strategy: Read last 256KB or whole file if smaller
+        let max_bytes = 256 * 1024; // 256KB
+        let start_pos = if len > max_bytes { len - max_bytes } else { 0 };
+        
+        file.seek(SeekFrom::Start(start_pos))
+            .map_err(|e| AppError::Internal(format!("Failed to seek: {e}")))?;
+        
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .map_err(|e| AppError::Internal(format!("Failed to read: {e}")))?;
+        
+        let full_text = String::from_utf8_lossy(&buffer);
+        let lines: Vec<&str> = full_text.lines().collect();
+        
+        if lines.len() > n as usize {
+            lines[lines.len() - n as usize..].join("\n")
+        } else {
+            full_text.into_owned()
+        }
+    } else {
+        std::fs::read_to_string(&full_path)
+            .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?
+    };
     
     Ok(Json(serde_json::json!({
         "path": query.path,

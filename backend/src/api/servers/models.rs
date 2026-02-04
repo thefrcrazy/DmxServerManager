@@ -162,6 +162,7 @@ pub struct FilesQuery {
 #[derive(Debug, Deserialize)]
 pub struct ReadFileQuery {
     pub path: String,
+    pub tail: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

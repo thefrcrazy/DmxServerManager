@@ -862,7 +862,10 @@ export default function ServerDetail() {
                         selectedLogFile={selectedLogFile}
                         logContent={logContent}
                         onSelectLogFile={readLogFile}
-                        onRefresh={fetchLogFiles}
+                        onRefresh={() => {
+                            fetchLogFiles();
+                            if (selectedLogFile) readLogFile(selectedLogFile);
+                        }}
                     />
                 )}
 
