@@ -10,8 +10,8 @@ use sysinfo::{Disks, System};
 use walkdir::WalkDir;
 use tokio::sync::RwLock;
 
-use crate::AppState;
-use crate::error::AppError;
+use crate::core::AppState;
+use crate::core::error::AppError;
 
 #[derive(Debug, Serialize)]
 pub struct SystemStatsResponse {

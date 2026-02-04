@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from "react";
 
 interface ConsoleMessage {
     id: number;
-    type: 'output' | 'input' | 'error' | 'info' | 'warning';
+    type: "output" | "input" | "error" | "info" | "warning";
     content: string;
     timestamp: Date;
 }
@@ -27,7 +27,7 @@ export function useConsole(serverId: string): UseConsoleReturn {
     const messageIdRef = useRef(0);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
-    const addMessage = useCallback((type: ConsoleMessage['type'], content: string) => {
+    const addMessage = useCallback((type: ConsoleMessage["type"], content: string) => {
         const id = ++messageIdRef.current;
         setMessages(prev => [...prev, { id, type, content, timestamp: new Date() }]);
     }, []);
@@ -38,7 +38,7 @@ export function useConsole(serverId: string): UseConsoleReturn {
         setConnecting(true);
         setError(null);
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${protocol}//${window.location.hostname}:8080/ws/console/${serverId}`;
 
         const ws = new WebSocket(wsUrl);
@@ -47,34 +47,34 @@ export function useConsole(serverId: string): UseConsoleReturn {
         ws.onopen = () => {
             setConnected(true);
             setConnecting(false);
-            addMessage('info', 'Connecté à la console');
+            addMessage("info", "Connecté à la console");
         };
 
         ws.onmessage = (event) => {
             const data = event.data as string;
 
             // Detect message type based on content
-            let type: ConsoleMessage['type'] = 'output';
-            if (data.includes('[ERROR]') || data.includes('Exception')) {
-                type = 'error';
-            } else if (data.includes('[WARN]')) {
-                type = 'warning';
-            } else if (data.includes('[INFO]')) {
-                type = 'info';
+            let type: ConsoleMessage["type"] = "output";
+            if (data.includes("[ERROR]") || data.includes("Exception")) {
+                type = "error";
+            } else if (data.includes("[WARN]")) {
+                type = "warning";
+            } else if (data.includes("[INFO]")) {
+                type = "info";
             }
 
             addMessage(type, data);
         };
 
         ws.onerror = () => {
-            setError('Erreur de connexion WebSocket');
+            setError("Erreur de connexion WebSocket");
             setConnecting(false);
         };
 
         ws.onclose = () => {
             setConnected(false);
             setConnecting(false);
-            addMessage('info', 'Déconnecté de la console');
+            addMessage("info", "Déconnecté de la console");
 
             // Auto-reconnect after 5 seconds
             reconnectTimeoutRef.current = setTimeout(() => {
@@ -86,7 +86,7 @@ export function useConsole(serverId: string): UseConsoleReturn {
     const sendCommand = useCallback((command: string) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(command);
-            addMessage('input', `> ${command}`);
+            addMessage("input", `> ${command}`);
         }
     }, [addMessage]);
 

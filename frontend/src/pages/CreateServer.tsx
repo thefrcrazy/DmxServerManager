@@ -1,26 +1,26 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
     Plus, Server, FolderOpen, Upload, FolderArchive,
     Rocket, Play
-} from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
-import { usePageTitle } from '../contexts/PageTitleContext';
+} from "lucide-react";
+import { useLanguage } from "../contexts/LanguageContext";
+import { usePageTitle } from "../contexts/PageTitleContext";
 
-type CreationMode = 'normal' | 'existing' | 'zip';
+type CreationMode = "normal" | "existing" | "zip";
 
 
 
 interface ServerFormData {
     name: string;
-    game_type: 'hytale';
+    game_type: "hytale";
     executable_path: string;
     working_dir: string;
 
     bind_address: string;
     port: number;
 
-    auth_mode: 'authenticated' | 'offline';
+    auth_mode: "authenticated" | "offline";
     allow_op: boolean;
 
     max_memory: string;
@@ -66,35 +66,35 @@ interface ServerFormData {
 export default function CreateServer() {
     const { t } = useLanguage();
     const navigate = useNavigate();
-    const [creationMode, setCreationMode] = useState<CreationMode>('normal');
+    const [creationMode, setCreationMode] = useState<CreationMode>("normal");
     const [formData, setFormData] = useState<ServerFormData>({
         // Section 1: Informations générales
-        name: '',
-        game_type: 'hytale',
-        executable_path: 'HytaleServer.jar',
-        working_dir: '',
+        name: "",
+        game_type: "hytale",
+        executable_path: "HytaleServer.jar",
+        working_dir: "",
 
         // Section 2: Configuration Réseau
-        bind_address: '0.0.0.0',
+        bind_address: "0.0.0.0",
         port: 5520,
 
         // Defaults hidden
-        auth_mode: 'authenticated',
+        auth_mode: "authenticated",
         allow_op: false,
-        max_memory: '4G',
-        min_memory: '4G',
-        java_path: '',
+        max_memory: "4G",
+        min_memory: "4G",
+        java_path: "",
         // AOT is hardcoded in backend
-        extra_args: '',
+        extra_args: "",
 
         accept_early_plugins: false,
         backup_enabled: false,
-        backup_dir: '',
+        backup_dir: "",
         backup_frequency: 30,
         auto_start: false,
         disable_sentry: false,
-        seed: '',
-        world_gen_type: 'Hytale',
+        seed: "",
+        world_gen_type: "Hytale",
         view_distance: 12,
         is_pvp_enabled: true,
         is_fall_damage_enabled: true,
@@ -114,17 +114,17 @@ export default function CreateServer() {
     });
     const [zipFile, setZipFile] = useState<File | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState('');
+    const [error, setError] = useState("");
     const [isDocker, setIsDocker] = useState(false);
-    const [defaultServersDir, setDefaultServersDir] = useState('');
+    const [defaultServersDir, setDefaultServersDir] = useState("");
 
     const { setPageTitle } = usePageTitle();
     useEffect(() => {
-        setPageTitle(t('servers.create_new'), 'Configurez votre nouveau serveur Hytale', { to: '/servers' });
+        setPageTitle(t("servers.create_new"), t("servers.create_subtitle"), { to: "/servers" });
 
         // Fetch settings specifically to check for Docker env and default dir
-        fetch('/api/v1/settings', {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        fetch("/api/v1/settings", {
+            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
         })
             .then(res => res.json())
             .then(data => {
@@ -150,47 +150,47 @@ export default function CreateServer() {
     }, [formData.name, isDocker, defaultServersDir]);
 
     const creationModes = [
-        { id: 'normal' as CreationMode, label: 'Nouveau serveur', icon: Plus, description: 'Créer un nouveau serveur vide' },
-        { id: 'existing' as CreationMode, label: 'Serveur existant', icon: FolderOpen, description: 'Importer un serveur déjà configuré' },
-        { id: 'zip' as CreationMode, label: 'Importer .zip', icon: FolderArchive, description: 'Importer depuis une archive ZIP' },
+        { id: "normal" as CreationMode, label: t("servers.create_new"), icon: Plus, description: t("servers.create_mode_normal_desc") },
+        { id: "existing" as CreationMode, label: t("servers.import_existing"), icon: FolderOpen, description: t("servers.create_mode_existing_desc") },
+        { id: "zip" as CreationMode, label: t("servers.import_zip"), icon: FolderArchive, description: t("servers.create_mode_zip_desc") },
     ];
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
-        setError('');
+        setError("");
 
         try {
-            if (creationMode === 'zip' && zipFile) {
+            if (creationMode === "zip" && zipFile) {
                 const formDataUpload = new FormData();
-                formDataUpload.append('file', zipFile);
-                formDataUpload.append('name', formData.name);
-                formDataUpload.append('min_memory', formData.min_memory);
-                formDataUpload.append('max_memory', formData.max_memory);
-                formDataUpload.append('auto_start', String(formData.auto_start));
-                if (formData.java_path) formDataUpload.append('java_path', formData.java_path);
-                if (formData.extra_args) formDataUpload.append('extra_args', formData.extra_args);
+                formDataUpload.append("file", zipFile);
+                formDataUpload.append("name", formData.name);
+                formDataUpload.append("min_memory", formData.min_memory);
+                formDataUpload.append("max_memory", formData.max_memory);
+                formDataUpload.append("auto_start", String(formData.auto_start));
+                if (formData.java_path) formDataUpload.append("java_path", formData.java_path);
+                if (formData.extra_args) formDataUpload.append("extra_args", formData.extra_args);
 
-                const response = await fetch('/api/v1/servers/import-zip', {
-                    method: 'POST',
+                const response = await fetch("/api/v1/servers/import-zip", {
+                    method: "POST",
                     headers: {
-                        Authorization: `Bearer ${localStorage.getItem('token')}`,
+                        Authorization: `Bearer ${localStorage.getItem("token")}`,
                     },
                     body: formDataUpload,
                 });
 
                 if (response.ok) {
-                    navigate('/servers');
+                    navigate("/servers");
                 } else {
                     const data = await response.json();
-                    setError(data.error || 'Erreur lors de l\'importation');
+                    setError(data.error || t("servers.import_error"));
                 }
             } else {
-                const response = await fetch('/api/v1/servers', {
-                    method: 'POST',
+                const response = await fetch("/api/v1/servers", {
+                    method: "POST",
                     headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${localStorage.getItem('token')}`,
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${localStorage.getItem("token")}`,
                     },
                     body: JSON.stringify({
                         ...formData,
@@ -200,7 +200,7 @@ export default function CreateServer() {
                         // assets_path: fixed to Assets.zip by backend
                         backup_dir: formData.backup_dir || null,
                         seed: formData.seed || null,
-                        import_existing: creationMode === 'existing',
+                        import_existing: creationMode === "existing",
                     }),
                 });
 
@@ -210,12 +210,12 @@ export default function CreateServer() {
                     navigate(`/servers/${data.id}`);
                 } else {
                     const data = await response.json();
-                    setError(data.error || 'Erreur lors de la création');
+                    setError(data.error || t("servers.create_error"));
                 }
             }
         } catch (err) {
-            setError('Erreur de connexion au serveur');
-            console.error('Erreur:', err);
+            setError(t("panel_settings.connection_error"));
+            console.error("Erreur:", err);
         } finally {
             setIsSubmitting(false);
         }
@@ -223,11 +223,11 @@ export default function CreateServer() {
 
     const handleZipChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file && file.name.endsWith('.zip')) {
+        if (file && file.name.endsWith(".zip")) {
             setZipFile(file);
-            setError('');
+            setError("");
         } else {
-            setError('Veuillez sélectionner un fichier .zip valide');
+            setError(t("servers.zip_error"));
         }
     };
 
@@ -245,7 +245,7 @@ export default function CreateServer() {
                         key={mode.id}
                         type="button"
                         onClick={() => setCreationMode(mode.id)}
-                        className={`creation-mode-btn ${creationMode === mode.id ? 'creation-mode-btn--active' : ''}`}
+                        className={`creation-mode-btn ${creationMode === mode.id ? "creation-mode-btn--active" : ""}`}
                     >
                         <mode.icon size={24} />
                         <span>{mode.label}</span>
@@ -258,18 +258,18 @@ export default function CreateServer() {
                 <div className="card server-config-card">
                     <h3 className="server-config-title">
                         <Server size={20} />
-                        Configuration du serveur
+                        {t("servers.config_title")}
                     </h3>
 
                     <div className="server-config-grid">
 
                         {/* Server Name */}
                         <div className="form-group">
-                            <label>Nom du serveur</label>
+                            <label>{t("servers.server_name")}</label>
                             <input
                                 type="text"
                                 value={formData.name}
-                                onChange={(e) => updateFormData('name', e.target.value)}
+                                onChange={(e) => updateFormData("name", e.target.value)}
                                 placeholder="Mon Serveur"
                                 required
                                 className="input"
@@ -278,10 +278,10 @@ export default function CreateServer() {
 
                         {/* Game Type */}
                         <div className="form-group">
-                            <label>Type de jeu</label>
+                            <label>{t("servers.game_type")}</label>
                             <select
                                 value={formData.game_type}
-                                onChange={(e) => updateFormData('game_type', e.target.value as any)}
+                                onChange={(e) => updateFormData("game_type", e.target.value as any)}
                                 className="input"
                             >
                                 <option value="hytale">Hytale</option>
@@ -291,13 +291,13 @@ export default function CreateServer() {
 
 
                         {/* ZIP Upload or Directory */}
-                        {creationMode === 'zip' ? (
+                        {creationMode === "zip" ? (
                             <div className="form-group">
                                 <label className="form-label-icon">
                                     <Upload size={14} />
-                                    Fichier ZIP
+                                    {t("servers.zip_file")}
                                 </label>
-                                <div className={`zip-upload-zone ${zipFile ? 'zip-upload-zone--active' : ''}`}>
+                                <div className={`zip-upload-zone ${zipFile ? "zip-upload-zone--active" : ""}`}>
                                     <input
                                         type="file"
                                         accept=".zip"
@@ -317,9 +317,9 @@ export default function CreateServer() {
                                         ) : (
                                             <>
                                                 <Upload size={32} className="zip-upload-icon" />
-                                                <p className="zip-upload-text">Cliquez pour sélectionner</p>
+                                                <p className="zip-upload-text">{t("servers.click_to_select")}</p>
                                                 <p className="helper-text">
-                                                    Archive .zip du serveur
+                                                    {t("servers.zip_helper")}
                                                 </p>
                                             </>
                                         )}
@@ -331,23 +331,23 @@ export default function CreateServer() {
                             <div className="form-group">
                                 <label className="form-label-icon">
                                     <FolderOpen size={14} />
-                                    {creationMode === 'existing' ? 'Répertoire existant' : 'Répertoire du serveur'}
+                                    {creationMode === "existing" ? t("servers.existing_dir") : t("servers.working_dir")}
                                 </label>
                                 <input
                                     type="text"
                                     value={formData.working_dir}
-                                    onChange={(e) => updateFormData('working_dir', e.target.value)}
+                                    onChange={(e) => updateFormData("working_dir", e.target.value)}
                                     placeholder="/home/hytale/servers/mon-serveur"
                                     required
-                                    className={`input font-mono ${isDocker ? 'server-config-item--disabled' : ''}`}
+                                    className={`input font-mono ${isDocker ? "server-config-item--disabled" : ""}`}
                                     readOnly={isDocker}
                                 />
                                 <p className="helper-text helper-text--block">
                                     {isDocker
-                                        ? 'Géré automatiquement par Docker (Volume Persistant)'
-                                        : creationMode === 'existing'
-                                            ? 'Chemin vers le dossier contenant le serveur existant'
-                                            : 'Chemin où le serveur sera installé'}
+                                        ? t("servers.docker_hint")
+                                        : creationMode === "existing"
+                                            ? t("servers.existing_hint")
+                                            : t("servers.new_hint")}
                                 </p>
                             </div>
                         )}
@@ -355,11 +355,11 @@ export default function CreateServer() {
                         <div className="server-config-row">
                             {/* RAM Min */}
                             <div className="form-group">
-                                <label>RAM Min (Xms)</label>
+                                <label>{t("servers.ram_min")}</label>
                                 <input
                                     type="text"
                                     value={formData.min_memory}
-                                    onChange={(e) => updateFormData('min_memory', e.target.value)}
+                                    onChange={(e) => updateFormData("min_memory", e.target.value)}
                                     placeholder="4G"
                                     className="input"
                                 />
@@ -367,11 +367,11 @@ export default function CreateServer() {
 
                             {/* RAM Max */}
                             <div className="form-group">
-                                <label>RAM Max (Xmx)</label>
+                                <label>{t("servers.ram_max")}</label>
                                 <input
                                     type="text"
                                     value={formData.max_memory}
-                                    onChange={(e) => updateFormData('max_memory', e.target.value)}
+                                    onChange={(e) => updateFormData("max_memory", e.target.value)}
                                     placeholder="4G"
                                     className="input"
                                 />
@@ -380,11 +380,11 @@ export default function CreateServer() {
 
                         {/* Port UDP */}
                         <div className="form-group">
-                            <label>Port UDP</label>
+                            <label>{t("servers.udp_port")}</label>
                             <input
                                 type="number"
                                 value={formData.port}
-                                onChange={(e) => updateFormData('port', parseInt(e.target.value) || 5520)}
+                                onChange={(e) => updateFormData("port", parseInt(e.target.value) || 5520)}
                                 placeholder="5520"
                                 className="input"
                             />
@@ -394,12 +394,12 @@ export default function CreateServer() {
                         <div className="advanced-defaults">
                             <div className="advanced-defaults__header">
                                 <Rocket size={14} />
-                                <span>Paramètres avancés configurés par défaut :</span>
+                                <span>{t("servers.advanced_defaults")}</span>
                             </div>
                             <ul>
-                                <li>Arguments JVM optimisés (AOT activé)</li>
-                                <li>Authentification activée</li>
-                                <li>Sauvegardes désactivées (configurable après création)</li>
+                                <li>{t("servers.default_jvm")}</li>
+                                <li>{t("servers.default_auth")}</li>
+                                <li>{t("servers.default_backups")}</li>
                             </ul>
                         </div>
 
@@ -415,9 +415,9 @@ export default function CreateServer() {
                         <button
                             type="button"
                             className="btn btn--secondary"
-                            onClick={() => navigate('/servers')}
+                            onClick={() => navigate("/servers")}
                         >
-                            Annuler
+                            {t("common.cancel")}
                         </button>
                         <button
                             type="submit"
@@ -428,8 +428,8 @@ export default function CreateServer() {
                                 <div className="spinner-sm" />
                             ) : (
                                 <>
-                                    {creationMode === 'zip' ? <Upload size={18} /> : <Play size={18} />}
-                                    {creationMode === 'existing' ? 'Importer le serveur' : 'Créer le serveur'}
+                                    {creationMode === "zip" ? <Upload size={18} /> : <Play size={18} />}
+                                    {creationMode === "existing" ? t("servers.import_btn") : t("servers.create_btn")}
                                 </>
                             )}
                         </button>

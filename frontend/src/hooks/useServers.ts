@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import apiService from '../services/api';
-import { Server } from '../schemas/api';
+import { useState, useEffect, useCallback, useMemo } from "react";
+import apiService from "../services/api";
+import { Server } from "../schemas/api";
 
 interface UseServersReturn {
     servers: Server[];
@@ -13,7 +13,7 @@ interface UseServersReturn {
     reinstallServer: (id: string) => Promise<boolean>;
     deleteServer: (id: string) => Promise<boolean>;
     killServer: (id: string) => Promise<boolean>;
-    createServer: (data: Omit<Server, 'id' | 'status' | 'created_at' | 'updated_at'>) => Promise<string | null>;
+    createServer: (data: Omit<Server, "id" | "status" | "created_at" | "updated_at">) => Promise<string | null>;
     // Computed values
     onlineCount: number;
     offlineCount: number;
@@ -28,10 +28,10 @@ export function useServers(): UseServersReturn {
         setLoading(true);
         setError(null);
         try {
-            const response = await apiService.getServers();
+            const response = await apiService.servers.getServers();
             setServers(response.data || []);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Erreur de chargement');
+            setError(err instanceof Error ? err.message : "Erreur de chargement");
         } finally {
             setLoading(false);
         }
@@ -43,7 +43,7 @@ export function useServers(): UseServersReturn {
 
     const startServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.startServer(id);
+            await apiService.servers.startServer(id);
             await refresh();
             return true;
         } catch {
@@ -53,7 +53,7 @@ export function useServers(): UseServersReturn {
 
     const stopServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.stopServer(id);
+            await apiService.servers.stopServer(id);
             await refresh();
             return true;
         } catch {
@@ -63,7 +63,7 @@ export function useServers(): UseServersReturn {
 
     const restartServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.restartServer(id);
+            await apiService.servers.restartServer(id);
             await refresh();
             return true;
         } catch {
@@ -73,7 +73,7 @@ export function useServers(): UseServersReturn {
 
     const deleteServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.deleteServer(id);
+            await apiService.servers.deleteServer(id);
             setServers(prev => prev.filter(s => s.id !== id));
             return true;
         } catch {
@@ -83,7 +83,7 @@ export function useServers(): UseServersReturn {
 
     const killServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.killServer(id);
+            await apiService.servers.killServer(id);
             await refresh();
             return true;
         } catch {
@@ -93,7 +93,7 @@ export function useServers(): UseServersReturn {
 
     const reinstallServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.reinstallServer(id);
+            await apiService.servers.reinstallServer(id);
             // Status might need update but usually it stays 'running' or 'stopped' until process manager picks it up
             return true;
         } catch {
@@ -103,7 +103,7 @@ export function useServers(): UseServersReturn {
 
     const createServer = useCallback(async (data: any): Promise<string | null> => {
         try {
-            const response = await apiService.createServer(data);
+            const response = await apiService.servers.createServer(data);
             await refresh();
             return response.data?.id || null;
         } catch {
@@ -112,12 +112,12 @@ export function useServers(): UseServersReturn {
     }, [refresh]);
 
     const onlineCount = useMemo(() =>
-        servers.filter(s => s.status === 'running').length,
+        servers.filter(s => s.status === "running").length,
         [servers]
     );
 
     const offlineCount = useMemo(() =>
-        servers.filter(s => s.status === 'stopped').length,
+        servers.filter(s => s.status === "stopped").length,
         [servers]
     );
 

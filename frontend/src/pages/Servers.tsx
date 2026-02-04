@@ -1,12 +1,11 @@
-import { useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Server as ServerIcon } from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
-import { usePageTitle } from '../contexts/PageTitleContext';
-import ServerList from '../components/ServerList';
-import ServerFilters from '../components/ServerFilters';
-import { useFilteredServers } from '../hooks';
-import { LoadingScreen, EmptyState } from '../components/common';
+import { useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { Plus, Server as ServerIcon } from "lucide-react";
+import { useLanguage } from "../contexts/LanguageContext";
+import { usePageTitle } from "../contexts/PageTitleContext";
+import { ServerList, ServerFilters } from "@/components/features/server";
+import { useFilteredServers } from "../hooks";
+import { LoadingScreen, EmptyState } from "@/components/shared";
 
 export default function Servers() {
     const { t } = useLanguage();
@@ -23,14 +22,14 @@ export default function Servers() {
         viewMode,
         setViewMode,
         handleServerAction,
-    } = useFilteredServers({ initialViewMode: 'list' });
+    } = useFilteredServers({ initialViewMode: "list" });
 
     useEffect(() => {
-        setPageTitle(t('servers.title'), t('dashboard.welcome'), { to: '/' });
+        setPageTitle(t("servers.title"), t("dashboard.welcome"), { to: "/" });
     }, [setPageTitle, t]);
 
     // Adapter function to match ServerList's expected signature
-    const onAction = useCallback(async (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => {
+    const onAction = useCallback(async (id: string, action: "start" | "stop" | "restart" | "kill") => {
         return handleServerAction(action, id);
     }, [handleServerAction]);
 
@@ -51,7 +50,7 @@ export default function Servers() {
                 action={
                     <Link to="/servers/create" className="btn btn--primary">
                         <Plus size={18} />
-                        {t('servers.create_new')}
+                        {t("servers.create_new")}
                     </Link>
                 }
             />
@@ -59,13 +58,13 @@ export default function Servers() {
             {servers.length === 0 ? (
                 <EmptyState
                     icon={<ServerIcon size={48} />}
-                    title={t('servers.no_servers')}
-                    description={search || gameType !== 'all' ? 'No servers match your filters.' : t('servers.empty_desc')}
+                    title={t("servers.no_servers")}
+                    description={search || gameType !== "all" ? t("dashboard.no_filter_match") : t("servers.empty_desc")}
                     action={
-                        (search === '' && gameType === 'all') && (
+                        (search === "" && gameType === "all") && (
                             <Link to="/servers/create" className="btn btn--primary">
                                 <Plus size={18} />
-                                {t('servers.create_new')}
+                                {t("servers.create_new")}
                             </Link>
                         )
                     }

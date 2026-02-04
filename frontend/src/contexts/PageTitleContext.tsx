@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback } from "react";
 
 interface BackLink {
     to: string;
@@ -16,14 +16,14 @@ interface PageTitleContextType {
 const PageTitleContext = createContext<PageTitleContextType | null>(null);
 
 export function PageTitleProvider({ children }: { children: ReactNode }) {
-    const [title, setTitle] = useState('');
-    const [subtitle, setSubtitle] = useState('');
+    const [title, setTitle] = useState("");
+    const [subtitle, setSubtitle] = useState("");
     const [backLink, setBackLink] = useState<BackLink | null>(null);
     const [headerActions, setHeaderActions] = useState<ReactNode | null>(null);
 
     const setPageTitle = useCallback((
         newTitle: string,
-        newSubtitle: string = '',
+        newSubtitle: string = "",
         newBackLink: BackLink | null = null,
         newHeaderActions: ReactNode | null = null
     ) => {
@@ -43,7 +43,7 @@ export function PageTitleProvider({ children }: { children: ReactNode }) {
 export function usePageTitle() {
     const context = useContext(PageTitleContext);
     if (!context) {
-        throw new Error('usePageTitle must be used within a PageTitleProvider');
+        throw new Error("usePageTitle must be used within a PageTitleProvider");
     }
     return context;
 }

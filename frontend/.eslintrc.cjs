@@ -21,5 +21,6 @@ module.exports = {
         'prefer-const': 'warn',
         'no-control-regex': 'off',
         'no-useless-escape': 'warn',
+        'quotes': ['error', 'double', { 'avoidEscape': true }],
     },
 }

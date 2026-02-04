@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import apiService from '../services/api';
+import { useState, useEffect, useCallback } from "react";
+import apiService from "../services/api";
 
 export interface Backup {
     id: string;
@@ -31,10 +31,10 @@ export function useBackups(initialServerId?: string): UseBackupsReturn {
         setLoading(true);
         setError(null);
         try {
-            const response = await apiService.getBackups(serverId);
+            const response = await apiService.backups.getBackups(serverId);
             setBackups(response.data || []);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Erreur de chargement');
+            setError(err instanceof Error ? err.message : "Erreur de chargement");
         } finally {
             setLoading(false);
         }
@@ -46,7 +46,7 @@ export function useBackups(initialServerId?: string): UseBackupsReturn {
 
     const createBackup = useCallback(async (serverId: string): Promise<Backup | null> => {
         try {
-            const response = await apiService.createBackup(serverId);
+            const response = await apiService.backups.createBackup(serverId);
             if (response.data) {
                 setBackups(prev => [response.data, ...prev]);
                 return response.data;
@@ -59,7 +59,7 @@ export function useBackups(initialServerId?: string): UseBackupsReturn {
 
     const deleteBackup = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.deleteBackup(id);
+            await apiService.backups.deleteBackup(id);
             setBackups(prev => prev.filter(b => b.id !== id));
             return true;
         } catch {
@@ -69,7 +69,7 @@ export function useBackups(initialServerId?: string): UseBackupsReturn {
 
     const restoreBackup = useCallback(async (id: string): Promise<boolean> => {
         try {
-            await apiService.restoreBackup(id);
+            await apiService.backups.restoreBackup(id);
             return true;
         } catch {
             return false;
@@ -77,9 +77,9 @@ export function useBackups(initialServerId?: string): UseBackupsReturn {
     }, []);
 
     const formatSize = useCallback((bytes: number): string => {
-        if (bytes === 0) return '0 B';
+        if (bytes === 0) return "0 B";
         const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const sizes = ["B", "KB", "MB", "GB"];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
     }, []);

@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::AppError;
+use crate::core::AppState;
+use crate::core::error::AppError;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -114,7 +114,7 @@ async fn create_backup(
     let working_dir = &server.unwrap().0;
     
     // Call service
-    let size_bytes = crate::services::backup_service::create_archive(working_dir, backup_path.to_str().unwrap())
+    let size_bytes = crate::services::system::backup::create_archive(working_dir, backup_path.to_str().unwrap())
         .map_err(|e| AppError::Internal(format!("Backup failed: {e:?}")))?;
 
     let created_at = now.to_rfc3339();
@@ -213,7 +213,7 @@ async fn restore_backup(
     let file_path = backups_dir.join(&backup.filename);
     
     // Restore
-    crate::services::backup_service::extract_archive(file_path.to_str().unwrap(), &server.0)
+    crate::services::system::backup::extract_archive(file_path.to_str().unwrap(), &server.0)
         .map_err(|e| AppError::Internal(format!("Restore failed: {e:?}")))?;
 
     Ok(Json(serde_json::json!({

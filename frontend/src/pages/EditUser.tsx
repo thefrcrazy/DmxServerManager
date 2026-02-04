@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
     User as UserIcon,
     Key,
@@ -10,17 +10,17 @@ import {
     Clock,
     Check,
     Save
-} from 'lucide-react';
-import Select from '../components/Select';
-import Checkbox from '../components/Checkbox';
-import { useLanguage } from '../contexts/LanguageContext';
-import { usePageTitle } from '../contexts/PageTitleContext';
-import { PRESET_COLORS, LANGUAGES } from '../constants/theme';
+} from "lucide-react";
+import Select from "@/components/ui/Select";
+import Checkbox from "@/components/ui/Checkbox";
+import { useLanguage } from "../contexts/LanguageContext";
+import { usePageTitle } from "../contexts/PageTitleContext";
+import { PRESET_COLORS, LANGUAGES } from "@/constants/theme";
 
 interface User {
     id: string;
     username: string;
-    role: 'admin' | 'user';
+    role: "admin" | "user";
     is_active: boolean;
     language: string;
     accent_color: string;
@@ -40,21 +40,22 @@ export default function EditUser() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { t } = useLanguage();
-    const isCreating = id === 'new';
+
+    const isCreating = id === "new";
 
     const [user, setUser] = useState<User | null>(null);
     const [servers, setServers] = useState<ServerInfo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState('');
+    const [error, setError] = useState("");
 
     const [formData, setFormData] = useState({
-        username: '',
-        password: '',
-        role: 'user' as 'admin' | 'user',
+        username: "",
+        password: "",
+        role: "user" as "admin" | "user",
         is_active: true,
-        language: 'fr',
-        accent_color: '#3A82F6',
+        language: "fr",
+        accent_color: "#3A82F6",
         allocated_servers: [] as string[]
     });
 
@@ -64,15 +65,15 @@ export default function EditUser() {
 
     const { setPageTitle } = usePageTitle();
     useEffect(() => {
-        const title = isCreating ? t('users.create_user') : t('users.edit_user');
-        const subtitle = isCreating ? 'Créez un nouveau compte utilisateur' : `Modifier le compte de ${user?.username || ''}`;
-        setPageTitle(title, subtitle, { to: '/panel-settings?tab=users' });
+        const title = isCreating ? t("users.create_user_title") : t("users.edit_user_title");
+        const subtitle = isCreating ? t("users.create_user_subtitle") : t("users.edit_user_subtitle").replace("{{username}}", user?.username || "");
+        setPageTitle(title, subtitle, { to: "/panel-settings?tab=users" });
     }, [setPageTitle, t, isCreating, user]);
 
     const fetchData = async () => {
         try {
-            const serversRes = await fetch('/api/v1/servers', {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            const serversRes = await fetch("/api/v1/servers", {
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             if (serversRes.ok) {
                 setServers(await serversRes.json());
@@ -80,14 +81,14 @@ export default function EditUser() {
 
             if (!isCreating && id) {
                 const userRes = await fetch(`/api/v1/users/${id}`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
                 });
                 if (userRes.ok) {
                     const userData = await userRes.json();
                     setUser(userData);
                     setFormData({
                         username: userData.username,
-                        password: '',
+                        password: "",
                         role: userData.role,
                         is_active: userData.is_active,
                         language: userData.language,
@@ -95,11 +96,11 @@ export default function EditUser() {
                         allocated_servers: userData.allocated_servers || []
                     });
                 } else {
-                    navigate('/panel-settings?tab=users');
+                    navigate("/panel-settings?tab=users");
                 }
             }
         } catch (error) {
-            console.error('Erreur:', error);
+            console.error("Erreur:", error);
         } finally {
             setIsLoading(false);
         }
@@ -107,12 +108,12 @@ export default function EditUser() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError('');
+        setError("");
         setIsSaving(true);
 
         try {
-            const url = isCreating ? '/api/v1/users' : `/api/v1/users/${id}`;
-            const method = isCreating ? 'POST' : 'PUT';
+            const url = isCreating ? "/api/v1/users" : `/api/v1/users/${id}`;
+            const method = isCreating ? "POST" : "PUT";
 
             const body: Record<string, unknown> = {
                 username: formData.username,
@@ -130,21 +131,21 @@ export default function EditUser() {
             const response = await fetch(url, {
                 method,
                 headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
                 },
                 body: JSON.stringify(body),
             });
 
             if (response.ok) {
-                navigate('/panel-settings?tab=users');
+                navigate("/panel-settings?tab=users");
             } else {
                 const data = await response.json();
-                setError(data.error || 'Une erreur est survenue');
+                setError(data.error || t("common.error"));
             }
         } catch (err) {
-            setError('Erreur de connexion au serveur');
-            console.error('Erreur:', err);
+            setError(t("panel_settings.connection_error"));
+            console.error("Erreur:", err);
         } finally {
             setIsSaving(false);
         }
@@ -160,17 +161,17 @@ export default function EditUser() {
     };
 
     const formatDate = (dateStr: string | null) => {
-        if (!dateStr) return '—';
-        return new Date(dateStr).toLocaleDateString('fr-FR', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+        if (!dateStr) return "—";
+        return new Date(dateStr).toLocaleDateString(formData.language, {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
         });
     };
 
-    if (isLoading) return <div>Chargement...</div>;
+    if (isLoading) return <div>{t("common.loading")}</div>;
 
     return (
         <div className="edit-user-page">
@@ -182,13 +183,13 @@ export default function EditUser() {
                     <div className="card form-section">
                         <h3 className="form-section-title">
                             <UserIcon size={18} />
-                            Informations du compte
+                            {t("users.account_info")}
                         </h3>
 
                         <div className="form-column">
                             {/* Username */}
                             <div className="form-group">
-                                <label>{t('users.username')}</label>
+                                <label>{t("users.username")}</label>
                                 <input
                                     type="text"
                                     value={formData.username}
@@ -203,19 +204,19 @@ export default function EditUser() {
                             <div className="form-group">
                                 <label className="form-label-icon">
                                     <Key size={14} className="text-accent" />
-                                    {isCreating ? t('auth.password') : t('user_settings.new_password')}
+                                    {isCreating ? t("auth.password") : t("user_settings.new_password")}
                                 </label>
                                 <input
                                     type="password"
                                     value={formData.password}
                                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder={isCreating ? '' : t('users.password_placeholder')}
+                                    placeholder={isCreating ? "" : t("users.password_placeholder")}
                                     required={isCreating}
                                     className="input"
                                 />
                                 {!isCreating && (
                                     <p className="helper-text">
-                                        Laissez vide pour conserver le mot de passe actuel
+                                        {t("users.password_leave_empty")}
                                     </p>
                                 )}
                             </div>
@@ -225,21 +226,21 @@ export default function EditUser() {
                                 <div className="form-group">
                                     <label className="form-label-icon">
                                         <Shield size={14} className="text-accent" />
-                                        {t('users.role')}
+                                        {t("users.role")}
                                     </label>
                                     <Select
                                         options={[
-                                            { label: t('user_settings.role_user'), value: 'user', icon: <UserIcon size={14} /> },
-                                            { label: t('user_settings.role_admin'), value: 'admin', icon: <Shield size={14} /> }
+                                            { label: t("user_settings.role_user"), value: "user", icon: <UserIcon size={14} /> },
+                                            { label: t("user_settings.role_admin"), value: "admin", icon: <Shield size={14} /> }
                                         ]}
                                         value={formData.role}
-                                        onChange={(value) => setFormData({ ...formData, role: value as 'admin' | 'user' })}
+                                        onChange={(value) => setFormData({ ...formData, role: value as "admin" | "user" })}
                                     />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label-icon">
                                         <Globe size={14} className="text-accent" />
-                                        {t('settings.language')}
+                                        {t("settings.language")}
                                     </label>
                                     <Select
                                         options={LANGUAGES.map(lang => ({
@@ -256,8 +257,8 @@ export default function EditUser() {
                             <Checkbox
                                 checked={formData.is_active}
                                 onChange={(v) => setFormData({ ...formData, is_active: v })}
-                                label="Compte actif"
-                                description="Un compte désactivé ne peut pas se connecter"
+                                label={t("users.active_account")}
+                                description={t("users.active_desc")}
                                 className="full-width-checkbox"
                             />
                         </div>
@@ -267,25 +268,25 @@ export default function EditUser() {
                     <div className="card form-section">
                         <h3 className="form-section-title">
                             <Palette size={18} />
-                            Personnalisation
+                            {t("users.personalization")}
                         </h3>
 
                         <div className="form-column">
                             {/* Accent Color */}
                             <div className="form-group">
-                                <label>{t('user_settings.accent_color')}</label>
+                                <label>{t("user_settings.accent_color")}</label>
                                 <div className="color-picker">
                                     {PRESET_COLORS.map((color) => (
                                         <button
                                             key={color}
                                             type="button"
                                             onClick={() => setFormData({ ...formData, accent_color: color })}
-                                            className={`color-picker__swatch ${formData.accent_color.toLowerCase() === color.toLowerCase() ? 'color-picker__swatch--active' : ''}`}
+                                            className={`color-picker__swatch ${formData.accent_color.toLowerCase() === color.toLowerCase() ? "color-picker__swatch--active" : ""}`}
                                             style={{
                                                 background: color,
                                                 boxShadow: formData.accent_color.toLowerCase() === color.toLowerCase()
                                                     ? `0 0 15px ${color}66`
-                                                    : 'none'
+                                                    : "none"
                                             }}
                                         >
                                             {formData.accent_color.toLowerCase() === color.toLowerCase() && (
@@ -307,11 +308,11 @@ export default function EditUser() {
                             <div className="form-group">
                                 <label className="form-label-icon">
                                     <Server size={14} className="text-accent" />
-                                    Serveurs alloués
+                                    {t("users.server_allocation")}
                                 </label>
                                 {servers.length === 0 ? (
                                     <p className="helper-text">
-                                        Aucun serveur disponible
+                                        {t("users.no_servers_avail")}
                                     </p>
                                 ) : (
                                     <div className="server-allocation">
@@ -319,7 +320,7 @@ export default function EditUser() {
                                             <button
                                                 key={server.id}
                                                 type="button"
-                                                className={`server-allocation__item ${formData.allocated_servers.includes(server.id) ? 'server-allocation__item--active' : ''}`}
+                                                className={`server-allocation__item ${formData.allocated_servers.includes(server.id) ? "server-allocation__item--active" : ""}`}
                                                 onClick={() => toggleServerAllocation(server.id)}
                                             >
                                                 {formData.allocated_servers.includes(server.id) && (
@@ -339,13 +340,13 @@ export default function EditUser() {
                         <div className="card form-section full-width">
                             <h3 className="form-section-title">
                                 <Clock size={18} />
-                                Informations système
+                                {t("users.system_info")}
                             </h3>
 
                             <div className="system-info-grid">
                                 <div className="system-info-card">
                                     <p className="system-info-card__label">
-                                        Créé le
+                                        {t("users.created_at")}
                                     </p>
                                     <p className="system-info-card__value">
                                         {formatDate(user.created_at)}
@@ -353,7 +354,7 @@ export default function EditUser() {
                                 </div>
                                 <div className="system-info-card">
                                     <p className="system-info-card__label">
-                                        Modifié le
+                                        {t("users.updated_at")}
                                     </p>
                                     <p className="system-info-card__value">
                                         {formatDate(user.updated_at)}
@@ -361,7 +362,7 @@ export default function EditUser() {
                                 </div>
                                 <div className="system-info-card">
                                     <p className="system-info-card__label">
-                                        Dernière connexion
+                                        {t("users.last_login")}
                                     </p>
                                     <p className="system-info-card__value">
                                         {formatDate(user.last_login)}
@@ -369,10 +370,10 @@ export default function EditUser() {
                                 </div>
                                 <div className="system-info-card">
                                     <p className="system-info-card__label">
-                                        Dernière IP
+                                        {t("users.last_ip")}
                                     </p>
                                     <p className="system-info-card__value system-info-card__value--mono">
-                                        {user.last_ip || '—'}
+                                        {user.last_ip || "—"}
                                     </p>
                                 </div>
                             </div>
@@ -390,7 +391,7 @@ export default function EditUser() {
                 {/* Actions */}
                 <div className="action-footer">
                     <Link to="/panel-settings?tab=users" className="btn btn--secondary btn-cancel">
-                        {t('common.cancel')}
+                        {t("common.cancel")}
                     </Link>
                     <button
                         type="submit"
@@ -398,11 +399,11 @@ export default function EditUser() {
                         disabled={isSaving || !formData.username}
                     >
                         {isSaving ? (
-                            t('common.loading')
+                            t("common.loading")
                         ) : (
                             <>
                                 <Save size={18} />
-                                {isCreating ? t('common.create') : t('common.save')}
+                                {isCreating ? t("users.create") : t("users.save")}
                             </>
                         )}
                     </button>

@@ -5,7 +5,7 @@ use axum::{
 use tracing::{error, info};
 use futures::{sink::SinkExt, stream::StreamExt};
 
-use crate::AppState;
+use crate::core::AppState;
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,

@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::AppError;
+use crate::core::AppState;
+use crate::core::error::AppError;
 
 pub fn routes() -> Router<AppState> {
     Router::new()

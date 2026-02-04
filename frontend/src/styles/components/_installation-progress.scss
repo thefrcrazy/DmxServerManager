@@ -1,5 +1,5 @@
-@use '../variables' as *;
-@use '../mixins' as *;
+@use "../variables" as *;
+@use "../mixins" as *;
 
 .installation-overlay {
     position: absolute;
@@ -352,7 +352,7 @@
         // 5 lines * 1.4 line-height * 0.75rem font-size ~= 5.25rem. plus padding.
         max-height: 6rem;
         overflow-y: auto;
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
         font-size: 0.75rem;
         color: #cbd5e1; // text-secondary
         border: 1px solid rgba(255, 255, 255, 0.1);

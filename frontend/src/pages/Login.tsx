@@ -1,8 +1,8 @@
-import { useState, FormEvent, useEffect } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { useLanguage } from '../contexts/LanguageContext';
-import { LogIn, UserPlus, Rocket, AlertCircle } from 'lucide-react';
+import { useState, FormEvent, useEffect } from "react";
+import { useNavigate, Navigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LogIn, UserPlus, Rocket, AlertCircle } from "lucide-react";
 
 interface LoginSettings {
   login_background_url?: string;
@@ -13,10 +13,10 @@ export default function Login() {
   const { user, login } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
@@ -31,25 +31,25 @@ export default function Login() {
   useEffect(() => {
     if (loginSettings.login_background_url) {
       document.documentElement.style.setProperty(
-        '--login-bg-image',
+        "--login-bg-image",
         `url(${loginSettings.login_background_url})`
       );
     }
     if (loginSettings.login_default_color) {
       document.documentElement.style.setProperty(
-        '--color-accent',
+        "--color-accent",
         loginSettings.login_default_color
       );
     }
     return () => {
       // Cleanup: remove custom background on unmount
-      document.documentElement.style.removeProperty('--login-bg-image');
+      document.documentElement.style.removeProperty("--login-bg-image");
     };
   }, [loginSettings]);
 
   const fetchLoginSettings = async () => {
     try {
-      const response = await fetch('/api/v1/settings');
+      const response = await fetch("/api/v1/settings");
       if (response.ok) {
         const data = await response.json();
         setLoginSettings({
@@ -58,19 +58,19 @@ export default function Login() {
         });
       }
     } catch (err) {
-      console.error('Failed to fetch login settings:', err);
+      console.error("Failed to fetch login settings:", err);
     }
   };
 
   const checkSetupStatus = async () => {
     try {
-      const response = await fetch('/api/v1/auth/status');
+      const response = await fetch("/api/v1/auth/status");
       if (response.ok) {
         const data = await response.json();
         setNeedsSetup(data.needs_setup);
       }
     } catch (err) {
-      console.error('Failed to check setup status:', err);
+      console.error("Failed to check setup status:", err);
       setNeedsSetup(false);
     } finally {
       setCheckingStatus(false);
@@ -79,10 +79,10 @@ export default function Login() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (needsSetup && password !== confirmPassword) {
-      setError(t('user_settings.password_mismatch'));
+      setError(t("user_settings.password_mismatch"));
       return;
     }
 
@@ -90,27 +90,27 @@ export default function Login() {
 
     try {
       if (needsSetup) {
-        const response = await fetch('/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/v1/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password }),
         });
 
         if (!response.ok) {
           const data = await response.json();
-          throw new Error(data.error || 'common.error');
+          throw new Error(data.error || "common.error");
         }
 
         const data = await response.json();
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = '/dashboard';
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        window.location.href = "/dashboard";
       } else {
         await login(username, password);
-        navigate('/dashboard');
+        navigate("/dashboard");
       }
     } catch (err) {
-      setError(err instanceof Error ? t(err.message) : t('auth.login_failed'));
+      setError(err instanceof Error ? t(err.message) : t("auth.login_failed"));
     } finally {
       setIsLoading(false);
     }
@@ -129,7 +129,7 @@ export default function Login() {
     return (
       <div className="loading-screen">
         <div className="spinner"></div>
-        <p className="text-muted">{t('common.loading')}</p>
+        <p className="text-muted">{t("common.loading")}</p>
       </div>
     );
   }
@@ -145,15 +145,15 @@ export default function Login() {
           />
           <p className="text-muted">
             {needsSetup
-              ? t('auth.setup_admin')
-              : t('auth.login_subtitle')}
+              ? t("auth.setup_admin")
+              : t("auth.login_subtitle")}
           </p>
         </div>
 
         {needsSetup && (
           <div className="login-setup-badge">
             <Rocket size={18} />
-            <span>{t('auth.first_install')}</span>
+            <span>{t("auth.first_install")}</span>
           </div>
         )}
 
@@ -166,24 +166,24 @@ export default function Login() {
           )}
 
           <div className="form-group">
-            <label className="form-label">{t('auth.username')}</label>
+            <label className="form-label">{t("auth.username")}</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder={needsSetup ? t('auth.username') : t('auth.username')}
+              placeholder={needsSetup ? t("auth.username") : t("auth.username")}
               required
               className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t('auth.password')}</label>
+            <label className="form-label">{t("auth.password")}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={needsSetup ? t('auth.password') : t('auth.password')}
+              placeholder={needsSetup ? t("auth.password") : t("auth.password")}
               required
               className="form-input"
             />
@@ -191,12 +191,12 @@ export default function Login() {
 
           {needsSetup && (
             <div className="form-group">
-              <label className="form-label">{t('auth.confirm_password')}</label>
+              <label className="form-label">{t("auth.confirm_password")}</label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder={t('auth.confirm_password')}
+                placeholder={t("auth.confirm_password")}
                 required
                 className="form-input"
               />
@@ -211,12 +211,12 @@ export default function Login() {
             {isLoading ? (
               <span className="flex-center">
                 <div className="spinner spinner--sm spinner--light"></div>
-                {t('common.loading')}
+                {t("common.loading")}
               </span>
             ) : (
               <span className="flex-center">
                 {needsSetup ? <UserPlus size={18} /> : <LogIn size={18} />}
-                {needsSetup ? t('auth.register') : t('auth.login')}
+                {needsSetup ? t("auth.register") : t("auth.login")}
               </span>
             )}
           </button>

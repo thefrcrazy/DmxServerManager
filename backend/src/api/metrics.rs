@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::AppError;
+use crate::core::AppState;
+use crate::core::error::AppError;
 
 /// A single metric data point
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -89,7 +89,7 @@ async fn get_server_metrics(
 
 /// Insert a new metric data point (called from process manager)
 pub async fn insert_metric(
-    pool: &crate::db::DbPool,
+    pool: &crate::core::database::DbPool,
     server_id: &str,
     cpu_usage: f64,
     memory_bytes: i64,
@@ -119,7 +119,7 @@ pub async fn insert_metric(
 }
 
 /// Cleanup old metrics (called periodically)
-pub async fn cleanup_old_metrics(pool: &crate::db::DbPool, retention_days: i64) -> Result<u64, sqlx::Error> {
+pub async fn cleanup_old_metrics(pool: &crate::core::database::DbPool, retention_days: i64) -> Result<u64, sqlx::Error> {
     let threshold = Utc::now() - Duration::days(retention_days);
     let threshold_str = threshold.to_rfc3339();
     

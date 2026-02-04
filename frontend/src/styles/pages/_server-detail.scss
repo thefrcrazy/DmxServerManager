@@ -1,5 +1,5 @@
-@use '../variables' as *;
-@use '../mixins' as *;
+@use "../variables" as *;
+@use "../mixins" as *;
 
 .server-detail-page {
     padding: var(--spacing-6);
@@ -1707,7 +1707,7 @@
             border: 1px solid rgba(16, 185, 129, 0.2);
 
             &::before {
-                content: '';
+                content: "";
                 display: block;
                 width: 6px;
                 height: 6px;
@@ -1862,7 +1862,7 @@
     min-height: 0;
     overflow: hidden;
 
-    // Ensure header doesn't shrink
+    // Ensure header doesn"t shrink
     .players-header {
         flex-shrink: 0;
     }

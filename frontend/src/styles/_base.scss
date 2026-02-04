@@ -2,7 +2,7 @@
 // Draveur Manager - Base Styles
 // ===========================
 
-@use 'mixins' as *;
+@use "mixins" as *;
 
 *,
 *::before,
@@ -98,7 +98,7 @@ a {
 // Code
 code,
 pre {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
 }
 
 pre {

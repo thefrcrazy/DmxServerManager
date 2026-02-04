@@ -1,10 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useServers } from './useServers';
+import { useState, useCallback, useMemo } from "react";
+import { useServers } from "./useServers";
 
 interface UseFilteredServersOptions {
     initialSearch?: string;
     initialGameType?: string;
-    initialViewMode?: 'grid' | 'list';
+    initialViewMode?: "grid" | "list";
 }
 
 export function useFilteredServers(options: UseFilteredServersOptions = {}) {
@@ -19,14 +19,14 @@ export function useFilteredServers(options: UseFilteredServersOptions = {}) {
         killServer,
     } = useServers();
 
-    const [search, setSearch] = useState(options.initialSearch || '');
-    const [gameType, setGameType] = useState(options.initialGameType || 'all');
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>(options.initialViewMode || 'grid');
+    const [search, setSearch] = useState(options.initialSearch || "");
+    const [gameType, setGameType] = useState(options.initialGameType || "all");
+    const [viewMode, setViewMode] = useState<"grid" | "list">(options.initialViewMode || "grid");
 
     const filteredServers = useMemo(() => {
         return servers.filter(server => {
             const matchesSearch = server.name.toLowerCase().includes(search.toLowerCase());
-            const matchesGameType = gameType === 'all' || server.game_type === gameType;
+            const matchesGameType = gameType === "all" || server.game_type === gameType;
             return matchesSearch && matchesGameType;
         });
     }, [servers, search, gameType]);
@@ -38,19 +38,19 @@ export function useFilteredServers(options: UseFilteredServersOptions = {}) {
 
     const stats = useMemo(() => ({
         total: servers.length,
-        online: servers.filter(s => s.status === 'running').length,
-        offline: servers.filter(s => s.status === 'stopped' || s.status === 'offline').length,
+        online: servers.filter(s => s.status === "running").length,
+        offline: servers.filter(s => s.status === "stopped" || s.status === "offline").length,
     }), [servers]);
 
-    const handleServerAction = useCallback(async (action: 'start' | 'stop' | 'restart' | 'kill', serverId: string) => {
+    const handleServerAction = useCallback(async (action: "start" | "stop" | "restart" | "kill", serverId: string) => {
         switch (action) {
-            case 'start':
+            case "start":
                 return await startServer(serverId);
-            case 'stop':
+            case "stop":
                 return await stopServer(serverId);
-            case 'restart':
+            case "restart":
                 return await restartServer(serverId);
-            case 'kill':
+            case "kill":
                 return await killServer(serverId);
         }
     }, [startServer, stopServer, restartServer, killServer]);

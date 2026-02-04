@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import apiService from '../services/api';
+import { useState, useEffect, useCallback } from "react";
+import apiService from "../services/api";
 
 interface Settings {
     version: string;
@@ -27,17 +27,17 @@ export function useSettings(): UseSettingsReturn {
         setLoading(true);
         setError(null);
         try {
-            const response = await apiService.getSettings();
+            const response = await apiService.system.getSettings();
             if (response.data) {
                 setSettings({
-                    version: response.data.version || '',
-                    servers_dir: response.data.servers_dir || '',
-                    backups_dir: response.data.backups_dir || '',
+                    version: response.data.version || "",
+                    servers_dir: response.data.servers_dir || "",
+                    backups_dir: response.data.backups_dir || "",
                     webhook_url: response.data.webhook_url,
                 });
             }
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Erreur de chargement');
+            setError(err instanceof Error ? err.message : "Erreur de chargement");
         } finally {
             setLoading(false);
         }
@@ -50,7 +50,7 @@ export function useSettings(): UseSettingsReturn {
     const updateWebhook = useCallback(async (url: string): Promise<boolean> => {
         setSaving(true);
         try {
-            await apiService.updateSettings({ webhook_url: url });
+            await apiService.system.updateSettings({ webhook_url: url });
             setSettings(prev => prev ? { ...prev, webhook_url: url } : null);
             return true;
         } catch {

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 interface UseAsyncState<T> {
     data: T | null;
@@ -28,7 +28,7 @@ export function useAsync<T, Args extends any[] = []>(
                 setState({ data: result, loading: false, error: null });
                 return result;
             } catch (err) {
-                const message = err instanceof Error ? err.message : 'Une erreur est survenue';
+                const message = err instanceof Error ? err.message : "Une erreur est survenue";
                 setState({ data: null, loading: false, error: message });
                 return null;
             }

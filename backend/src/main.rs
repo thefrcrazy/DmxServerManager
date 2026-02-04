@@ -10,28 +10,17 @@ use tower_http::{
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-// Modules will be uncommented as they are migrated
+// Module definitions
 mod api;
-mod config;
-mod db;
-mod error;
-mod error_codes;
-mod models;
+mod core;    // New Core module (Config, DB, Errors)
+mod domain;  // New Domain module (Models)
 mod services;
-mod templates;
 mod utils;
 
-use config::Settings;
-use services::ProcessManager;
-use db::DbPool;
+use core::{Settings, AppState};
+use services::game::ProcessManager;
+use core::database::{self, DbPool};
 use std::sync::Arc;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub pool: DbPool,
-    pub process_manager: ProcessManager,
-    pub settings: Arc<Settings>,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -55,14 +44,14 @@ async fn main() -> anyhow::Result<()> {
     info!("📡 Starting server on {}:{}", settings.host, settings.port);
 
     // Initialize database
-    let pool = db::init_pool(&settings.database_url).await?;
-    db::run_migrations(&pool).await?;
+    let pool = database::init_pool(&settings.database_url).await?;
+    database::run_migrations(&pool).await?;
 
     // Initialize services
     let process_manager = ProcessManager::new(Some(pool.clone()));
 
     // Start background services
-    services::scheduler::start(pool.clone(), process_manager.clone());
+    services::system::scheduler::start(pool.clone(), process_manager.clone());
 
     let state = AppState {
         pool,
@@ -72,8 +61,7 @@ async fn main() -> anyhow::Result<()> {
     
     let uploads_dir = settings.uploads_dir.clone();
 
-    // CORS configuration - Restrict to specific origins only
-    // In production, set FRONTEND_URL environment variable
+    // CORS configuration
     let mut allowed_origins: Vec<axum::http::HeaderValue> = vec![
         "http://localhost:5173".parse().unwrap(), // Vite dev server
         "http://localhost:5500".parse().unwrap(), // Backend serving frontend
@@ -115,7 +103,6 @@ async fn main() -> anyhow::Result<()> {
         .nest_service("/uploads", get_service(ServeDir::new(&uploads_dir)))
         
         // Serve frontend in production (static files)
-        // With fallback to index.html for SPA routing
         .nest_service("/", get_service(
             ServeDir::new("./static")
                 .fallback(tower_http::services::ServeFile::new("./static/index.html"))

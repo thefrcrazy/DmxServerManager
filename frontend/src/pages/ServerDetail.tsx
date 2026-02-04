@@ -19,7 +19,6 @@ import {
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { formatBytes, formatGB } from "../utils/formatters";
-import InstallationProgress from "../components/InstallationProgress";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePageTitle } from "../contexts/PageTitleContext";
 import { useServerWebSocket } from "../hooks";
@@ -27,15 +26,18 @@ import { useToast } from "../contexts/ToastContext";
 import { useDialog } from "../contexts/DialogContext";
 
 // New Components
-import ServerConsole from "../components/server/ServerConsole";
-import ServerBackups from "../components/server/ServerBackups";
-import ServerFiles from "../components/server/ServerFiles";
-import ServerLogs from "../components/server/ServerLogs";
-import ServerConfig from "../components/server/ServerConfig";
-import ServerPlayers from "../components/server/ServerPlayers";
-import ServerMetrics from "../components/server/ServerMetrics";
-import Tabs from "../components/Tabs";
-import WorkInProgress from "../components/WorkInProgress";
+import {
+    ServerConsole,
+    ServerBackups,
+    ServerFiles,
+    ServerLogs,
+    ServerConfig,
+    ServerPlayers,
+    ServerMetrics,
+    AddPlayerModal
+} from "@/components/features/server";
+import { Tabs } from "@/components/ui";
+import { WorkInProgress, InstallationProgress } from "@/components/shared";
 
 interface Backup {
     id: string;
@@ -52,13 +54,22 @@ interface FileEntry {
     size?: number;
 }
 
+// Don't define local Player interface, import or redefine compatible one if needed.
+// Actually, to avoid conflicts, let's just make the local one compatible or remove it if I import.
+// For now, I will align the local interface with ServerPlayers requirement.
+
 interface Player {
     name: string;
+    uuid?: string;
     is_online: boolean;
-    last_seen: string;
+    last_seen?: string;
     is_op?: boolean;
     is_banned?: boolean;
     is_whitelisted?: boolean;
+    reason?: string;
+    bannedBy?: string;
+    expires?: string;
+    created?: string;
 }
 
 interface Server {
@@ -225,10 +236,9 @@ export default function ServerDetail() {
     >([]);
 
     // Players tab state
-    const [activePlayerTab, setActivePlayerTab] = useState<
-        "online" | "whitelist" | "bans" | "ops"
-    >("online");
-    const [playerData, setPlayerData] = useState<any[]>([]);
+    const [activePlayerTab, setActivePlayerTab] = useState<"online" | "whitelist" | "bans" | "ops" | "database">("online");
+    const [playerData, setPlayerData] = useState<Player[]>([]);
+    const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
 
 
     const tabs: Tab[] = [
@@ -613,7 +623,7 @@ export default function ServerDetail() {
     };
 
     const toggleJvmArg = (arg: string) => {
-        let currentArgs = configFormData.extra_args || "";
+        const currentArgs = configFormData.extra_args || "";
         let parts = currentArgs.trim().split(/\s+/).filter((a) => a.length > 0);
         if (parts.includes(arg)) parts = parts.filter((a) => a !== arg);
         else parts.push(arg);
@@ -694,33 +704,172 @@ export default function ServerDetail() {
     };
 
     // Players Logic
-    const fetchPlayerData = useCallback(async () => {
-        if (!id || activePlayerTab === "online") return;
-        let filename = "";
-        if (activePlayerTab === "whitelist") filename = "server/whitelist.json";
-        else if (activePlayerTab === "bans") filename = "server/bans.json";
-        else if (activePlayerTab === "ops") filename = "server/ops.json";
+    const fetchPlayerData = async () => {
+        if (!server) return;
 
         try {
-            const response = await fetch(`/api/v1/servers/${id}/files/read?path=${filename}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            if (response.ok) {
-                const data = await response.json();
-                try {
-                    const parsed = JSON.parse(data.content);
-                    setPlayerData(Array.isArray(parsed) ? parsed : []);
-                } catch (e) { setPlayerData([]); }
-            } else { setPlayerData([]); }
-        } catch (error) { setPlayerData([]); }
-    }, [id, activePlayerTab]);
+            let list: Player[] = [];
 
-    // Simple handler mocks for players since logic was complex and file-based
-    const onPlayerAction = (action: string, name: string) => {
-        // Implement kick/ban/op via API or Console Command
-        if (action === "op") sendCommand(`op ${name}`);
-        else if (action === "kick") sendCommand(`kick ${name}`);
-        else if (action === "ban") sendCommand(`ban ${name}`);
+            // Always fetch online players from server status
+            const online = server.players || [];
+
+            if (activePlayerTab === "online") {
+                list = online;
+            } else if (activePlayerTab === "database") {
+                if (server.players) {
+                    list = server.players.map(p => ({
+                        ...p,
+                        is_online: false,
+                    }));
+                }
+            } else if (activePlayerTab === "whitelist") {
+                const res = await fetch(`/api/v1/servers/${id}/whitelist`);
+                if (res.ok) {
+                    const data = await res.json();
+                    list = data.map((entry: any) => ({
+                        name: entry.name || "Inconnu",
+                        uuid: entry.uuid,
+                        is_online: false,
+                        last_seen: "",
+                        is_whitelisted: true
+                    }));
+                }
+            } else if (activePlayerTab === "bans") {
+                const res = await fetch(`/api/v1/servers/${id}/bans`);
+                if (res.ok) {
+                    const data = await res.json();
+                    list = data.map((b: any) => ({
+                        name: b.username || "Inconnu (" + (b.target || "?") + ")",
+                        uuid: b.target,
+                        reason: b.reason,
+                        bannedBy: b.by,
+                        expires: b.type === "infinite" ? undefined : b.expires,
+                        created: b.timestamp ? new Date(b.timestamp).toISOString() : undefined,
+                        is_online: false,
+                        last_seen: "",
+                        is_banned: true
+                    }));
+                }
+            } else if (activePlayerTab === "ops") {
+                const res = await fetch(`/api/v1/servers/${id}/ops`);
+                if (res.ok) {
+                    const data = await res.json();
+                    list = data.map((op: any) => ({
+                        name: "UUID: " + op.uuid.substring(0, 8),
+                        uuid: op.uuid,
+                        reason: (op.groups || []).join(", "),
+                        is_op: true,
+                        is_online: false,
+                        last_seen: ""
+                    }));
+                }
+            }
+            setPlayerData(list);
+        } catch (e) {
+            console.error("Failed to fetch player data", e);
+        }
+    };
+
+    const handlePlayerAction = async (action: string, player: Player) => {
+        if (!player.name) return;
+
+        // Online actions via commands
+        if (server?.status === "running") {
+            if (action === "op") await sendCommand(`op ${player.name}`);
+            else if (action === "deop") await sendCommand(`deop ${player.name}`);
+            else if (action === "kick") await sendCommand(`kick ${player.name}`);
+            else if (action === "ban") await sendCommand(`ban ${player.name}`);
+            else if (action === "unban") {
+                await sendCommand(`pardon ${player.name}`);
+            }
+
+            setTimeout(() => {
+                fetchServer();
+                fetchPlayerData();
+            }, 1000);
+        } else {
+            showError(t("server_detail.messages.server_offline_action"));
+        }
+    };
+
+    const handleAddPlayer = async () => {
+        setShowAddPlayerModal(true);
+    };
+
+    const handleConfirmAddPlayer = async (name: string) => {
+        setShowAddPlayerModal(false);
+        if (!name) return;
+
+        if (server?.status === "running") {
+            if (activePlayerTab === "whitelist") sendCommand(`whitelist add ${name}`);
+            else if (activePlayerTab === "ops") sendCommand(`op ${name}`);
+            else if (activePlayerTab === "bans") sendCommand(`ban ${name}`);
+            setTimeout(fetchPlayerData, 1000);
+        } else {
+            // Offline API usage
+            try {
+                if (activePlayerTab === "whitelist") {
+                    await fetch(`/api/v1/servers/${id}/whitelist`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name, uuid: name }) // Fallback uuid=name if unknown
+                    });
+                } else if (activePlayerTab === "ops") {
+                    await fetch(`/api/v1/servers/${id}/ops`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ uuid: name }) // Prompt is name/uuid entry
+                    });
+                } else if (activePlayerTab === "bans") {
+                    await fetch(`/api/v1/servers/${id}/bans`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ target: name, reason: "Banned via Panel" })
+                    });
+                }
+                success(t("server_detail.messages.save_success"));
+                fetchPlayerData();
+            } catch (e) {
+                showError("Erreur lors de l'ajout via API");
+            }
+        }
+    };
+
+    const handleRemovePlayer = async (player: Player) => {
+        if (!await confirm(t("server_detail.players.remove_confirm"), { isDestructive: true })) return;
+
+        if (server?.status === "running") {
+            if (activePlayerTab === "whitelist") sendCommand(`whitelist remove ${player.name}`);
+            else if (activePlayerTab === "ops") sendCommand(`deop ${player.name}`);
+            else if (activePlayerTab === "bans") sendCommand(`pardon ${player.name}`);
+            setTimeout(fetchPlayerData, 1000);
+        } else {
+            try {
+                if (activePlayerTab === "whitelist") {
+                    await fetch(`/api/v1/servers/${id}/whitelist`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: player.name, uuid: player.uuid })
+                    });
+                } else if (activePlayerTab === "ops") {
+                    await fetch(`/api/v1/servers/${id}/ops`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ uuid: player.uuid })
+                    });
+                } else if (activePlayerTab === "bans") {
+                    await fetch(`/api/v1/servers/${id}/bans`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ target: player.uuid })
+                    });
+                }
+                success(t("server_detail.messages.save_success"));
+                fetchPlayerData();
+            } catch (e) {
+                showError("Erreur lors de la suppression via API");
+            }
+        }
     };
 
     // Effect triggers
@@ -776,7 +925,7 @@ export default function ServerDetail() {
                 if (v1 == v2) return true;
 
                 // Deep compare
-                if (typeof v1 === 'object' && typeof v2 === 'object') {
+                if (typeof v1 === "object" && typeof v2 === "object") {
                     if (v1 === null || v2 === null) return v1 === v2; // Should be caught by isEmpty but being safe
                     return JSON.stringify(v1) === JSON.stringify(v2);
                 }
@@ -882,6 +1031,7 @@ export default function ServerDetail() {
 
                 {activeTab === "config" && (
                     <ServerConfig
+                        serverId={id}
                         configFormData={configFormData}
                         configSaving={configSaving}
                         configError={configError}
@@ -889,7 +1039,6 @@ export default function ServerDetail() {
                         updateConfigValue={updateConfigValue}
                         toggleJvmArg={toggleJvmArg}
                         handleSaveConfig={handleSaveConfig}
-                        t={t}
                         onDelete={handleDeleteServer}
                         onReinstall={handleReinstallServer}
                         hasChanges={configHasChanges}
@@ -907,16 +1056,9 @@ export default function ServerDetail() {
                         activeTab={activePlayerTab}
                         onTabChange={setActivePlayerTab}
                         isLoading={false}
-                        onAction={onPlayerAction}
-                        onAddPlayer={(name) => {
-                            if (activePlayerTab === "whitelist") sendCommand(`whitelist add ${name}`);
-                            else if (activePlayerTab === "ops") sendCommand(`op ${name}`);
-                        }}
-                        onRemovePlayer={(name) => {
-                            if (activePlayerTab === "whitelist") sendCommand(`whitelist remove ${name}`);
-                            else if (activePlayerTab === "ops") sendCommand(`deop ${name}`);
-                            else if (activePlayerTab === "bans") sendCommand(`pardon ${name}`);
-                        }}
+                        onAction={handlePlayerAction}
+                        onAddPlayer={handleAddPlayer}
+                        onRemovePlayer={handleRemovePlayer}
                         onRefresh={() => {
                             fetchServer();
                             fetchPlayerData();
@@ -931,7 +1073,7 @@ export default function ServerDetail() {
                         ramUsage={ramUsage}
                         diskUsage={diskUsage}
                         maxHeapBytes={memoryLimit ?? server?.max_heap_bytes}
-                        serverStatus={server?.status || 'stopped'}
+                        serverStatus={server?.status || "stopped"}
                         currentPlayers={currentPlayers}
                         maxPlayers={server?.max_players || 100}
                     />
@@ -941,6 +1083,18 @@ export default function ServerDetail() {
                     <WorkInProgress />
                 )}
             </div>
+
+            <AddPlayerModal
+                isOpen={showAddPlayerModal}
+                onClose={() => setShowAddPlayerModal(false)}
+                onAdd={handleConfirmAddPlayer}
+                knownPlayers={server?.players || []}
+                title={
+                    activePlayerTab === "whitelist" ? "Ajouter à la Whitelist" :
+                        activePlayerTab === "ops" ? "Ajouter un Opérateur" :
+                            activePlayerTab === "bans" ? "Bannir un joueur" : undefined
+                }
+            />
         </div>
     );
 }

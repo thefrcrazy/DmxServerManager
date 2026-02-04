@@ -1,4 +1,4 @@
-@use '../mixins' as *;
+@use "../mixins" as *;
 
 // Helper: Ensure text-right is available if not global
 .text-right {
@@ -51,7 +51,7 @@
     background: var(--color-bg-tertiary);
     color: var(--color-text-muted);
     flex-shrink: 0;
-    overflow: hidden; // Ensure images don't overflow border radius
+    overflow: hidden; // Ensure images don"t overflow border radius
 
     &--running {
         background: rgba(var(--color-success-rgb), 0.1);

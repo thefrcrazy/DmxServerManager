@@ -1,4 +1,4 @@
-@use '../mixins' as *;
+@use "../mixins" as *;
 
 .user-profile {
     display: flex;
@@ -112,7 +112,7 @@
         }
 
         &::after {
-            content: '+';
+            content: "+";
             font-size: 1.5rem;
             color: white;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);

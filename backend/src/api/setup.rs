@@ -4,10 +4,10 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use crate::AppState;
-use crate::error::AppError;
+use crate::core::AppState;
+use crate::core::error::AppError;
 use crate::api::auth::AuthResponse;
-use crate::db::get_or_create_jwt_secret;
+use crate::core::database::get_or_create_jwt_secret;
 
 #[derive(Serialize)]
 struct SetupStatusResponse {
@@ -73,7 +73,7 @@ async fn perform_setup(
     .await?;
 
     // 3. Update Settings
-    async fn upsert_setting(pool: &crate::db::DbPool, key: &str, value: &str) -> Result<(), AppError> {
+    async fn upsert_setting(pool: &crate::core::database::DbPool, key: &str, value: &str) -> Result<(), AppError> {
         sqlx::query(
             "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) 
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"

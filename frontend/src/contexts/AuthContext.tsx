@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { apiService } from "@/services";
 
 interface User {
     id: string;
@@ -23,13 +24,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const applyUserAccentColor = (color: string | undefined | null) => {
     if (color) {
         const root = document.documentElement;
-        root.style.setProperty('--color-accent', color);
+        root.style.setProperty("--color-accent", color);
         // Convert hex to rgb for opacity support
         const r = parseInt(color.slice(1, 3), 16);
         const g = parseInt(color.slice(3, 5), 16);
         const b = parseInt(color.slice(5, 7), 16);
-        root.style.setProperty('--color-accent-rgb', `${r}, ${g}, ${b}`);
-        localStorage.setItem('draveur_accent_color', color);
+        root.style.setProperty("--color-accent-rgb", `${r}, ${g}, ${b}`);
+        localStorage.setItem("draveur_accent_color", color);
     }
 };
 
@@ -40,35 +41,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         // Check for existing token
-        const savedToken = localStorage.getItem('token');
-        const savedUser = localStorage.getItem('user');
+        const savedToken = localStorage.getItem("token");
+        const savedUser = localStorage.getItem("user");
 
         if (savedToken && savedUser) {
             setToken(savedToken);
-            const parsedUser = JSON.parse(savedUser);
-            setUser(parsedUser);
-            // Note: ThemeContext handles accent color application on mount
+            try {
+                const parsedUser = JSON.parse(savedUser);
+                setUser(parsedUser);
+            } catch (e) {
+                console.error("Failed to parse user", e);
+            }
         }
         setIsLoading(false);
     }, []);
 
     const login = async (username: string, password: string) => {
-        const response = await fetch('/api/v1/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
-        });
+        const response = await apiService.auth.login(username, password);
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Login failed');
+        if (!response.success) {
+            throw new Error(response.error?.error || "Login failed");
         }
 
-        const data = await response.json();
+        const data = response.data;
         setToken(data.token);
         setUser(data.user);
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
 
         // Apply user's accent color immediately after login
         applyUserAccentColor(data.user.accent_color);
@@ -78,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Redirect to Discord OAuth2
         const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID;
         const redirectUri = encodeURIComponent(`${window.location.origin}/auth/discord/callback`);
-        const scope = encodeURIComponent('identify email');
+        const scope = encodeURIComponent("identify email");
 
         window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
     };
@@ -86,15 +85,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const logout = () => {
         setToken(null);
         setUser(null);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
     };
 
     const updateUser = (updates: Partial<User>) => {
         if (user) {
             const updatedUser = { ...user, ...updates };
             setUser(updatedUser);
-            localStorage.setItem('user', JSON.stringify(updatedUser));
+            localStorage.setItem("user", JSON.stringify(updatedUser));
             // Apply accent color if it was updated
             if (updates.accent_color) {
                 applyUserAccentColor(updates.accent_color);
@@ -112,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
     const context = useContext(AuthContext);
     if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider');
+        throw new Error("useAuth must be used within an AuthProvider");
     }
     return context;
 }

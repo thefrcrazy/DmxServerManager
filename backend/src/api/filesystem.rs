@@ -6,7 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::{AppState, error::AppError};
+use crate::core::{AppState, AppError};
 
 pub fn routes() -> Router<AppState> {
     Router::new()

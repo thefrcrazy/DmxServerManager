@@ -25,26 +25,7 @@ OK maintenant dans "Gestion des Joueurs" ajoute une autre tabs concernant les jo
 
 #### bans.json
 ```
-{
-  "bans": [
-    {
-      "uuid": "550e8400-e29b-41d4-a716-446655440000",
-      "username": "BadPlayer1",
-      "reason": "Griefing",
-      "bannedBy": "AdminName",
-      "date": "2026-02-04T10:30:00Z",
-      "expires": null
-    },
-    {
-      "uuid": "123e4567-e89b-12d3-a456-426614174000",
-      "username": "BadPlayer2",
-      "reason": "Spam and harassment",
-      "bannedBy": "ModeratorName",
-      "date": "2026-02-03T15:45:00Z",
-      "expires": "2026-02-10T15:45:00Z"
-    }
-  ]
-}
+[{"type":"infinite","target":"ebc152b4-fdfd-4467-aadc-865ad4c87ea4","by":"00000000-0000-0000-0000-000000000000","timestamp":1770236025722,"reason":"No reason."}]
 ```
 
 #### permissions.json default

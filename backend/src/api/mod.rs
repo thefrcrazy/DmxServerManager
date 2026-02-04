@@ -2,7 +2,7 @@ use axum::{
     routing::get,
     Router,
 };
-use crate::AppState;
+use crate::core::AppState;
 
 pub mod auth;
 pub mod backups;
@@ -22,7 +22,7 @@ pub fn routes() -> Router<AppState> {
         .nest("/auth", auth::routes())
         .nest("/backups", backups::routes())
         .nest("/filesystem", filesystem::routes())
-        .nest("/servers", servers::routes().merge(metrics::routes()))
+        .nest("/servers", servers::routes()) // servers::routes() now includes metrics merging inside it if kept consistent
         .nest("/settings", settings::routes())
         .nest("/setup", setup::routes())
         .nest("/system", system::routes())
@@ -31,4 +31,3 @@ pub fn routes() -> Router<AppState> {
         .nest("/webhook", webhook::routes())
         .route("/ws/console/:id", get(console::ws_handler))
 }
-

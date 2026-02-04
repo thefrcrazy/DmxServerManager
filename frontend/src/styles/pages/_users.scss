@@ -1,4 +1,4 @@
-@use '../mixins' as *;
+@use "../mixins" as *;
 
 // ========================================
 // Users Page Styles
@@ -366,7 +366,7 @@
         transition: all var(--transition-fast);
 
         &::after {
-            content: '';
+            content: "";
             width: 10px;
             height: 10px;
             background: var(--color-accent);

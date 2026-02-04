@@ -1,13 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { Server as ServerIcon, Activity, HardDrive, Users, Plus, Cpu, MemoryStick, Square } from 'lucide-react';
-import { formatBytes } from '../utils/formatters';
-import { useLanguage } from '../contexts/LanguageContext';
-import { usePageTitle } from '../contexts/PageTitleContext';
-import ServerList from '../components/ServerList';
-import ServerFilters from '../components/ServerFilters';
-import { Server } from '../schemas/api';
-import { LoadingScreen, StatPill, EmptyState } from '../components/common';
+import { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
+import { Server as ServerIcon, Activity, HardDrive, Users, Plus, Cpu, MemoryStick, Square } from "lucide-react";
+import { formatBytes } from "../utils/formatters";
+import { useLanguage } from "../contexts/LanguageContext";
+import { usePageTitle } from "../contexts/PageTitleContext";
+import { ServerList, ServerFilters } from "@/components/features/server";
+import { Server } from "@/schemas/api";
+import { LoadingScreen, EmptyState } from "@/components/shared";
+import { StatPill } from "@/components/ui";
 
 interface ServerStats {
     total: number;
@@ -47,9 +47,9 @@ export default function Dashboard() {
     const [isLoading, setIsLoading] = useState(true);
 
     // Filter states
-    const [search, setSearch] = useState('');
-    const [gameType, setGameType] = useState('all');
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+    const [search, setSearch] = useState("");
+    const [gameType, setGameType] = useState("all");
+    const [viewMode, setViewMode] = useState<"grid" | "list">("list");
 
     useEffect(() => {
         fetchData();
@@ -65,7 +65,7 @@ export default function Dashboard() {
 
     const { setPageTitle } = usePageTitle();
     useEffect(() => {
-        setPageTitle(t('sidebar.dashboard'), t('dashboard.welcome'));
+        setPageTitle(t("sidebar.dashboard"), t("dashboard.welcome"));
     }, [setPageTitle, t]);
 
     const fetchData = async () => {
@@ -78,9 +78,9 @@ export default function Dashboard() {
 
     const fetchServers = async () => {
         try {
-            const response = await fetch('/api/v1/servers', {
+            const response = await fetch("/api/v1/servers", {
                 headers: {
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
                 },
             });
 
@@ -89,20 +89,20 @@ export default function Dashboard() {
                 setServers(data);
                 setStats({
                     total: data.length,
-                    running: data.filter((s) => s.status === 'running').length,
-                    stopped: data.filter((s) => s.status === 'stopped').length,
+                    running: data.filter((s) => s.status === "running").length,
+                    stopped: data.filter((s) => s.status === "stopped").length,
                 });
             }
         } catch (error) {
-            console.error('Erreur lors du chargement des serveurs:', error);
+            console.error("Erreur lors du chargement des serveurs:", error);
         }
     };
 
     const fetchSystemStats = async () => {
         try {
-            const response = await fetch('/api/v1/system/stats', {
+            const response = await fetch("/api/v1/system/stats", {
                 headers: {
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
                 },
             });
 
@@ -128,16 +128,16 @@ export default function Dashboard() {
                 });
             }
         } catch (error) {
-            console.error('Erreur lors du chargement des stats système:', error);
+            console.error("Erreur lors du chargement des stats système:", error);
         }
     };
 
-    const handleServerAction = async (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => {
+    const handleServerAction = async (id: string, action: "start" | "stop" | "restart" | "kill") => {
         try {
             await fetch(`/api/v1/servers/${id}/${action}`, {
-                method: 'POST',
+                method: "POST",
                 headers: {
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
                 },
             });
             fetchServers();
@@ -155,15 +155,15 @@ export default function Dashboard() {
     const filteredServers = useMemo(() => {
         return servers.filter(server => {
             const matchesSearch = server.name.toLowerCase().includes(search.toLowerCase());
-            const matchesType = gameType === 'all' || server.game_type === gameType;
+            const matchesType = gameType === "all" || server.game_type === gameType;
             return matchesSearch && matchesType;
         });
     }, [servers, search, gameType]);
 
     const getStatColor = (value: number): string => {
-        if (value >= 90) return 'danger';
-        if (value >= 70) return 'warning';
-        return 'success';
+        if (value >= 90) return "danger";
+        if (value >= 70) return "warning";
+        return "success";
     };
 
     if (isLoading) {
@@ -179,27 +179,27 @@ export default function Dashboard() {
             <div className="dashboard-header-stats">
                 <StatPill
                     icon={<ServerIcon size={16} />}
-                    label={t('dashboard.total_servers')}
+                    label={t("dashboard.total_servers")}
                     value={stats.total}
                     variant="default"
                 />
                 <StatPill
                     icon={<Activity size={16} />}
-                    label={t('servers.status')}
+                    label={t("servers.status")}
                     value={stats.running}
                     variant="success"
-                    sublabel={t('dashboard.running')}
+                    sublabel={t("dashboard.running")}
                 />
                 <StatPill
                     icon={<Square size={16} />}
-                    label={t('servers.stop')}
+                    label={t("servers.stop")}
                     value={stats.stopped}
                     variant="muted"
-                    sublabel={t('dashboard.stopped')}
+                    sublabel={t("dashboard.stopped")}
                 />
                 <StatPill
                     icon={<Users size={16} />}
-                    label={t('servers.players')}
+                    label={t("servers.players")}
                     value={playersStats.current}
                     variant="purple"
                     suffix={playersStats.max > 0 ? `/${playersStats.max}` : undefined}
@@ -211,7 +211,7 @@ export default function Dashboard() {
                     <div className="stat-card__header">
                         <div className="stat-card__title-group">
                             <Cpu size={18} className={`text-${getStatColor(systemStats.cpu)}`} />
-                            <span className="stat-card__label">{t('dashboard.cpu_usage')}</span>
+                            <span className="stat-card__label">{t("dashboard.cpu_usage")}</span>
                         </div>
                         <span className={`stat-card__value stat-card__value--large text-${getStatColor(systemStats.cpu)}`}>
                             {systemStats.cpu.toFixed(1)}%
@@ -221,7 +221,7 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">{t('dashboard.global_system')}</span>
+                                <span className="resource-usage__label">{t("dashboard.global_system")}</span>
                                 <span className="resource-usage__value">{systemStats.cpu.toFixed(1)}%</span>
                             </div>
                             <div className="progress-container">
@@ -229,7 +229,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">{t('dashboard.managed_servers')}</span>
+                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
                                 <span className="resource-usage__value">{systemStats.managed_cpu.toFixed(1)}%</span>
                             </div>
                             <div className="progress-container progress-container--dimmed">
@@ -238,7 +238,7 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="stat-card__footer">
-                        <span className="text-muted">{systemStats.cpu_cores ? `${systemStats.cpu_cores} ${t('dashboard.cores')}` : '---'}</span>
+                        <span className="text-muted">{systemStats.cpu_cores ? `${systemStats.cpu_cores} ${t("dashboard.cores")}` : "---"}</span>
                     </div>
                 </div>
 
@@ -246,7 +246,7 @@ export default function Dashboard() {
                     <div className="stat-card__header">
                         <div className="stat-card__title-group">
                             <MemoryStick size={18} className={`text-${getStatColor(systemStats.ram)}`} />
-                            <span className="stat-card__label">{t('dashboard.ram_usage')}</span>
+                            <span className="stat-card__label">{t("dashboard.ram_usage")}</span>
                         </div>
                         <span className={`stat-card__value stat-card__value--large text-${getStatColor(systemStats.ram)}`}>
                             {systemStats.ram.toFixed(1)}%
@@ -256,7 +256,7 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">{t('dashboard.global_system')}</span>
+                                <span className="resource-usage__label">{t("dashboard.global_system")}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.ram_used)} / {formatBytes(systemStats.ram_total)}</span>
                             </div>
                             <div className="progress-container">
@@ -264,7 +264,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">{t('dashboard.managed_servers')}</span>
+                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.managed_ram)}</span>
                             </div>
                             <div className="progress-container progress-container--dimmed">
@@ -278,7 +278,7 @@ export default function Dashboard() {
                     <div className="stat-card__header">
                         <div className="stat-card__title-group">
                             <HardDrive size={18} className={`text-${getStatColor(systemStats.disk)}`} />
-                            <span className="stat-card__label">{t('dashboard.disk_usage')}</span>
+                            <span className="stat-card__label">{t("dashboard.disk_usage")}</span>
                         </div>
                         <span className={`stat-card__value stat-card__value--large text-${getStatColor(systemStats.disk)}`}>
                             {systemStats.disk.toFixed(1)}%
@@ -288,7 +288,7 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">{t('dashboard.global_system')}</span>
+                                <span className="resource-usage__label">{t("dashboard.global_system")}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.disk_used)} / {formatBytes(systemStats.disk_total)}</span>
                             </div>
                             <div className="progress-container">
@@ -296,7 +296,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">{t('dashboard.managed_servers')}</span>
+                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.managed_disk)}</span>
                             </div>
                             <div className="progress-container progress-container--dimmed">
@@ -319,7 +319,7 @@ export default function Dashboard() {
                     action={
                         <Link to="/servers/create" className="btn btn--primary">
                             <Plus size={18} />
-                            {t('servers.create_new')}
+                            {t("servers.create_new")}
                         </Link>
                     }
                 />
@@ -327,13 +327,13 @@ export default function Dashboard() {
                 {filteredServers.length === 0 ? (
                     <EmptyState
                         icon={<ServerIcon size={32} />}
-                        title={t('servers.no_servers')}
-                        description={search || gameType !== 'all' ? t('dashboard.no_filter_match') : t('dashboard.welcome')}
+                        title={t("servers.no_servers")}
+                        description={search || gameType !== "all" ? t("dashboard.no_filter_match") : t("dashboard.welcome")}
                         action={
-                            (search === '' && gameType === 'all') && (
+                            (search === "" && gameType === "all") && (
                                 <Link to="/servers/create" className="btn btn--primary">
                                     <Plus size={18} />
-                                    {t('servers.create_new')}
+                                    {t("servers.create_new")}
                                 </Link>
                             )
                         }

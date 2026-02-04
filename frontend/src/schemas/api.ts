@@ -1,5 +1,5 @@
 // Zod schemas for runtime API response validation
-import { z } from 'zod';
+import { z } from "zod";
 
 // ============= Base Schemas =============
 
@@ -60,7 +60,7 @@ export const ServerSchema = z.object({
     id: z.string(),
     name: z.string(),
     game_type: z.string(),
-    status: z.string().default('stopped'),
+    status: z.string().default("stopped"),
     executable_path: z.string(),
     working_dir: z.string(),
     java_path: z.string().nullable().optional(),
@@ -162,7 +162,7 @@ export type AppSettings = z.infer<typeof AppSettingsSchema>;
 export function validateApiResponse<T>(schema: z.ZodType<T>, data: unknown): T {
     const result = schema.safeParse(data);
     if (!result.success) {
-        console.warn('API response validation failed:', result.error.issues);
+        console.warn("API response validation failed:", result.error.issues);
         // In development, throw; in production, return data as-is with warning
         if (import.meta.env.DEV) {
             throw new Error(`Validation failed: ${JSON.stringify(result.error.issues)}`);

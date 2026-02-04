@@ -110,7 +110,7 @@
     }
 }
 
-// Responsive - Using static values since CSS variables can't be used in media queries
+// Responsive - Using static values since CSS variables can"t be used in media queries
 @mixin respond-to($breakpoint) {
     @if $breakpoint ==sm {
         @media (min-width: 640px) {

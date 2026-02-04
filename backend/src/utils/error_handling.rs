@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use crate::error::AppError;
+use crate::core::error::AppError;
 pub fn unwrap_or_error<T>(option: Option<T>, error_msg: &str) -> Result<T, AppError> {
     option.ok_or_else(|| AppError::Internal(error_msg.into()))
 }

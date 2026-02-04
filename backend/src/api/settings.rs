@@ -5,8 +5,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
-use crate::error::AppError;
+use crate::core::AppState;
+use crate::core::error::AppError;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -74,7 +74,7 @@ async fn update_settings(
     Json(body): Json<UpdateSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Helper function to upsert a setting
-    async fn upsert_setting(pool: &crate::db::DbPool, key: &str, value: &str) -> Result<(), AppError> {
+    async fn upsert_setting(pool: &crate::core::database::DbPool, key: &str, value: &str) -> Result<(), AppError> {
         sqlx::query(
             "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) 
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"

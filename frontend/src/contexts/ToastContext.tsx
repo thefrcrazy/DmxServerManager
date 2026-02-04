@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { v4 as uuidv4 } from "uuid";
 
-export type ToastType = 'success' | 'error' | 'info' | 'warning';
+export type ToastType = "success" | "error" | "info" | "warning";
 
 export interface ToastMessage {
     id: string;
@@ -25,7 +25,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function useToast() {
     const context = useContext(ToastContext);
     if (!context) {
-        throw new Error('useToast must be used within a ToastProvider');
+        throw new Error("useToast must be used within a ToastProvider");
     }
     return context;
 }
@@ -48,10 +48,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         }
     }, [removeToast]);
 
-    const success = useCallback((message: string, duration?: number) => addToast(message, 'success', duration), [addToast]);
-    const error = useCallback((message: string, duration?: number) => addToast(message, 'error', duration), [addToast]);
-    const info = useCallback((message: string, duration?: number) => addToast(message, 'info', duration), [addToast]);
-    const warning = useCallback((message: string, duration?: number) => addToast(message, 'warning', duration), [addToast]);
+    const success = useCallback((message: string, duration?: number) => addToast(message, "success", duration), [addToast]);
+    const error = useCallback((message: string, duration?: number) => addToast(message, "error", duration), [addToast]);
+    const info = useCallback((message: string, duration?: number) => addToast(message, "info", duration), [addToast]);
+    const warning = useCallback((message: string, duration?: number) => addToast(message, "warning", duration), [addToast]);
 
     return (
         <ToastContext.Provider value={{ toasts, addToast, removeToast, success, error, info, warning }}>

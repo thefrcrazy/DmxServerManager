@@ -1,24 +1,23 @@
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { ToastProvider } from './contexts/ToastContext';
-import { DialogProvider } from './contexts/DialogContext';
-import ToastContainer from './components/common/ToastContainer';
-import DialogContainer from './components/common/DialogContainer';
-import { AuthProvider } from './contexts/AuthContext';
-import { ThemeProvider } from './contexts/ThemeContext';
-import { LanguageProvider } from './contexts/LanguageContext';
-import { PageTitleProvider } from './contexts/PageTitleContext';
-import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Servers from './pages/Servers';
-import ServerDetail from './pages/ServerDetail';
-import Backups from './pages/Backups';
-import PanelSettings from './pages/PanelSettings';
-import UserSettings from './pages/UserSettings';
-import Setup from './pages/Setup';
-import CreateServer from './pages/CreateServer';
-import EditUser from './pages/EditUser';
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { ToastProvider } from "./contexts/ToastContext";
+import { DialogProvider } from "./contexts/DialogContext";
+import { ToastContainer, DialogContainer } from "@/components/shared";
+import { AuthProvider } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { LanguageProvider } from "./contexts/LanguageContext";
+import { PageTitleProvider } from "./contexts/PageTitleContext";
+import { Layout } from "@/components/layout";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import Servers from "./pages/Servers";
+import ServerDetail from "./pages/ServerDetail";
+import Backups from "./pages/Backups";
+import PanelSettings from "./pages/PanelSettings";
+import UserSettings from "./pages/UserSettings";
+import Setup from "./pages/Setup";
+import CreateServer from "./pages/CreateServer";
+import EditUser from "./pages/EditUser";
 
 function SetupCheck({ children }: { children: React.ReactNode }) {
     const [isChecking, setIsChecking] = useState(true);
@@ -28,21 +27,21 @@ function SetupCheck({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const checkSetup = async () => {
             try {
-                const res = await fetch('/api/v1/setup/status');
+                const res = await fetch("/api/v1/setup/status");
                 if (res.ok) {
                     const data = await res.json();
                     if (!data.is_setup) {
-                        if (location.pathname !== '/setup') {
-                            navigate('/setup');
+                        if (location.pathname !== "/setup") {
+                            navigate("/setup");
                         }
                     } else {
-                        if (location.pathname === '/setup') {
-                            navigate('/login');
+                        if (location.pathname === "/setup") {
+                            navigate("/login");
                         }
                     }
                 }
             } catch (error) {
-                console.error('Setup check failed:', error);
+                console.error("Setup check failed:", error);
             } finally {
                 setIsChecking(false);
             }
@@ -65,11 +64,11 @@ function SetupCheck({ children }: { children: React.ReactNode }) {
 function App() {
     return (
         <ThemeProvider>
-            <ToastProvider>
-                <DialogProvider>
-                    <ToastContainer />
-                    <DialogContainer />
-                    <LanguageProvider>
+            <LanguageProvider>
+                <ToastProvider>
+                    <DialogProvider>
+                        <ToastContainer />
+                        <DialogContainer />
                         <AuthProvider>
                             <PageTitleProvider>
                                 <SetupCheck>
@@ -93,9 +92,9 @@ function App() {
                                 </SetupCheck>
                             </PageTitleProvider>
                         </AuthProvider>
-                    </LanguageProvider>
-                </DialogProvider>
-            </ToastProvider>
+                    </DialogProvider>
+                </ToastProvider>
+            </LanguageProvider>
         </ThemeProvider>
     );
 }

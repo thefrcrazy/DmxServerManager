@@ -5,7 +5,7 @@ use axum::{
 };
 use uuid::Uuid;
 use std::io::Write;
-use crate::{AppState, error::AppError};
+use crate::core::{AppState, AppError};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
