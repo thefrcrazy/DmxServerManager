@@ -1,7 +1,8 @@
 // Error handling utilities
-use crate::error::AppError;
+#![allow(dead_code)]
+#![allow(unused_variables)]
 
-/// Safely unwrap an Option with a custom error message
+use crate::error::AppError;
 pub fn unwrap_or_error<T>(option: Option<T>, error_msg: &str) -> Result<T, AppError> {
     option.ok_or_else(|| AppError::Internal(error_msg.into()))
 }
