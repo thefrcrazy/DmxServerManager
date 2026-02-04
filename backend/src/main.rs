@@ -44,8 +44,11 @@ async fn main() -> anyhow::Result<()> {
 
     info!("🚀 Draveur Manager v{}", env!("CARGO_PKG_VERSION"));
 
-    // Check if HTTPS is enabled
-    let use_https = std::env::var("USE_HTTPS").unwrap_or_else(|_| "false".into()) == "true";
+    // Check if HTTPS is enabled (Default to true if in Docker, false otherwise)
+    let is_docker = std::env::var("IS_DOCKER").unwrap_or_else(|_| "false".into()) == "true";
+    let use_https = std::env::var("USE_HTTPS")
+        .map(|v| v == "true")
+        .unwrap_or(is_docker);
 
     // Initialize database
     let pool = database::init_pool(&settings.database_url).await?;

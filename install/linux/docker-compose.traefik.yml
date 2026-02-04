@@ -24,6 +24,7 @@ services:
       - BACKUPS_DIR=/backups
       - UPLOADS_DIR=/data/uploads
       - RUST_LOG=info
+      - USE_HTTPS=false
     volumes:
       - ../../data:/data
       - ../../servers:/servers

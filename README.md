@@ -35,21 +35,16 @@ Des **fichiers de release** (binaires/archives) seront mis à disposition une fo
 
 Plusieurs variantes de déploiement sont disponibles selon vos besoins.
 
-#### 1. Standard (HTTP/HTTPS) — Rapide
-Idéal pour un usage local, en IP directe ou derrière votre propre proxy.
+#### 1. Standard (HTTPS Auto-signé) — Rapide
+Idéal pour un usage sur serveur distant via IP directe. Par défaut, l'installation Docker utilise le HTTPS auto-signé pour chiffrer les communications.
 
-**Accès HTTP (par défaut) :**
 ```bash
 docker compose -f install/linux/docker-compose.yml up -d
 ```
+*Note : Le navigateur affichera une alerte de sécurité au premier accès, c'est normal.*
 
-**Accès HTTPS (Auto-signé) :**
-Pour chiffrer les communications sans nom de domaine (accès via IP), activez le HTTPS natif dans votre `.env` :
-```bash
-USE_HTTPS=true
-```
-Puis lancez le serveur normalement. Le backend générera automatiquement un certificat auto-signé.
-*Note : Le navigateur affichera une alerte de sécurité car le certificat n'est pas signé par une autorité officielle.*
+**Accès HTTP (Désactiver HTTPS) :**
+Si vous préférez le HTTP simple, ajoutez `USE_HTTPS=false` dans votre `.env`.
 
 #### 2. Traefik (HTTPS Automatique) — Recommandé
 Gère automatiquement vos certificats SSL via Let's Encrypt.
