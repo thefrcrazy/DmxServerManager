@@ -4,6 +4,7 @@ interface WebSocketMetrics {
     cpu: number;
     cpu_normalized?: number;
     memory: number;
+    memory_limit?: number;
     disk_bytes?: number;
     players?: number;
     players_list?: string[];
@@ -15,6 +16,7 @@ interface UseServerWebSocketReturn {
     isConnected: boolean;
     cpuUsage: number;
     ramUsage: number;
+    memoryLimit: number | null;
     diskUsage: number | null;
     currentPlayers: number;
     currentPlayersList: string[];
@@ -28,6 +30,7 @@ interface UseServerWebSocketReturn {
     clearLogs: () => void;
     wsRef: React.RefObject<WebSocket | null>;
 }
+
 
 interface UseServerWebSocketOptions {
     serverId: string | undefined;
@@ -47,6 +50,7 @@ export function useServerWebSocket({
     const [startTime, setStartTime] = useState<Date | null>(null);
     const [cpuUsage, setCpuUsage] = useState(0);
     const [ramUsage, setRamUsage] = useState(0);
+    const [memoryLimit, setMemoryLimit] = useState<number | null>(null);
     const [diskUsage, setDiskUsage] = useState<number | null>(null);
     const [currentPlayers, setCurrentPlayers] = useState(0);
     const [currentPlayersList, setCurrentPlayersList] = useState<string[]>([]);
@@ -156,6 +160,7 @@ export function useServerWebSocket({
                     // Use cpu_normalized (0-100%) instead of raw cpu (0-800% on 8 cores)
                     setCpuUsage(metrics.cpu_normalized ?? metrics.cpu ?? 0);
                     setRamUsage(metrics.memory || 0);
+                    setMemoryLimit(metrics.memory_limit ?? null);
                     setCurrentPlayers(metrics.players || 0);
                     setCurrentPlayersList(metrics.players_list || []);
                     if (metrics.disk_bytes !== undefined) setDiskUsage(metrics.disk_bytes);
@@ -248,6 +253,7 @@ export function useServerWebSocket({
         isConnected,
         cpuUsage,
         ramUsage,
+        memoryLimit,
         diskUsage,
         currentPlayers,
         currentPlayersList,

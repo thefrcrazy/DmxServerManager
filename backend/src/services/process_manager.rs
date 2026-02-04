@@ -35,6 +35,7 @@ pub struct ServerProcess {
     pub working_dir: String,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
     pub auth_required: Arc<std::sync::RwLock<bool>>,
+    pub max_memory_allocated: u64,
 }
 
 impl ProcessManager {
@@ -70,6 +71,7 @@ impl ProcessManager {
                                     "cpu": cpu,
                                     "cpu_normalized": cpu_normalized,
                                     "memory": memory,
+                                    "memory_limit": server_proc.max_memory_allocated,
                                     "players": player_count,
                                     "players_list": players_list
                                 });
@@ -280,6 +282,7 @@ impl ProcessManager {
                  working_dir: working_dir.to_string(),
                  started_at: Some(chrono::Utc::now()),
                  auth_required: Arc::new(std::sync::RwLock::new(false)),
+                 max_memory_allocated: 0,
              },
          );
          Ok(())
@@ -428,6 +431,7 @@ impl ProcessManager {
                 let join_re = patterns.join_regex;
                 let leave_re = patterns.leave_regex;
                 let server_started_re = patterns.server_ready_regex;
+                let ip_re = patterns.ip_regex;
 
                 let pool_clone = pool_clone_opt; // Capture optional pool
 
@@ -444,8 +448,10 @@ impl ProcessManager {
                     // Try to match player events
                     if let Some(caps) = join_re.captures(&line) {
                         if let Some(name) = caps.get(1) {
-                            let player_name = name.as_str().to_string();
-                            info!("Player joined server {}: {}", server_id_clone, player_name);
+                            let player_name = name.as_str().trim().to_string();
+                            let player_id = caps.get(2).map(|m| m.as_str().to_string());
+                            
+                            info!("Player joined server {}: {} (Example UUID: {:?})", server_id_clone, player_name, player_id);
                             if let Ok(mut p) = players_clone.write() {
                                 p.insert(player_name.clone());
                             }
@@ -455,17 +461,20 @@ impl ProcessManager {
                                 let pool = pool.clone();
                                 let s_id = server_id_clone.clone();
                                 let p_name = player_name.clone();
+                                let p_id = player_id.clone();
                                 runtime_handle.spawn(async move {
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let _ = sqlx::query(
-                                        "INSERT INTO server_players (server_id, player_name, first_seen, last_seen, is_online) 
-                                         VALUES (?, ?, ?, ?, 1)
+                                        "INSERT INTO server_players (server_id, player_name, player_id, first_seen, last_seen, is_online) 
+                                         VALUES (?, ?, ?, ?, ?, 1)
                                          ON CONFLICT(server_id, player_name) DO UPDATE SET 
                                          last_seen = excluded.last_seen, 
-                                         is_online = 1"
+                                         is_online = 1,
+                                         player_id = COALESCE(excluded.player_id, server_players.player_id)"
                                     )
                                     .bind(s_id)
                                     .bind(p_name)
+                                    .bind(p_id)
                                     .bind(&now) // first_seen
                                     .bind(&now) // last_seen
                                     .execute(&pool)
@@ -475,7 +484,8 @@ impl ProcessManager {
                         }
                     } else if let Some(caps) = leave_re.captures(&line) {
                         if let Some(name) = caps.get(1) {
-                            let player_name = name.as_str().to_string();
+                            let player_name = name.as_str().trim().to_string();
+                             // We might capture ID here too but usually just name is enough for remove
                             if let Ok(mut p) = players_clone.write() {
                                 p.remove(&player_name);
                             }
@@ -493,6 +503,32 @@ impl ProcessManager {
                                     .bind(now)
                                     .bind(s_id)
                                     .bind(p_name)
+                                    .execute(&pool)
+                                    .await;
+                                });
+                            }
+                        }
+                    } else if let Some(caps) = ip_re.as_ref().and_then(|re| re.captures(&line)) {
+                        // IP Detection
+                        if let (Some(ip), Some(uuid), Some(name)) = (caps.get(1), caps.get(2), caps.get(3)) {
+                            let player_ip = ip.as_str().to_string();
+                            let player_id = uuid.as_str().to_string();
+                            let player_name = name.as_str().trim().to_string();
+                            
+                            // info!("Detected IP for {}: {}", player_name, player_ip);
+
+                            // DB Update: IP
+                            if let Some(pool) = &pool_clone {
+                                let pool = pool.clone();
+                                let s_id = server_id_clone.clone();
+                                runtime_handle.spawn(async move {
+                                    let _ = sqlx::query(
+                                        "UPDATE server_players SET player_ip = ?, player_id = ? WHERE server_id = ? AND player_name = ?"
+                                    )
+                                    .bind(player_ip)
+                                    .bind(&player_id)
+                                    .bind(&s_id)
+                                    .bind(&player_name)
                                     .execute(&pool)
                                     .await;
                                 });
@@ -537,7 +573,7 @@ impl ProcessManager {
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    let log_line = format!("[STDERR] {line}");
+                    let log_line = line.clone();
                      // Write to file
                     if let Some(f) = &log_file_clone {
                         if let Ok(mut guard) = f.lock() {
@@ -560,6 +596,9 @@ impl ProcessManager {
             });
         }
 
+        let heap_bytes = parse_memory_to_bytes(max_memory.unwrap_or("1G"));
+        let total_memory_bytes = crate::utils::memory::calculate_total_memory(heap_bytes);
+
         processes.insert(
             server_id.to_string(),
             ServerProcess { 
@@ -575,6 +614,7 @@ impl ProcessManager {
                 working_dir: working_dir.to_string(),
                 started_at: Some(chrono::Utc::now()),
                 auth_required,
+                max_memory_allocated: total_memory_bytes,
             },
         );
 

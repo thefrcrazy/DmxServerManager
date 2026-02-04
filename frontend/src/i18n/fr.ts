@@ -179,6 +179,7 @@ export const fr = {
             backups: "Sauvegardes",
             files: "Fichiers",
             config: "Config",
+            mods: "Mods",
             players: "Joueurs",
             metrics: "Métriques",
             webhooks: "Webhooks"

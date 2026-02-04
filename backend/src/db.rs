@@ -142,6 +142,8 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
         CREATE TABLE IF NOT EXISTS server_players (
             server_id TEXT NOT NULL,
             player_name TEXT NOT NULL,
+            player_id TEXT,
+            player_ip TEXT,
             first_seen TEXT NOT NULL,
             last_seen TEXT NOT NULL,
             is_online INTEGER NOT NULL DEFAULT 0,
@@ -259,6 +261,21 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     }
     if !server_column_names.contains(&"port") {
         sqlx::query("ALTER TABLE servers ADD COLUMN port INTEGER NOT NULL DEFAULT 5520").execute(pool).await.ok();
+    }
+
+    // Server players table migrations
+    let players_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(server_players)")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| Error::other(e.to_string()))?;
+
+    let players_column_names: Vec<&str> = players_columns.iter().map(|c| c.1.as_str()).collect();
+
+    if !players_column_names.contains(&"player_id") {
+        sqlx::query("ALTER TABLE server_players ADD COLUMN player_id TEXT").execute(pool).await.ok();
+    }
+    if !players_column_names.contains(&"player_ip") {
+        sqlx::query("ALTER TABLE server_players ADD COLUMN player_ip TEXT").execute(pool).await.ok();
     }
 
     info!("✅ Migrations completed");

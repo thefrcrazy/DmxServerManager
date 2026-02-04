@@ -202,6 +202,7 @@ export const en: TranslationType = {
             backups: "Backups",
             files: "Files",
             config: "Config",
+            mods: "Mods",
             players: "Players",
             metrics: "Metrics",
             webhooks: "Webhooks"

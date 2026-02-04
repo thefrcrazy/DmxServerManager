@@ -87,9 +87,10 @@ irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/wi
     - [x] Gestion Console
     - [x] Gestion Log
     - [ ] Intégrations backups
-    - [ ] Planification Tâches 
-    - [ ] Meilleur FTP interne
+    - [ ] Planification Tâches
+    - [x] Meilleur FTP interne
     - [ ] Configuration temps réel avec les fichiers server
+    - [ ] Gestion des mods ([CurseForge](https://www.curseforge.com/hytale/search?class=mods))
     - [ ] Meilleur affichage joueurs
     - [ ] Ajout des métriques
     - [ ] Gestion webhook

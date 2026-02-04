@@ -14,6 +14,7 @@ import {
     FileText,
     Webhook,
     Globe,
+    Package,
 } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -117,6 +118,7 @@ type TabId =
     | "backups"
     | "files"
     | "config"
+    | "mods"
     | "players"
     | "metrics"
     | "webhooks";
@@ -166,6 +168,7 @@ export default function ServerDetail() {
         isConnected,
         cpuUsage,
         ramUsage,
+        memoryLimit,
         diskUsage,
         startTime,
         setStartTime,
@@ -180,7 +183,7 @@ export default function ServerDetail() {
         serverId: id,
         serverStatus: server?.status,
         onServerUpdate: fetchServer,
-        onStatusChange: (status) => setServer((prev) => (prev ? { ...prev, status } : null)),
+        onStatusChange: useCallback((status: string) => setServer((prev) => (prev ? { ...prev, status } : null)), []),
     });
 
     // Initial server fetch on mount
@@ -230,6 +233,7 @@ export default function ServerDetail() {
         { id: "backups", label: t("server_detail.tabs.backups"), icon: <History size={18} /> },
         { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
         { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
+        { id: "mods", label: t("server_detail.tabs.mods"), icon: <Package size={18} /> },
         { id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> },
         { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
         { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
@@ -719,7 +723,10 @@ export default function ServerDetail() {
     useEffect(() => {
         if (activeTab === "backups") fetchBackups();
         else if (activeTab === "files") { fetchFiles(); setSelectedFile(null); setFileContent(""); }
-        else if (activeTab === "logs") fetchLogFiles();
+        else if (activeTab === "logs") {
+            fetchLogFiles();
+            if (selectedLogFile) readLogFile(selectedLogFile);
+        }
         else if (activeTab === "players") { /* fetch players list */ }
     }, [activeTab, fetchBackups, fetchFiles]);
 
@@ -885,6 +892,10 @@ export default function ServerDetail() {
                     />
                 )}
 
+                {activeTab === "mods" && (
+                    <WorkInProgress />
+                )}
+
                 {activeTab === "players" && (
                     <ServerPlayers
                         players={onlinePlayers} // Real-time Online players
@@ -915,7 +926,7 @@ export default function ServerDetail() {
                         cpuUsage={cpuUsage}
                         ramUsage={ramUsage}
                         diskUsage={diskUsage}
-                        maxHeapBytes={server?.max_heap_bytes}
+                        maxHeapBytes={memoryLimit ?? server?.max_heap_bytes}
                         serverStatus={server?.status || 'stopped'}
                         currentPlayers={currentPlayers}
                         maxPlayers={server?.max_players || 100}
