@@ -19,7 +19,7 @@ mod utils;
 
 use core::{Settings, AppState};
 use services::game::ProcessManager;
-use core::database::{self, DbPool};
+use core::database;
 use std::sync::Arc;
 
 #[tokio::main]

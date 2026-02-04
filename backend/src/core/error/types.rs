@@ -10,6 +10,7 @@ use crate::core::error::codes::ErrorCode;
 
 /// Context information for debugging
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct ErrorContext {
     pub server_id: Option<String>,
     pub user_id: Option<String>,
@@ -17,6 +18,7 @@ pub struct ErrorContext {
     pub request_id: Option<String>,
 }
 
+#[allow(dead_code)]
 impl ErrorContext {
     pub fn new() -> Self {
         Self::default()
@@ -65,6 +67,7 @@ pub enum AppErrorKind {
     Database,
 }
 
+#[allow(dead_code)]
 impl AppError {
     // Builder methods for rich errors
     pub fn not_found_rich(msg: impl Into<String>) -> Self {

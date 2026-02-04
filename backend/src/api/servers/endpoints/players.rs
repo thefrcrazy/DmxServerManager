@@ -54,6 +54,7 @@ pub struct RemoveWhitelistRequest {
 pub struct AddBanRequest {
     pub target: String, // UUID
     pub reason: String,
+    #[allow(dead_code)]
     pub duration: Option<u64>, // Not used yet for Hytale bans which seem to be infinite or not
 }
 

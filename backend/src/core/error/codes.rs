@@ -4,6 +4,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ErrorCode {
     // Authentication errors (AUTH_xxx)
     AuthMissingHeader,

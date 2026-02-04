@@ -13,5 +13,6 @@ use std::sync::Arc;
 pub struct AppState {
     pub pool: DbPool,
     pub process_manager: ProcessManager,
+    #[allow(dead_code)]
     pub settings: Arc<Settings>,
 }
