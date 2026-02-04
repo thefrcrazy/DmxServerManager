@@ -50,6 +50,7 @@ async fn handle_socket(socket: WebSocket, server_id: String, state: AppState) {
     };
 
     // Task to broadcast logs to client
+    let server_id_clone = server_id.clone();
     let mut send_task = tokio::spawn(async move {
         loop {
             // Check for log messages
@@ -60,7 +61,7 @@ async fn handle_socket(socket: WebSocket, server_id: String, state: AppState) {
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    error!("WebSocket lagged, skipped {} messages for server {}", n, server_id);
+                    error!("WebSocket lagged, skipped {} messages for server {}", n, server_id_clone);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     return; // Channel closed

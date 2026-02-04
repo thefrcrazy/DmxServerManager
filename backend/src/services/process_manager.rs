@@ -420,6 +420,7 @@ impl ProcessManager {
             let auth_required_clone = auth_required.clone();
             
             let game_type_clone = game_type.to_string();
+            let runtime_handle = tokio::runtime::Handle::current();
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
                 // Use game-specific detection patterns
@@ -454,7 +455,7 @@ impl ProcessManager {
                                 let pool = pool.clone();
                                 let s_id = server_id_clone.clone();
                                 let p_name = player_name.clone();
-                                tokio::spawn(async move {
+                                runtime_handle.spawn(async move {
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let _ = sqlx::query(
                                         "INSERT INTO server_players (server_id, player_name, first_seen, last_seen, is_online) 
@@ -484,7 +485,7 @@ impl ProcessManager {
                                 let pool = pool.clone();
                                 let s_id = server_id_clone.clone();
                                 let p_name = player_name.clone();
-                                tokio::spawn(async move {
+                                runtime_handle.spawn(async move {
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let _ = sqlx::query(
                                         "UPDATE server_players SET is_online = 0, last_seen = ? WHERE server_id = ? AND player_name = ?"
