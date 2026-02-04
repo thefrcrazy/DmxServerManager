@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Save, Palette, Check, Key, User, Link2, Globe } from 'lucide-react';
+import { Save, Palette, Key, User, Link2, Globe } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
-import { PRESET_COLORS } from '../constants/theme';
+import { ColorPicker, LoadingScreen } from '../components/common';
 
 export default function UserSettings() {
     const { accentColor, setAccentColor } = useTheme();
@@ -104,12 +104,7 @@ export default function UserSettings() {
     };
 
     if (isLoading) {
-        return (
-            <div className="loading-screen">
-                <div className="spinner"></div>
-                <p className="text-muted">{t('common.loading')}</p>
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     return (
@@ -171,34 +166,7 @@ export default function UserSettings() {
 
                     <div className="form-group">
                         <label className="form-label">{t('user_settings.accent_color')}</label>
-                        <div className="color-picker">
-                            {PRESET_COLORS.map((color) => (
-                                <button
-                                    key={color}
-                                    onClick={() => setAccentColor(color)}
-                                    className={`color-picker__swatch ${accentColor.toLowerCase() === color.toLowerCase() ? 'color-picker__swatch--active' : ''}`}
-                                    style={{
-                                        background: color,
-                                        boxShadow: accentColor.toLowerCase() === color.toLowerCase()
-                                            ? `0 0 15px ${color}66`
-                                            : 'none'
-                                    }}
-                                >
-                                    {accentColor.toLowerCase() === color.toLowerCase() && (
-                                        <Check size={20} color="white" strokeWidth={3} />
-                                    )}
-                                </button>
-                            ))}
-
-                            <div className="color-picker__custom">
-                                <input
-                                    type="color"
-                                    value={accentColor}
-                                    onChange={(e) => setAccentColor(e.target.value)}
-                                    title={t('user_settings.custom_color_title')}
-                                />
-                            </div>
-                        </div>
+                        <ColorPicker value={accentColor} onChange={setAccentColor} />
                         {colorSaveSuccess && (
                             <p className="form-hint text-success mt-2">
                                 {t('user_settings.color_saved')}

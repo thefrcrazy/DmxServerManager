@@ -28,7 +28,14 @@ export function useSettings(): UseSettingsReturn {
         setError(null);
         try {
             const response = await apiService.getSettings();
-            setSettings(response.data || null);
+            if (response.data) {
+                setSettings({
+                    version: response.data.version || '',
+                    servers_dir: response.data.servers_dir || '',
+                    backups_dir: response.data.backups_dir || '',
+                    webhook_url: response.data.webhook_url,
+                });
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Erreur de chargement');
         } finally {

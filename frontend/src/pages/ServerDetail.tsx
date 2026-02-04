@@ -6,21 +6,22 @@ import {
     Play,
     RotateCw,
     Square,
-    Terminal, // Keep for tab icon
-    Users, // Keep for tab icon
-    Settings, // Keep for tab icon
-    History, // Keep for tab icon
-    FolderOpen, // Keep for tab icon
-    FileText, // Keep for tab icon
+    Terminal,
+    Users,
+    Settings,
+    History,
+    FolderOpen,
+    FileText,
     Webhook,
-    Globe, // Keep for banner stats
+    Globe,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { formatBytes, formatGB } from "../utils/formatters";
 import InstallationProgress from "../components/InstallationProgress";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePageTitle } from "../contexts/PageTitleContext";
+import { useServerWebSocket } from "../hooks";
 
 // New Components
 import ServerConsole from "../components/server/ServerConsole";
@@ -148,14 +149,44 @@ export default function ServerDetail() {
         setActiveTab(tabId);
         setSearchParams({ tab: tabId });
     };
-    const [logs, setLogs] = useState<string[]>([]);
-    const [isConnected, setIsConnected] = useState(false);
-    const [startTime, setStartTime] = useState<Date | null>(null);
+
+    // Data Fetching Handlers - defined before the hook to avoid circular dependency
+    const fetchServer = useCallback(async () => {
+        const response = await fetch(`/api/v1/servers/${id}`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        const data = await response.json();
+        setServer(data);
+    }, [id]);
+
+    // Use WebSocket hook for console, metrics and installation state
+    const {
+        logs,
+        setLogs,
+        isConnected,
+        cpuUsage,
+        ramUsage,
+        diskUsage,
+        startTime,
+        setStartTime,
+        isInstalling,
+        setIsInstalling,
+        isAuthRequired,
+        setIsAuthRequired,
+        sendCommand,
+    } = useServerWebSocket({
+        serverId: id,
+        serverStatus: server?.status,
+        onServerUpdate: fetchServer,
+        onStatusChange: (status) => setServer((prev) => (prev ? { ...prev, status } : null)),
+    });
+
+    // Initial server fetch on mount
+    useEffect(() => {
+        fetchServer();
+    }, [fetchServer]);
+
     const [uptime, setUptime] = useState("--:--:--");
-    const [cpuUsage, setCpuUsage] = useState<number>(0);
-    const [ramUsage, setRamUsage] = useState<number>(0);
-    const [diskUsage, setDiskUsage] = useState<number | null>(null);
-    const wsRef = useRef<WebSocket | null>(null);
 
     // Backups tab state
     const [backups, setBackups] = useState<Backup[]>([]);
@@ -175,10 +206,6 @@ export default function ServerDetail() {
     const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
     const [logContent, setLogContent] = useState("");
 
-    // Installation state
-    const [isInstalling, setIsInstalling] = useState(false);
-    const [isAuthRequired, setIsAuthRequired] = useState(false);
-
     // Config tab state
     const [configFormData, setConfigFormData] = useState<Partial<Server>>({});
     const [initialConfigFormData, setInitialConfigFormData] = useState<Partial<Server>>({});
@@ -192,7 +219,7 @@ export default function ServerDetail() {
     const [activePlayerTab, setActivePlayerTab] = useState<
         "online" | "whitelist" | "bans" | "ops"
     >("online");
-    const [playerData, setPlayerData] = useState<any[]>([]); // For file-based lists
+    const [playerData, setPlayerData] = useState<any[]>([]);
 
 
     const tabs: Tab[] = [
@@ -205,167 +232,6 @@ export default function ServerDetail() {
         { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
         { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
     ];
-
-    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const retryCountRef = useRef(0);
-    const shouldReconnectRef = useRef(true);
-    const serverStatusRef = useRef(server?.status);
-
-    useEffect(() => {
-        serverStatusRef.current = server?.status;
-
-        setIsInstalling(server?.status === "installing");
-        setIsAuthRequired(server?.status === "auth_required");
-
-        if (
-            (server?.status === "running" ||
-                server?.status === "installing" ||
-                server?.status === "auth_required") &&
-            !wsRef.current
-        ) {
-            shouldReconnectRef.current = true;
-            connectWebSocket();
-        }
-
-        if (server?.status === "stopped" || server?.status === "offline") {
-            setIsAuthRequired(false);
-            setIsInstalling(false);
-        }
-    }, [server?.status]);
-
-    useEffect(() => {
-        setLogs([]);
-        fetchServer();
-        fetchConsoleLog();
-
-        return () => {
-            shouldReconnectRef.current = false;
-            if (wsRef.current) {
-                wsRef.current.close();
-                wsRef.current = null;
-            }
-            if (reconnectTimeoutRef.current) {
-                clearTimeout(reconnectTimeoutRef.current);
-            }
-        };
-    }, [id]);
-
-    const connectWebSocket = () => {
-        if (wsRef.current) {
-            if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
-            wsRef.current.onclose = null;
-            wsRef.current.close();
-        }
-
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        // Fix: Backend WS endpoint is under /api/v1
-        const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/console/${id}`);
-
-        ws.onopen = () => {
-            setIsConnected(true);
-            retryCountRef.current = 0;
-            // Fix: Re-fetch full logs history on connection/reconnection to ensure we didn't miss anything
-            fetchConsoleLog();
-        };
-
-        ws.onmessage = (event) => {
-            const message = event.data;
-
-            if (message.startsWith("[STATUS]:")) {
-                const status = message.replace("[STATUS]:", "").trim();
-                setServer((prev) => (prev ? { ...prev, status } : null));
-                if (status === "running") setStartTime(new Date());
-                else setStartTime(null);
-                fetchServer();
-                return;
-            }
-
-            if (message.trim().startsWith("[METRICS]:")) {
-                try {
-                    const metrics = JSON.parse(message.trim().substring(10));
-                    setCpuUsage(metrics.cpu || 0);
-                    setRamUsage(metrics.memory || 0);
-                    if (metrics.disk_bytes !== undefined) setDiskUsage(metrics.disk_bytes);
-                } catch (e) {
-                    console.error("Failed to parse metrics", e);
-                }
-                return;
-            }
-
-            if (message.includes("Initialization of installation") || message.includes("Initialization de l'installation")) {
-                setIsInstalling(true);
-                setIsAuthRequired(false);
-            }
-            if (message.includes("IMPORTANT") && (message.includes("authentifier") || message.includes("authenticate"))) {
-                if (server?.status === "running" || server?.status === "starting") {
-                    setIsAuthRequired(true);
-                }
-            }
-            if (message.includes("Authentication successful!") || message.includes("Success!")) {
-                setIsAuthRequired(false);
-            }
-            if (message.includes("Installation terminée") || message.includes("Installation finished")) {
-                setIsInstalling(false);
-                fetchServer();
-            }
-
-            setLogs((prev) => [...prev, message]);
-        };
-
-        ws.onclose = () => {
-            setIsConnected(false);
-            wsRef.current = null;
-            const shouldRetry = shouldReconnectRef.current && (serverStatusRef.current === "running" || serverStatusRef.current === "installing" || serverStatusRef.current === "auth_required");
-            if (shouldRetry) {
-                const retryDelay = Math.min(1000 * Math.pow(1.5, retryCountRef.current), 10000);
-                reconnectTimeoutRef.current = setTimeout(() => {
-                    retryCountRef.current++;
-                    connectWebSocket();
-                }, retryDelay);
-            }
-        };
-
-        ws.onerror = (err) => console.error("WebSocket error:", err);
-        wsRef.current = ws;
-    };
-
-    const fetchConsoleLog = async () => {
-        if (!id) return;
-        try {
-            let installRes = await fetch(`/api/v1/servers/${id}/files/read?path=logs/install.log`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-
-            if (installRes.ok) {
-                const data = await installRes.json();
-                if (data.content) {
-                    const lines = data.content.split("\n");
-                    const hasStart = lines.some((l: string) => l.includes("Initialization de l'installation") || l.includes("Starting Hytale Server Installation"));
-                    const hasEnd = lines.some((l: string) => l.includes("Installation terminée") || l.includes("Installation finished"));
-                    if (hasStart && !hasEnd && server?.status !== "running") setIsInstalling(true);
-                }
-            }
-
-            let res = await fetch(`/api/v1/servers/${id}/files/read?path=logs/console.log`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                if (data.content && data.content.length > 0) setLogs(data.content.split("\n"));
-            } else if (installRes.ok) {
-                const data = await installRes.json();
-                if (data.content) setLogs(data.content.split("\n"));
-            }
-        } catch (e) { }
-    };
-
-    const sendCommand = (cmd: string) => {
-        if (cmd.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(cmd);
-            setLogs((prev) => [...prev, `> ${cmd}`]);
-        }
-    };
 
     // Uptime
     useEffect(() => {
@@ -383,17 +249,14 @@ export default function ServerDetail() {
         }
     }, [server?.status, startTime]);
 
-    // Data Fetching Handlers
-    const fetchServer = useCallback(async () => {
-        const response = await fetch(`/api/v1/servers/${id}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        });
-        const data = await response.json();
-        setServer(data);
-        if (data.disk_usage_bytes !== undefined) setDiskUsage(data.disk_usage_bytes);
-        if (data.status === "running" && data.started_at) setStartTime(new Date(data.started_at));
-        else if (data.status !== "running") setStartTime(null);
-    }, [id]);
+    // Sync startTime from server data when fetched
+    useEffect(() => {
+        if (server?.status === "running" && server?.started_at) {
+            setStartTime(new Date(server.started_at));
+        } else if (server?.status !== "running") {
+            setStartTime(null);
+        }
+    }, [server?.status, server?.started_at, setStartTime]);
 
     const handleAction = useCallback(async (action: "start" | "stop" | "restart" | "kill") => {
         if (action === "start" && server?.status === "running") return;

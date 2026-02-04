@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import api from '../../services/api';
-import './ServerMetrics.scss';
 
 interface MetricsDataPoint {
     timestamp: Date;

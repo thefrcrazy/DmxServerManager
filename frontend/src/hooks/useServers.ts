@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import apiService from '../services/api';
-import { Server } from '../types/api';
+import { Server } from '../schemas/api';
 
 interface UseServersReturn {
     servers: Server[];

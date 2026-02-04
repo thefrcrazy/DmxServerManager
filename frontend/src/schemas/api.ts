@@ -170,3 +170,25 @@ export function validateApiResponse<T>(schema: z.ZodType<T>, data: unknown): T {
     }
     return data as T;
 }
+
+// ============= Metrics Schemas =============
+
+export const MetricDataPointSchema = z.object({
+    id: z.string(),
+    server_id: z.string(),
+    cpu_usage: z.number(),
+    memory_bytes: z.number(),
+    disk_bytes: z.number(),
+    player_count: z.number(),
+    recorded_at: z.string(),
+});
+
+export const MetricsHistoryResponseSchema = z.object({
+    server_id: z.string(),
+    period: z.string(),
+    data: z.array(MetricDataPointSchema),
+});
+
+export type MetricDataPoint = z.infer<typeof MetricDataPointSchema>;
+export type MetricsHistoryResponse = z.infer<typeof MetricsHistoryResponseSchema>;
+

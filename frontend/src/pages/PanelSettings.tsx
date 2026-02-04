@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-    Save, FolderOpen, AlertTriangle, Palette, Check, Image, FolderSearch, Upload,
+    Save, FolderOpen, AlertTriangle, Palette, Image, FolderSearch, Upload,
     Users, Shield, Plus, Edit2, Trash2, ShieldOff, User as UserIcon
 } from 'lucide-react';
 import DirectoryPicker from '../components/DirectoryPicker';
 import Table from '../components/Table';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
-import { PRESET_COLORS } from '../constants/theme';
 import Tabs from '../components/Tabs';
+import { ColorPicker, LoadingScreen } from '../components/common';
 
 interface PanelInfo {
     version: string;
@@ -294,12 +294,7 @@ export default function PanelSettings() {
     const filteredUsers = users.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()));
 
     if (isLoading) {
-        return (
-            <div className="loading-screen">
-                <div className="spinner"></div>
-                <p className="text-muted">{t('common.loading')}</p>
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     const tabs = [
@@ -442,34 +437,10 @@ export default function PanelSettings() {
 
                         <div className="form-group">
                             <label className="form-label">Couleur par défaut</label>
-                            <div className="color-picker">
-                                {PRESET_COLORS.map((color) => (
-                                    <button
-                                        key={color}
-                                        onClick={() => setLoginCustomization(prev => ({ ...prev, default_color: color }))}
-                                        className={`color-picker__swatch ${loginCustomization.default_color.toLowerCase() === color.toLowerCase() ? 'color-picker__swatch--active' : ''}`}
-                                        style={{
-                                            background: color,
-                                            boxShadow: loginCustomization.default_color.toLowerCase() === color.toLowerCase()
-                                                ? `0 0 15px ${color}66`
-                                                : 'none'
-                                        }}
-                                    >
-                                        {loginCustomization.default_color.toLowerCase() === color.toLowerCase() && (
-                                            <Check size={20} color="white" strokeWidth={3} />
-                                        )}
-                                    </button>
-                                ))}
-
-                                <div className="color-picker__custom">
-                                    <input
-                                        type="color"
-                                        value={loginCustomization.default_color}
-                                        onChange={(e) => setLoginCustomization(prev => ({ ...prev, default_color: e.target.value }))}
-                                        title="Couleur personnalisée"
-                                    />
-                                </div>
-                            </div>
+                            <ColorPicker
+                                value={loginCustomization.default_color}
+                                onChange={(color) => setLoginCustomization(prev => ({ ...prev, default_color: color }))}
+                            />
                         </div>
 
                         <div className="form-group">

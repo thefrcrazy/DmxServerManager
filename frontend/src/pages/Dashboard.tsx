@@ -7,6 +7,7 @@ import { usePageTitle } from '../contexts/PageTitleContext';
 import ServerList from '../components/ServerList';
 import ServerFilters from '../components/ServerFilters';
 import { Server } from '../schemas/api';
+import { LoadingScreen, StatPill, EmptyState } from '../components/common';
 
 interface ServerStats {
     total: number;
@@ -166,12 +167,7 @@ export default function Dashboard() {
     };
 
     if (isLoading) {
-        return (
-            <div className="loading-screen">
-                <div className="spinner"></div>
-                <p className="text-muted">{t('common.loading')}</p>
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     // Filter mainly active servers or just show all but using the new component?
@@ -181,48 +177,33 @@ export default function Dashboard() {
     return (
         <div className="dashboard-page">
             <div className="dashboard-header-stats">
-                <div className="stat-pill">
-                    <div className="stat-pill__icon stat-pill__icon--default">
-                        <ServerIcon size={16} />
-                    </div>
-                    <div className="stat-pill__content">
-                        <span className="stat-pill__label">{t('dashboard.total_servers')}</span>
-                        <span className="stat-pill__value">{stats.total}</span>
-                    </div>
-                </div>
-
-                <div className="stat-pill">
-                    <div className="stat-pill__icon stat-pill__icon--success">
-                        <Activity size={16} />
-                    </div>
-                    <div className="stat-pill__content">
-                        <span className="stat-pill__label">{t('servers.status')}</span>
-                        <span className="stat-pill__value stat-pill__value--success">{stats.running} <span className="stat-pill__sublabel">running</span></span>
-                    </div>
-                </div>
-
-                <div className="stat-pill">
-                    <div className="stat-pill__icon stat-pill__icon--muted">
-                        <Square size={16} />
-                    </div>
-                    <div className="stat-pill__content">
-                        <span className="stat-pill__label">{t('servers.stop')}</span>
-                        <span className="stat-pill__value stat-pill__value--muted">{stats.stopped} <span className="stat-pill__sublabel">stopped</span></span>
-                    </div>
-                </div>
-
-                <div className="stat-pill">
-                    <div className="stat-pill__icon stat-pill__icon--purple">
-                        <Users size={16} />
-                    </div>
-                    <div className="stat-pill__content">
-                        <span className="stat-pill__label">{t('servers.players')}</span>
-                        <span className="stat-pill__value">
-                            {playersStats.current}
-                            {playersStats.max > 0 && <span className="stat-pill__suffix">/{playersStats.max}</span>}
-                        </span>
-                    </div>
-                </div>
+                <StatPill
+                    icon={<ServerIcon size={16} />}
+                    label={t('dashboard.total_servers')}
+                    value={stats.total}
+                    variant="default"
+                />
+                <StatPill
+                    icon={<Activity size={16} />}
+                    label={t('servers.status')}
+                    value={stats.running}
+                    variant="success"
+                    sublabel="running"
+                />
+                <StatPill
+                    icon={<Square size={16} />}
+                    label={t('servers.stop')}
+                    value={stats.stopped}
+                    variant="muted"
+                    sublabel="stopped"
+                />
+                <StatPill
+                    icon={<Users size={16} />}
+                    label={t('servers.players')}
+                    value={playersStats.current}
+                    variant="purple"
+                    suffix={playersStats.max > 0 ? `/${playersStats.max}` : undefined}
+                />
             </div>
 
             <div className="dashboard-grid">
@@ -344,21 +325,20 @@ export default function Dashboard() {
                 />
 
                 {filteredServers.length === 0 ? (
-                    <div className="card empty-state mt-4">
-                        <div className="empty-state__icon">
-                            <ServerIcon size={32} />
-                        </div>
-                        <h3 className="empty-state__title">{t('servers.no_servers')}</h3>
-                        <p className="empty-state__description">
-                            {search || gameType !== 'all' ? 'No servers match your filters.' : t('dashboard.welcome')}
-                        </p>
-                        {(search === '' && gameType === 'all') && (
-                            <Link to="/servers/create" className="btn btn--primary">
-                                <Plus size={18} />
-                                {t('servers.create_new')}
-                            </Link>
-                        )}
-                    </div>
+                    <EmptyState
+                        icon={<ServerIcon size={32} />}
+                        title={t('servers.no_servers')}
+                        description={search || gameType !== 'all' ? 'No servers match your filters.' : t('dashboard.welcome')}
+                        action={
+                            (search === '' && gameType === 'all') && (
+                                <Link to="/servers/create" className="btn btn--primary">
+                                    <Plus size={18} />
+                                    {t('servers.create_new')}
+                                </Link>
+                            )
+                        }
+                        className="card mt-4"
+                    />
                 ) : (
                     <ServerList
                         servers={filteredServers}

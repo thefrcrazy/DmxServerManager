@@ -1,8 +1,21 @@
 // API Service - Centralized API calls with TypeScript types
 import {
     AuthResponse, SetupStatus, Server, Backup,
-    AppSettings, ApiResponse, ApiError, MetricsHistoryResponse
-} from '../types/api';
+    AppSettings, MetricsHistoryResponse
+} from '../schemas/api';
+
+// Types locaux pour les réponses API
+export interface ApiResponse<T> {
+    data: T;
+    success: boolean;
+    timestamp: string;
+    error?: ApiError;
+}
+
+export interface ApiError {
+    error: string;
+    code?: string;
+}
 
 const API_BASE_URL = '/api/v1';
 
