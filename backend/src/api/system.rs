@@ -5,12 +5,14 @@ use axum::{
 };
 use serde::Serialize;
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use sysinfo::{Disks, System};
 use walkdir::WalkDir;
+use tokio::sync::RwLock;
 
 use crate::AppState;
 use crate::error::AppError;
+use crate::utils::error_handling::{unwrap_or_error, path_to_string};
 
 #[derive(Debug, Serialize)]
 pub struct SystemStatsResponse {
@@ -38,8 +40,38 @@ pub struct JavaVersion {
 
 // Keep a static System instance for accurate CPU readings
 lazy_static::lazy_static! {
-    static ref SYSTEM: Mutex<System> = Mutex::new(System::new_all());
+    static ref SYSTEM: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
 }
+
+// System monitoring cache to reduce lock contention
+lazy_static::lazy_static! {
+    static ref SYSTEM_CACHE: Arc<RwLock<SystemStatsCache>> = Arc::new(RwLock::new(SystemStatsCache::default()));
+}
+
+#[derive(Debug)]
+struct SystemStatsCache {
+    last_update: std::time::Instant,
+    cpu_usage: f32,
+    ram_percent: f32,
+    ram_used: u64,
+    ram_total: u64,
+    cpu_cores: usize,
+}
+
+impl Default for SystemStatsCache {
+    fn default() -> Self {
+        Self {
+            last_update: std::time::Instant::now(),
+            cpu_usage: 0.0,
+            ram_percent: 0.0,
+            ram_used: 0,
+            ram_total: 0,
+            cpu_cores: 0,
+        }
+    }
+}
+
+const CACHE_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -69,7 +101,7 @@ async fn get_java_versions() -> Result<Json<Vec<JavaVersion>>, AppError> {
             let java_bin = path.join("java");
             if java_bin.exists() {
                 // Resolve symlink to get real path
-                let real_path = std::fs::canonicalize(&java_bin).unwrap_or(java_bin.clone());
+                let real_path = std::fs::canonicalize(&java_bin).unwrap_or_else(|_| java_bin.clone());
                 
                 if !checked_paths.contains(&real_path.to_string_lossy().to_string()) {
                     if let Some(v) = check_java_version(&real_path) {
@@ -100,7 +132,7 @@ async fn get_java_versions() -> Result<Json<Vec<JavaVersion>>, AppError> {
                     let java_path = entry.path();
                     // Ensure it is executable/binary (rudimentary check by path name ending in bin/java)
                     if java_path.parent().map(|p| p.file_name().unwrap_or_default() == "bin").unwrap_or(false) {
-                        let real_path = std::fs::canonicalize(java_path).unwrap_or(java_path.to_path_buf());
+                        let real_path = std::fs::canonicalize(java_path).unwrap_or_else(|_| java_path.to_path_buf());
                          
                         if !checked_paths.contains(&real_path.to_string_lossy().to_string()) {
                             if let Some(v) = check_java_version(&real_path) {
@@ -145,25 +177,10 @@ fn check_java_version(path: &std::path::Path) -> Option<JavaVersion> {
 
 async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemStatsResponse>, AppError> {
     let pm = &state.process_manager;
-    let (cpu_usage, ram_percent, ram_used, ram_total) = {
-        let mut sys = SYSTEM.lock().unwrap();
-        sys.refresh_all();
-        
-        // CPU usage (average across all CPUs)
-        let cpu: f32 = sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>()
-            / sys.cpus().len().max(1) as f32;
+    
+    // Get cached or fresh system stats
+    let (cpu_usage, ram_percent, ram_used, ram_total, cpu_cores) = get_cached_system_stats().await;
 
-        // RAM usage
-        let total = sys.total_memory();
-        let used = sys.used_memory();
-        let percent = if total > 0 {
-            (used as f64 / total as f64 * 100.0) as f32
-        } else {
-            0.0
-        };
-        
-        (cpu, percent, used, total)
-    };
 
     // Disk usage - only count the main disk (mounted at "/" on macOS/Linux)
     let disks = Disks::new_with_refreshed_list();
@@ -197,10 +214,6 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
     let players_current = pm.get_total_online_players().await;
     let players_max = 0; 
 
-    let cpu_cores = {
-        let sys = SYSTEM.lock().unwrap();
-        sys.cpus().len()
-    };
 
     // Managed resource usage
     let mut managed_cpu = 0.0;
@@ -209,9 +222,9 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
 
     let procs = pm.get_processes_read_guard().await;
     for proc in procs.values() {
-        managed_cpu += *proc.last_cpu.read().unwrap();
-        managed_ram += *proc.last_memory.read().unwrap();
-        managed_disk += *proc.last_disk.read().unwrap();
+        managed_cpu += proc.last_cpu.read().map(|g| *g).unwrap_or(0.0);
+        managed_ram += proc.last_memory.read().map(|g| *g).unwrap_or(0);
+        managed_disk += proc.last_disk.read().map(|g| *g).unwrap_or(0);
     }
 
     Ok(Json(SystemStatsResponse {
@@ -230,4 +243,61 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
         managed_ram,
         managed_disk,
     }))
+}
+
+/// Get system stats with caching to reduce lock contention
+async fn get_cached_system_stats() -> (f32, f32, u64, u64, usize) {
+    // Check cache first
+    {
+        let cache = SYSTEM_CACHE.read().await;
+        if cache.last_update.elapsed() < CACHE_DURATION {
+            return (
+                cache.cpu_usage,
+                cache.ram_percent,
+                cache.ram_used,
+                cache.ram_total,
+                cache.cpu_cores,
+            );
+        }
+    }
+
+    // Cache expired, refresh data
+    let (cpu_usage, ram_percent, ram_used, ram_total, cpu_cores) = {
+        let sys_lock = SYSTEM.lock();
+        let mut sys = match sys_lock {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        sys.refresh_all();
+
+        // CPU usage (average across all CPUs)
+        let cpu: f32 = sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>()
+            / sys.cpus().len().max(1) as f32;
+
+        // RAM usage
+        let total = sys.total_memory();
+        let used = sys.used_memory();
+        let percent = if total > 0 {
+            (used as f64 / total as f64 * 100.0) as f32
+        } else {
+            0.0
+        };
+
+        let cores = sys.cpus().len();
+        
+        (cpu, percent, used, total, cores)
+    };
+
+    // Update cache
+    {
+        let mut cache = SYSTEM_CACHE.write().await;
+        cache.cpu_usage = cpu_usage;
+        cache.ram_percent = ram_percent;
+        cache.ram_used = ram_used;
+        cache.ram_total = ram_total;
+        cache.cpu_cores = cpu_cores;
+        cache.last_update = std::time::Instant::now();
+    }
+
+    (cpu_usage, ram_percent, ram_used, ram_total, cpu_cores)
 }

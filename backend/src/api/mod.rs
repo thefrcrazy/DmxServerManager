@@ -8,6 +8,7 @@ pub mod auth;
 pub mod backups;
 pub mod console;
 pub mod filesystem;
+pub mod metrics;
 pub mod servers;
 pub mod settings;
 pub mod setup;
@@ -21,7 +22,7 @@ pub fn routes() -> Router<AppState> {
         .nest("/auth", auth::routes())
         .nest("/backups", backups::routes())
         .nest("/filesystem", filesystem::routes())
-        .nest("/servers", servers::routes())
+        .nest("/servers", servers::routes().merge(metrics::routes()))
         .nest("/settings", settings::routes())
         .nest("/setup", setup::routes())
         .nest("/system", system::routes())
@@ -30,3 +31,4 @@ pub fn routes() -> Router<AppState> {
         .nest("/webhook", webhook::routes())
         .route("/ws/console/:id", get(console::ws_handler))
 }
+

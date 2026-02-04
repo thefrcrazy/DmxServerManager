@@ -1,8 +1,53 @@
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
 use std::io::{Error, ErrorKind};
 use tracing::info;
+use chrono::Utc;
+use uuid::Uuid;
 
 pub type DbPool = Pool<Sqlite>;
+
+/// Generate a secure random JWT secret
+pub fn generate_jwt_secret() -> String {
+    use rand::Rng;
+    use rand::distributions::Alphanumeric;
+    
+    let mut rng = rand::thread_rng();
+    let secret: String = (0..64)
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .collect();
+    secret
+}
+
+/// Get or create JWT secret from database
+pub async fn get_or_create_jwt_secret(pool: &DbPool) -> Result<String, sqlx::Error> {
+    // Try to get existing secret
+    let result = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM app_secrets WHERE key = 'jwt_secret'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    
+    match result {
+        Some(secret) => Ok(secret),
+        None => {
+            // Generate new secret and store it
+            let secret = generate_jwt_secret();
+            let now = Utc::now().to_rfc3339();
+            
+            sqlx::query(
+                "INSERT INTO app_secrets (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)"
+            )
+            .bind("jwt_secret")
+            .bind(&secret)
+            .bind(&now)
+            .bind(&now)
+            .execute(pool)
+            .await?;
+            
+            Ok(secret)
+        }
+    }
+}
 
 pub async fn init_pool(database_url: &str) -> std::io::Result<DbPool> {
     // Ensure the data directory exists
@@ -108,6 +153,26 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS server_metrics (
+            id TEXT PRIMARY KEY,
+            server_id TEXT NOT NULL,
+            cpu_usage REAL NOT NULL,
+            memory_bytes INTEGER NOT NULL,
+            disk_bytes INTEGER NOT NULL,
+            player_count INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL,
+            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_metrics_server_recorded ON server_metrics(server_id, recorded_at);
+
+        CREATE TABLE IF NOT EXISTS app_secrets (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
         "#,

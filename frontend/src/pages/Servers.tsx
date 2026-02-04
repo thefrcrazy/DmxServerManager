@@ -5,7 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import ServerList from '../components/ServerList';
 import ServerFilters from '../components/ServerFilters';
-import { Server } from '../types';
+import { Server } from '../schemas/api';
 
 export default function Servers() {
     const { t } = useLanguage();

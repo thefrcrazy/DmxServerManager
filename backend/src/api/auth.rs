@@ -9,8 +9,87 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+use tracing::warn;
 
-use crate::{AppState, error::AppError};
+use crate::{AppState, error::AppError, db::get_or_create_jwt_secret};
+use crate::error_codes::ErrorCode;
+
+// ============= Rate Limiting =============
+
+/// Simple in-memory rate limiter
+/// Tracks login attempts per IP address
+lazy_static::lazy_static! {
+    static ref LOGIN_ATTEMPTS: Arc<RwLock<HashMap<String, Vec<Instant>>>> = 
+        Arc::new(RwLock::new(HashMap::new()));
+}
+
+const MAX_LOGIN_ATTEMPTS: usize = 5;
+const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(300); // 5 minutes
+
+async fn check_rate_limit(ip: &str) -> Result<(), AppError> {
+    let mut attempts = LOGIN_ATTEMPTS.write().await;
+    let now = Instant::now();
+    
+    // Clean old attempts
+    if let Some(ip_attempts) = attempts.get_mut(ip) {
+        ip_attempts.retain(|t| now.duration_since(*t) < RATE_LIMIT_WINDOW);
+        
+        if ip_attempts.len() >= MAX_LOGIN_ATTEMPTS {
+            warn!(ip = ip, attempts = ip_attempts.len(), "Rate limit exceeded for login");
+            return Err(AppError::Unauthorized("auth.rate_limited".into())
+                .with_code(ErrorCode::AuthRateLimited));
+        }
+    }
+    
+    Ok(())
+}
+
+async fn record_login_attempt(ip: &str) {
+    let mut attempts = LOGIN_ATTEMPTS.write().await;
+    attempts
+        .entry(ip.to_string())
+        .or_insert_with(Vec::new)
+        .push(Instant::now());
+}
+
+async fn clear_login_attempts(ip: &str) {
+    let mut attempts = LOGIN_ATTEMPTS.write().await;
+    attempts.remove(ip);
+}
+
+// ============= Password Validation =============
+
+fn validate_password_strength(password: &str) -> Result<(), AppError> {
+    if password.len() < 8 {
+        return Err(AppError::BadRequest("auth.password_too_short".into())
+            .with_code(ErrorCode::AuthPasswordTooWeak));
+    }
+    
+    let has_uppercase = password.chars().any(|c| c.is_uppercase());
+    let has_lowercase = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    
+    if !has_uppercase || !has_lowercase || !has_digit {
+        return Err(AppError::BadRequest("auth.password_weak".into())
+            .with_code(ErrorCode::AuthPasswordTooWeak));
+    }
+    
+    Ok(())
+}
+
+// ============= JWT & Auth =============
+
+/// Get JWT secret from database or generate if not exists
+async fn get_jwt_secret(state: &AppState) -> Result<String, AppError> {
+    get_or_create_jwt_secret(&state.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -74,23 +153,48 @@ async fn check_setup_status(State(state): State<AppState>) -> Result<Json<SetupS
 
 async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, AppError> {
+    // Get client IP from headers (X-Forwarded-For or X-Real-IP)
+    let ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+    
+    // Check rate limit
+    check_rate_limit(&ip).await?;
+    
+    // Record this attempt
+    record_login_attempt(&ip).await;
+    
     let user: UserRow = sqlx::query_as(
         "SELECT id, username, password_hash, role, accent_color FROM users WHERE username = ?",
     )
     .bind(&body.username)
     .fetch_optional(&state.pool)
     .await?
-    .ok_or_else(|| AppError::Unauthorized("auth.invalid_credentials".into()))?;
+    .ok_or_else(|| AppError::Unauthorized("auth.invalid_credentials".into())
+        .with_code(ErrorCode::AuthInvalidCredentials))?;
 
     if !bcrypt::verify(&body.password, &user.password_hash)
         .map_err(|_| AppError::Internal("Password verification failed".into()))?
     {
-        return Err(AppError::Unauthorized("auth.invalid_credentials".into()));
+        return Err(AppError::Unauthorized("auth.invalid_credentials".into())
+            .with_code(ErrorCode::AuthInvalidCredentials));
     }
 
-    let token = create_token(&user)?;
+    // Clear rate limit on successful login
+    clear_login_attempts(&ip).await;
+
+    let token = create_token(&user, &state).await?;
 
     Ok(Json(AuthResponse {
         token,
@@ -107,6 +211,9 @@ async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<AuthResponse>), AppError> {
+    // Validate password strength
+    validate_password_strength(&body.password)?;
+    
     // Check if any users exist (first user becomes admin)
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
         .fetch_one(&state.pool)
@@ -149,7 +256,7 @@ async fn register(
         accent_color: Some(accent_color.clone()),
     };
 
-    let token = create_token(&user)?;
+    let token = create_token(&user, &state).await?;
 
     Ok((StatusCode::CREATED, Json(AuthResponse {
         token,
@@ -189,20 +296,28 @@ where
         let auth_header = parts.headers
             .get("Authorization")
             .and_then(|h| h.to_str().ok())
-            .ok_or_else(|| AppError::Unauthorized("auth.missing_auth_header".into()))?;
+            .ok_or_else(|| AppError::Unauthorized("auth.missing_auth_header".into())
+                .with_code(ErrorCode::AuthMissingHeader))?;
 
         let token = auth_header
             .strip_prefix("Bearer ")
-            .ok_or_else(|| AppError::Unauthorized("auth.invalid_auth_header".into()))?;
+            .ok_or_else(|| AppError::Unauthorized("auth.invalid_auth_header".into())
+                .with_code(ErrorCode::AuthInvalidHeader))?;
 
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".into());
+        // Extract state from parts extensions
+        let state = parts.extensions.get::<AppState>();
+        let secret = match state {
+            Some(state) => get_jwt_secret(state).await?,
+            None => return Err(AppError::Internal("State not available".into()))
+        };
         
         let token_data = jsonwebtoken::decode::<Claims>(
             token,
             &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
             &jsonwebtoken::Validation::default(),
         )
-        .map_err(|_| AppError::Unauthorized("auth.invalid_token".into()))?;
+        .map_err(|_| AppError::Unauthorized("auth.invalid_token".into())
+            .with_code(ErrorCode::AuthInvalidToken))?;
 
         Ok(AuthUser {
             id: token_data.claims.sub,
@@ -223,8 +338,8 @@ struct UserRow {
     accent_color: Option<String>,
 }
 
-fn create_token(user: &UserRow) -> Result<String, AppError> {
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".into());
+async fn create_token(user: &UserRow, state: &AppState) -> Result<String, AppError> {
+    let secret = get_jwt_secret(state).await?;
 
     let claims = Claims {
         sub: user.id.clone(),
@@ -264,7 +379,7 @@ async fn change_password(
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized("auth.invalid_auth_header".into()))?;
 
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".into());
+    let secret = get_jwt_secret(&state).await?;
     
     let token_data = jsonwebtoken::decode::<Claims>(
         token,
@@ -275,10 +390,8 @@ async fn change_password(
 
     let user_id = token_data.claims.sub;
 
-    // Validate new password length
-    if body.new_password.len() < 8 {
-        return Err(AppError::BadRequest("auth.password_length".into()));
-    }
+    // Validate new password strength
+    validate_password_strength(&body.new_password)?;
 
     // Hash new password
     let new_hash = bcrypt::hash(&body.new_password, bcrypt::DEFAULT_COST)

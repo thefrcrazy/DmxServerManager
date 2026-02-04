@@ -1,4 +1,9 @@
-// API Service - Centralized API calls
+// API Service - Centralized API calls with TypeScript types
+import {
+    AuthResponse, SetupStatus, Server, Backup,
+    AppSettings, ApiResponse, ApiError, MetricsHistoryResponse
+} from '../types/api';
+
 const API_BASE_URL = '/api/v1';
 
 interface ApiOptions extends RequestInit {
@@ -10,7 +15,7 @@ class ApiService {
         return localStorage.getItem('token');
     }
 
-    private async request<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
+    private async request<T>(endpoint: string, options: ApiOptions = {}): Promise<ApiResponse<T>> {
         const { skipAuth = false, ...fetchOptions } = options;
 
         const headers: HeadersInit = {
@@ -25,139 +30,162 @@ class ApiService {
             }
         }
 
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-            ...fetchOptions,
-            headers,
-        });
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                ...fetchOptions,
+                headers,
+            });
 
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(error.error || error.message || `HTTP ${response.status}`);
+            const timestamp = new Date().toISOString();
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' })) as ApiError;
+                throw new Error(errorData.error || errorData.code || `HTTP ${response.status}`);
+            }
+
+            // Handle empty responses
+            const text = await response.text();
+            const data = text ? JSON.parse(text) : null;
+
+            return {
+                data,
+                success: true,
+                timestamp
+            };
+        } catch (error) {
+            const timestamp = new Date().toISOString();
+            if (error instanceof Error) {
+                return {
+                    data: null,
+                    success: false,
+                    timestamp,
+                    error: {
+                        error: error.message,
+                        code: 'API_ERROR'
+                    }
+                } as any;
+            }
+            throw error;
         }
-
-        // Handle empty responses
-        const text = await response.text();
-        return text ? JSON.parse(text) : (null as T);
     }
 
     // Auth
-    async login(username: string, password: string) {
-        return this.request<{ token: string; user: any }>('/auth/login', {
+    async login(username: string, password: string): Promise<ApiResponse<AuthResponse>> {
+        return this.request<AuthResponse>('/auth/login', {
             method: 'POST',
             body: JSON.stringify({ username, password }),
             skipAuth: true,
         });
     }
 
-    async register(username: string, password: string) {
-        return this.request<{ token: string; user: any }>('/auth/register', {
+    async register(username: string, password: string): Promise<ApiResponse<AuthResponse>> {
+        return this.request<AuthResponse>('/auth/register', {
             method: 'POST',
             body: JSON.stringify({ username, password }),
             skipAuth: true,
         });
     }
 
-    async checkAuthStatus() {
-        return this.request<{ needs_setup: boolean }>('/auth/status', { skipAuth: true });
+    async checkAuthStatus(): Promise<ApiResponse<SetupStatus>> {
+        return this.request<SetupStatus>('/auth/status', { skipAuth: true });
     }
 
     // Servers
-    async getServers() {
-        return this.request<any[]>('/servers');
+    async getServers(): Promise<ApiResponse<Server[]>> {
+        return this.request<Server[]>('/servers');
     }
 
-    async getServer(id: string) {
-        return this.request<any>(`/servers/${id}`);
+    async getServer(id: string): Promise<ApiResponse<Server>> {
+        return this.request<Server>(`/servers/${id}`);
     }
 
-    async createServer(data: any) {
-        return this.request<{ id: string }>('/servers', {
+    async createServer(data: Partial<Server>): Promise<ApiResponse<Server>> {
+        return this.request<Server>('/servers', {
             method: 'POST',
             body: JSON.stringify(data),
         });
     }
 
-    async updateServer(id: string, data: any) {
-        return this.request<{ success: boolean }>(`/servers/${id}`, {
+    async updateServer(id: string, data: Partial<Server>): Promise<ApiResponse<Server>> {
+        return this.request<Server>(`/servers/${id}`, {
             method: 'PUT',
             body: JSON.stringify(data),
         });
     }
 
-    async deleteServer(id: string) {
+    async deleteServer(id: string): Promise<ApiResponse<{ success: boolean }>> {
         return this.request<{ success: boolean }>(`/servers/${id}`, {
             method: 'DELETE',
         });
     }
 
-    async startServer(id: string) {
+    async startServer(id: string): Promise<ApiResponse<{ status: string }>> {
         return this.request<{ status: string }>(`/servers/${id}/start`, {
             method: 'POST',
         });
     }
 
-    async stopServer(id: string) {
+    async stopServer(id: string): Promise<ApiResponse<{ status: string }>> {
         return this.request<{ status: string }>(`/servers/${id}/stop`, {
             method: 'POST',
         });
     }
 
-    async restartServer(id: string) {
+    async restartServer(id: string): Promise<ApiResponse<{ status: string }>> {
         return this.request<{ status: string }>(`/servers/${id}/restart`, {
             method: 'POST',
         });
     }
 
-    async reinstallServer(id: string) {
+    async reinstallServer(id: string): Promise<ApiResponse<{ success: boolean; message: string }>> {
         return this.request<{ success: boolean; message: string }>(`/servers/${id}/reinstall`, {
             method: 'POST',
         });
     }
 
-    async sendCommand(id: string, command: string) {
+    async sendCommand(id: string, command: string): Promise<ApiResponse<{ success: boolean }>> {
         return this.request<{ success: boolean }>(`/servers/${id}/command`, {
             method: 'POST',
             body: JSON.stringify({ command }),
         });
     }
 
-    // Backups
-    async getBackups(serverId?: string) {
-        const query = serverId ? `?server_id=${serverId}` : '';
-        return this.request<any[]>(`/backups${query}`);
+    async getServerMetrics(id: string, period: string = '1d'): Promise<ApiResponse<MetricsHistoryResponse>> {
+        return this.request<MetricsHistoryResponse>(`/servers/${id}/metrics?period=${period}`);
     }
 
-    async createBackup(serverId: string) {
-        return this.request<any>('/backups', {
+    // Backups
+    async getBackups(serverId?: string): Promise<ApiResponse<Backup[]>> {
+        const query = serverId ? `?server_id=${serverId}` : '';
+        return this.request<Backup[]>(`/backups${query}`);
+    }
+
+    async createBackup(serverId: string): Promise<ApiResponse<Backup>> {
+        return this.request<Backup>('/backups', {
             method: 'POST',
             body: JSON.stringify({ server_id: serverId }),
         });
     }
 
-    async deleteBackup(id: string) {
+    async deleteBackup(id: string): Promise<ApiResponse<{ success: boolean }>> {
         return this.request<{ success: boolean }>(`/backups/${id}`, {
             method: 'DELETE',
         });
     }
 
-    async restoreBackup(id: string) {
+    async restoreBackup(id: string): Promise<ApiResponse<{ success: boolean; message: string }>> {
         return this.request<{ success: boolean; message: string }>(`/backups/${id}/restore`, {
             method: 'POST',
         });
     }
 
     // Settings
-    async getSettings() {
-        return this.request<{
-            version: string;
-            servers_dir: string;
-            backups_dir: string;
-            webhook_url?: string;
-        }>('/settings');
+    async getSettings(): Promise<ApiResponse<AppSettings>> {
+        return this.request<AppSettings>('/settings');
     }
 
-    async updateSettings(data: { webhook_url?: string }) {
-        return this.request<{ success: boolean; message: string }>('/settings', {
+    async updateSettings(data: Partial<AppSettings>): Promise<ApiResponse<{ success: boolean; message: string }>> {
+        return this.request<{ success: boolean; message: string }>(`/settings`, {
             method: 'PUT',
             body: JSON.stringify(data),
         });

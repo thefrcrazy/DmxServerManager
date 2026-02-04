@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
     Play, Square, RotateCw, Skull, Server as ServerIcon, AlertTriangle
 } from 'lucide-react';
-import { Server } from '../types';
+import { Server } from '../schemas/api';
 import Table from './Table';
 import ServerCard from './ServerCard';
 import { useLanguage } from '../contexts/LanguageContext';

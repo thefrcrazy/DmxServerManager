@@ -3,7 +3,7 @@ use axum::{
     Router,
 };
 use tower_http::{
-    cors::{CorsLayer, Any},
+    cors::CorsLayer,
     services::ServeDir,
     trace::TraceLayer,
 };
@@ -14,7 +14,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod api;
 mod config;
 mod db;
+mod db_tests;
 mod error;
+mod error_codes;
 mod models;
 mod services;
 mod templates;
@@ -71,11 +73,41 @@ async fn main() -> anyhow::Result<()> {
     
     let uploads_dir = settings.uploads_dir.clone();
 
-    // CORS configuration
+    // CORS configuration - Restrict to specific origins only
+    // In production, set FRONTEND_URL environment variable
+    let mut allowed_origins: Vec<axum::http::HeaderValue> = vec![
+        "http://localhost:5173".parse().unwrap(), // Vite dev server
+        "http://localhost:5500".parse().unwrap(), // Backend serving frontend
+        "http://127.0.0.1:5173".parse().unwrap(),
+        "http://127.0.0.1:5500".parse().unwrap(),
+    ];
+    
+    // Add custom frontend URL from environment
+    if let Ok(frontend_url) = std::env::var("FRONTEND_URL") {
+        if let Ok(origin) = frontend_url.parse() {
+            allowed_origins.push(origin);
+            info!("🔒 Added CORS origin: {}", frontend_url);
+        }
+    }
+    
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(allowed_origins)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::PATCH,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::HeaderName::from_static("x-requested-with"),
+            axum::http::header::HeaderName::from_static("accept"),
+            axum::http::header::HeaderName::from_static("origin"),
+        ])
+        .allow_credentials(true);
 
     let app = Router::new()
         .nest("/api/v1", api::routes())

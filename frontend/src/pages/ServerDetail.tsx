@@ -29,6 +29,7 @@ import ServerFiles from "../components/server/ServerFiles";
 import ServerLogs from "../components/server/ServerLogs";
 import ServerConfig from "../components/server/ServerConfig";
 import ServerPlayers from "../components/server/ServerPlayers";
+import ServerMetrics from "../components/server/ServerMetrics";
 import Tabs from "../components/Tabs";
 import WorkInProgress from "../components/WorkInProgress";
 
@@ -1027,7 +1028,20 @@ export default function ServerDetail() {
                     />
                 )}
 
-                {(activeTab === "metrics" || activeTab === "webhooks") && (
+                {activeTab === "metrics" && (
+                    <ServerMetrics
+                        serverId={id!}
+                        cpuUsage={cpuUsage}
+                        ramUsage={ramUsage}
+                        diskUsage={diskUsage}
+                        maxHeapBytes={server?.max_heap_bytes}
+                        serverStatus={server?.status || 'stopped'}
+                        currentPlayers={server?.players?.filter(p => p.is_online).length || 0}
+                        maxPlayers={server?.max_players || 100}
+                    />
+                )}
+
+                {activeTab === "webhooks" && (
                     <WorkInProgress />
                 )}
             </div>

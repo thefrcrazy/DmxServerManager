@@ -207,6 +207,19 @@ export const fr = {
             alwayspretouch: "Précharge toute la RAM au démarrage",
             stringdedup: "Déduplique les chaînes pour économiser la RAM",
             encoding: "Force l'encodage UTF-8"
+        },
+        metrics: {
+            title: "Métriques",
+            period: "Période",
+            cpu: "CPU",
+            ram: "RAM",
+            disk: "Disque",
+            disk_usage: "Espace utilisé par le serveur",
+            history: "Historique",
+            last_minutes: "Dernières {count} min",
+            server_offline: "Serveur hors ligne",
+            start_server_notice: "Démarrez le serveur pour voir les métriques en temps réel",
+            no_data: "Démarrez le serveur pour collecter les métriques"
         }
     },
     settings: {

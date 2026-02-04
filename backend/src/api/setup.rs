@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppState;
 use crate::error::AppError;
 use crate::api::auth::AuthResponse;
+use crate::db::get_or_create_jwt_secret;
 
 #[derive(Serialize)]
 struct SetupStatusResponse {
@@ -90,7 +91,8 @@ async fn perform_setup(
 
     // 4. Return Login Token (Auto-login)
     // Generate JWT
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".into());
+    let secret = get_or_create_jwt_secret(&state.pool).await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
         .expect("valid timestamp")

@@ -43,16 +43,17 @@ impl ProcessManager {
         
         // Spawn metrics loop
         let processes_clone = processes.clone();
+        let pool_clone = pool.clone();
         tokio::spawn(async move {
             let mut system = sysinfo::System::new_all();
-            let mut tick_count = 0;
+            let mut tick_count: u64 = 0;
             loop {
                 // Refresh first so we have accurate CPU readings even on first iteration
                 system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
                 
                 {
                     let procs = processes_clone.read().await;
-                    for (_id, server_proc) in procs.iter() {
+                    for (server_id, server_proc) in procs.iter() {
                         if let Some(child) = &server_proc.child {
                             let pid = sysinfo::Pid::from_u32(child.id());
                             if let Some(process) = system.process(pid) {
@@ -68,6 +69,7 @@ impl ProcessManager {
                                 });
 
                                 // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
+                                let mut disk_size: u64 = 0;
                                 if tick_count % 15 == 0 {
                                     let server_path = &server_proc.working_dir;
                                     let size: u64 = WalkDir::new(server_path)
@@ -83,6 +85,12 @@ impl ProcessManager {
                                     }
                                     if let Ok(mut disk_cache) = server_proc.last_disk.write() {
                                         *disk_cache = size;
+                                    }
+                                    disk_size = size;
+                                } else {
+                                    // Use cached disk value
+                                    if let Ok(disk_cache) = server_proc.last_disk.read() {
+                                        disk_size = *disk_cache;
                                     }
                                 }
 
@@ -100,8 +108,47 @@ impl ProcessManager {
                                 if let Ok(mut mem_cache) = server_proc.last_memory.write() {
                                     *mem_cache = memory;
                                 }
+
+                                // Save metrics to DB every 30 seconds (15 ticks)
+                                if tick_count % 15 == 0 {
+                                    if let Some(pool) = &pool_clone {
+                                        let pool = pool.clone();
+                                        let server_id = server_id.clone();
+                                        let player_count = if let Ok(players) = server_proc.players.read() {
+                                            players.len() as i32
+                                        } else {
+                                            0
+                                        };
+                                        
+                                        tokio::spawn(async move {
+                                            let _ = crate::api::metrics::insert_metric(
+                                                &pool,
+                                                &server_id,
+                                                cpu_normalized as f64,
+                                                memory as i64,
+                                                disk_size as i64,
+                                                player_count,
+                                            ).await;
+                                        });
+                                    }
+                                }
                             }
                         }
+                    }
+                }
+
+                // Cleanup old metrics every hour (1800 ticks at 2s interval)
+                if tick_count % 1800 == 0 && tick_count > 0 {
+                    if let Some(pool) = &pool_clone {
+                        let pool = pool.clone();
+                        tokio::spawn(async move {
+                            let deleted = crate::api::metrics::cleanup_old_metrics(&pool, 7).await;
+                            if let Ok(count) = deleted {
+                                if count > 0 {
+                                    tracing::info!("Cleaned up {} old metric records", count);
+                                }
+                            }
+                        });
                     }
                 }
 

@@ -230,6 +230,19 @@ export const en: TranslationType = {
             alwayspretouch: "Preloads all RAM at startup",
             stringdedup: "Deduplicates strings to save RAM",
             encoding: "Forces UTF-8 encoding"
+        },
+        metrics: {
+            title: "Metrics",
+            period: "Period",
+            cpu: "CPU",
+            ram: "RAM",
+            disk: "Disk",
+            disk_usage: "Space used by server",
+            history: "History",
+            last_minutes: "Last {count} min",
+            server_offline: "Server offline",
+            start_server_notice: "Start the server to see real-time metrics",
+            no_data: "Start the server to collect metrics"
         }
     },
     setup: {

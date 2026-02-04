@@ -39,6 +39,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 thiserror = "2"
 anyhow = "1.0"
+rand = "0.8"
 
 # HTTP client (for Discord webhooks, downloads)
 reqwest = { version = "0.12", features = ["json"] }
