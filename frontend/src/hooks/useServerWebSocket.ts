@@ -75,7 +75,7 @@ export function useServerWebSocket({
             if (installRes.ok) {
                 const data = await installRes.json();
                 // Just check for content, don't parse for status
-                if (data.content && serverStatus === "installing") {
+                if (data.content && serverStatusRef.current === "installing") {
                     // If server status is installing, show install logs
                     // But we might want to append? For now let's just respect the current logic priority
                 }
@@ -99,7 +99,7 @@ export function useServerWebSocket({
         } catch (error) {
             console.error("Failed to fetch console log:", error);
         }
-    }, [serverId, serverStatus]);
+    }, [serverId]); // Removed serverStatus dependence
 
     // WebSocket connection
     const connectWebSocket = useCallback(() => {
@@ -216,6 +216,11 @@ export function useServerWebSocket({
             setIsInstalling(false);
         }
     }, [serverStatus, connectWebSocket]);
+
+    // Refetch logs when status changes (without reconnecting WS)
+    useEffect(() => {
+        fetchConsoleLog();
+    }, [serverStatus, fetchConsoleLog]);
 
     // Initial connection and cleanup
     useEffect(() => {

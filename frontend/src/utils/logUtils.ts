@@ -4,6 +4,8 @@ export const enhanceLogContent = (content: string, gameType: string = 'hytale'):
     // Hytale specific logic
     if (gameType === 'hytale') {
         return content
+            // Fix excessive whitespace (2 or more spaces -> 1 space), preserving indentation if needed but usually we want to collapse
+            .replace(/\s{2,}/g, ' ')
             // Strip potentially broken/visible ANSI bracket sequences like [0m] or [0;39m] appearing as text
             .replace(/\[\d+(;\d+)*m\]/g, '')
             // Time stamps: [HH:mm:ss] or [YYYY/MM/DD HH:mm:ss] -> Gray
