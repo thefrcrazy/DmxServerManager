@@ -897,7 +897,6 @@ export default function ServerDetail() {
                 if (isEmpty1 !== isEmpty2) return false;
 
                 // Loose equality
-                // eslint-disable-next-line eqeqeq
                 if (v1 == v2) return true;
 
                 // Deep compare
