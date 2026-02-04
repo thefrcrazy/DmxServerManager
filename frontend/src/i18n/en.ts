@@ -68,7 +68,7 @@ export const en: TranslationType = {
         active_servers: "Active Servers",
         active_servers_status: "{{count}} active server(s)",
         total_servers: "Total Servers",
-        global_system: "Global System",
+        global_system: "System",
         managed_servers: "Managed Servers",
         cores: "Cores",
         running: "running",

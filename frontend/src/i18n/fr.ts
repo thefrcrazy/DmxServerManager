@@ -67,7 +67,7 @@ export const fr = {
         active_servers: "Serveurs Actifs",
         active_servers_status: "{{count}} serveur(s) actif(s)",
         total_servers: "Total Serveurs",
-        global_system: "Système Global",
+        global_system: "Système",
         managed_servers: "Serveurs Gérés",
         cores: "Cœurs",
         running: "en ligne",
