@@ -167,7 +167,7 @@ export function useServerWebSocket({
 
             setLogs((prev) => {
                 const newLogs = [...prev, message];
-                if (newLogs.length > 1000) return newLogs.slice(-1000);
+                if (newLogs.length > 500) return newLogs.slice(-500);
                 return newLogs;
             });
         };

@@ -244,7 +244,7 @@ impl ProcessManager {
     }
 
     pub fn subscribe_logs(&self, server_id: &str) -> broadcast::Receiver<String> {
-        let (_tx, rx) = broadcast::channel(1000);
+        let (_tx, rx) = broadcast::channel(10000);
         if let Ok(processes) = self.processes.try_read() {
             if let Some(proc) = processes.get(server_id) {
                 return proc.log_tx.subscribe();
@@ -259,7 +259,7 @@ impl ProcessManager {
              return Err(AppError::BadRequest("Server already active".into()));
          }
 
-         let (log_tx, _) = broadcast::channel::<String>(1000);
+         let (log_tx, _) = broadcast::channel::<String>(10000);
          // Broadcast initial installing status
          let _ = log_tx.send("[STATUS]: installing".to_string());
 
@@ -402,7 +402,7 @@ impl ProcessManager {
             .map(|f| Arc::new(std::sync::Mutex::new(f)));
 
         // Create log broadcaster
-        let (log_tx, _) = broadcast::channel::<String>(1000);
+        let (log_tx, _) = broadcast::channel::<String>(10000);
         let _ = log_tx.send("[STATUS]: running".to_string());
 
         // Create players tracker
