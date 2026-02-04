@@ -220,20 +220,20 @@ export default function Dashboard() {
 
                     <div className="stat-card__content">
                         <div className="resource-usage">
+                            <div className="resource-usage__row resource-usage__row--managed">
+                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
+                                <span className="resource-usage__value">{(systemStats.managed_cpu_normalized || 0).toFixed(1)}%</span>
+                            </div>
+                            <div className="progress-container progress-container--dimmed">
+                                <div className="progress-bar progress-bar--info" style={{ width: `${Math.min(100, systemStats.managed_cpu_normalized || 0)}%` }}></div>
+                            </div>
+
                             <div className="resource-usage__row">
                                 <span className="resource-usage__label">{t("dashboard.global_system")}</span>
                                 <span className="resource-usage__value">{systemStats.cpu.toFixed(1)}%</span>
                             </div>
                             <div className="progress-container">
                                 <div className={`progress-bar progress-bar--${getStatColor(systemStats.cpu)}`} style={{ width: `${systemStats.cpu}%` }}></div>
-                            </div>
-
-                            <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
-                                <span className="resource-usage__value">{systemStats.managed_cpu.toFixed(1)}%</span>
-                            </div>
-                            <div className="progress-container progress-container--dimmed">
-                                <div className="progress-bar progress-bar--info" style={{ width: `${Math.min(100, systemStats.managed_cpu_normalized || 0)}%` }}></div>
                             </div>
                         </div>
                     </div>
@@ -255,20 +255,20 @@ export default function Dashboard() {
 
                     <div className="stat-card__content">
                         <div className="resource-usage">
+                            <div className="resource-usage__row resource-usage__row--managed">
+                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
+                                <span className="resource-usage__value">{formatBytes(systemStats.managed_ram)}</span>
+                            </div>
+                            <div className="progress-container progress-container--dimmed">
+                                <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_ram / (systemStats.ram_total || 1)) * 100}%` }}></div>
+                            </div>
+
                             <div className="resource-usage__row">
                                 <span className="resource-usage__label">{t("dashboard.global_system")}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.ram_used)} / {formatBytes(systemStats.ram_total)}</span>
                             </div>
                             <div className="progress-container">
                                 <div className={`progress-bar progress-bar--${getStatColor(systemStats.ram)}`} style={{ width: `${systemStats.ram}%` }}></div>
-                            </div>
-
-                            <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
-                                <span className="resource-usage__value">{formatBytes(systemStats.managed_ram)}</span>
-                            </div>
-                            <div className="progress-container progress-container--dimmed">
-                                <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_ram / systemStats.ram_total) * 100}%` }}></div>
                             </div>
                         </div>
                     </div>
@@ -287,20 +287,20 @@ export default function Dashboard() {
 
                     <div className="stat-card__content">
                         <div className="resource-usage">
+                            <div className="resource-usage__row resource-usage__row--managed">
+                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
+                                <span className="resource-usage__value">{formatBytes(systemStats.managed_disk)}</span>
+                            </div>
+                            <div className="progress-container progress-container--dimmed">
+                                <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_disk / (systemStats.disk_total || 1)) * 100}%` }}></div>
+                            </div>
+
                             <div className="resource-usage__row">
                                 <span className="resource-usage__label">{t("dashboard.global_system")}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.disk_used)} / {formatBytes(systemStats.disk_total)}</span>
                             </div>
                             <div className="progress-container">
                                 <div className={`progress-bar progress-bar--${getStatColor(systemStats.disk)}`} style={{ width: `${systemStats.disk}%` }}></div>
-                            </div>
-
-                            <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">{t("dashboard.managed_servers")}</span>
-                                <span className="resource-usage__value">{formatBytes(systemStats.managed_disk)}</span>
-                            </div>
-                            <div className="progress-container progress-container--dimmed">
-                                <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_disk / systemStats.disk_total) * 100}%` }}></div>
                             </div>
                         </div>
                     </div>
