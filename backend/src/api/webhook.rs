@@ -149,7 +149,7 @@ async fn test_webhook(
 
     // Use update_status_message to edit existing message or create new one
     crate::services::discord_service::update_status_message(pool, embed).await
-        .map_err(|e| AppError::Internal(format!("Failed to update status message: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to update status message: {e}")))?;
 
     Ok(Json(WebhookTestResponse {
         success: true,

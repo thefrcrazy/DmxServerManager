@@ -99,7 +99,7 @@ pub async fn update_status_message(
     // 3. Try EDIT if ID exists
     if let Some((msg_id,)) = msg_id_opt {
         if !msg_id.is_empty() {
-            let edit_url = format!("{}/messages/{}", url, msg_id);
+            let edit_url = format!("{url}/messages/{msg_id}");
             tracing::debug!("Attempting to update Discord status message: {}", msg_id);
             let resp = client.patch(&edit_url).json(&payload).send().await?;
 
@@ -116,14 +116,14 @@ pub async fn update_status_message(
                 tracing::warn!("Discord status message {} not found (404), creating a new one.", msg_id);
             } else {
                 tracing::error!("Failed to update Discord status: {} - {}", status, error_body);
-                return Err(anyhow::anyhow!("Discord API error: {}", status));
+                return Err(anyhow::anyhow!("Discord API error: {status}"));
             }
         }
     }
 
     // 4. CREATE new message (wait=true to get ID)
     tracing::info!("Creating a new persistent Discord status message...");
-    let create_url = format!("{}?wait=true", url);
+    let create_url = format!("{url}?wait=true");
     let resp = client.post(&create_url).json(&payload).send().await?;
 
     if resp.status().is_success() {
@@ -140,7 +140,7 @@ pub async fn update_status_message(
         let status = resp.status();
         let error_body = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
         tracing::error!("Failed to create Discord status message: {} - {}", status, error_body);
-        return Err(anyhow::anyhow!("Discord API error: {}", status));
+        return Err(anyhow::anyhow!("Discord API error: {status}"));
     }
 
     Ok(())

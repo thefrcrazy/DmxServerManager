@@ -283,7 +283,7 @@ async fn update_user(
 
     sql_query.execute(&state.pool)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to update user: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to update user: {e}")))?;
 
     Ok(Json(serde_json::json!({
         "success": true,

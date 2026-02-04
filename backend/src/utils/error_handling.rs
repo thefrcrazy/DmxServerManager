@@ -12,7 +12,7 @@ where
     E: std::fmt::Debug,
 {
     result.map_err(|e| {
-        eprintln!("Error: {:?}", e);
+        eprintln!("Error: {e:?}");
         AppError::Internal(error_msg.into())
     })
 }
@@ -24,8 +24,8 @@ where
     T::Err: std::fmt::Debug,
 {
     value.parse::<T>().map_err(|e| {
-        eprintln!("Parse error: {:?}", e);
-        AppError::BadRequest(format!("{}: {}", error_msg, value))
+        eprintln!("Parse error: {e:?}");
+        AppError::BadRequest(format!("{error_msg}: {value}"))
     })
 }
 
@@ -46,7 +46,7 @@ pub async fn read_file_safe(path: &std::path::Path) -> Result<String, AppError> 
     tokio::fs::read_to_string(path)
         .await
         .map_err(|e| {
-            eprintln!("File read error: {:?}", e);
+            eprintln!("File read error: {e:?}");
             AppError::Internal(format!("Failed to read file: {}", path.display()))
         })
 }
@@ -55,7 +55,7 @@ pub async fn write_file_safe(path: &std::path::Path, content: &str) -> Result<()
     tokio::fs::write(path, content)
         .await
         .map_err(|e| {
-            eprintln!("File write error: {:?}", e);
+            eprintln!("File write error: {e:?}");
             AppError::Internal(format!("Failed to write file: {}", path.display()))
         })
 }

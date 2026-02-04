@@ -165,8 +165,7 @@ pub async fn create_server(
     for dir in directories {
         if let Err(e) = fs::create_dir_all(dir).await {
             return Err(AppError::Internal(format!(
-                "Failed to create directory {:?}: {}",
-                dir, e
+                "Failed to create directory {dir:?}: {e}"
             )));
         }
     }
@@ -213,11 +212,11 @@ pub async fn create_server(
     );
     let config_json_path = server_base_path.join("config.json");
     let mut config_file = fs::File::create(&config_json_path).await.map_err(|e| {
-        AppError::Internal(format!("Failed to create config.json: {}", e))
+        AppError::Internal(format!("Failed to create config.json: {e}"))
     })?;
     config_file.write_all(serde_json::to_string_pretty(&hytale_config).unwrap().as_bytes())
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to write config.json: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to write config.json: {e}")))?;
 
     info!("Generated Hytale config.json for server {}", id);
 
@@ -633,7 +632,7 @@ pub async fn start_server(
             crate::services::discord_service::send_notification(
                 &pool_clone,
                 "🟢 Serveur Démarré",
-                &format!("Le serveur **{}** a été démarré.", server_name),
+                &format!("Le serveur **{server_name}** a été démarré."),
                 crate::services::discord_service::COLOR_SUCCESS,
                 Some(&server_name),
                 Some(&url),
@@ -809,7 +808,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                 return; // Aborted before start
             }
             
-            let working_dir_str = server_path_inner.to_string_lossy().to_string();
+            let _working_dir_str = server_path_inner.to_string_lossy().to_string();
             // Note: register_installing is done by parent
             
             let logs_dir = server_path_inner.join("logs");
@@ -836,7 +835,7 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                     pm.broadcast_log(&id, msg.clone()).await;
                     if let Some(f) = log_file {
                         let mut guard = f.lock().await;
-                        let _ = guard.write_all(format!("{}\n", msg).as_bytes()).await;
+                        let _ = guard.write_all(format!("{msg}\n").as_bytes()).await;
                     }
                 }
             };
@@ -847,15 +846,15 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             let zip_name = "hytale-downloader.zip";
             let dest_path = server_path_inner.join(zip_name);
 
-            broadcast(format!("⬇️ Téléchargement de Hytale Downloader depuis {}...", zip_url)).await;
+            broadcast(format!("⬇️ Téléchargement de Hytale Downloader depuis {zip_url}...")).await;
             
             // 1. Download
             if let Err(e) = run_with_logs(
-                &mut tokio::process::Command::new("curl")
+                tokio::process::Command::new("curl")
                     .arg("-L").arg("-o").arg(&dest_path).arg(zip_url),
                 pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
             ).await {
-                 broadcast(format!("❌ {}", e)).await;
+                broadcast(format!("❌ {e}")).await;
                  pm_inner.remove(&id_inner).await;
                  return;
             }
@@ -865,11 +864,11 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             
             // 2. Unzip
             if let Err(e) = run_with_logs(
-                &mut tokio::process::Command::new("unzip")
+                tokio::process::Command::new("unzip")
                     .arg("-o").arg(&dest_path).arg("-d").arg(&server_path_inner),
                 pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
             ).await {
-                broadcast(format!("❌ {}", e)).await;
+                broadcast(format!("❌ {e}")).await;
                 pm_inner.remove(&id_inner).await;
                 return;
             }
@@ -889,12 +888,10 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
             } else if std::env::consts::OS == "windows" {
                  executable_name = windows_binary.to_string();
                  let _ = tokio::fs::remove_file(server_path_inner.join(linux_binary)).await;
-            } else {
-                 if cfg!(target_os = "macos") {
-                     broadcast("⚠️ Attention : macOS détecté. Le Hytale Downloader (Linux binary) peut ne pas fonctionner nativement.".to_string()).await;
-                     executable_name = linux_binary.to_string(); 
-                     let _ = tokio::fs::remove_file(server_path_inner.join(windows_binary)).await;
-                }
+            } else if cfg!(target_os = "macos") {
+                 broadcast("⚠️ Attention : macOS détecté. Le Hytale Downloader (Linux binary) peut ne pas fonctionner nativement.".to_string()).await;
+                 executable_name = linux_binary.to_string(); 
+                 let _ = tokio::fs::remove_file(server_path_inner.join(windows_binary)).await;
             }
             
             let executable_path = server_path_inner.join(&executable_name);
@@ -902,14 +899,14 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                 let _ = tokio::process::Command::new("chmod").arg("+x").arg(&executable_path).status().await;
             }
 
-            broadcast(format!("⏳ Exécution du downloader ({}) pour récupérer le serveur...", executable_name)).await;
+            broadcast(format!("⏳ Exécution du downloader ({executable_name}) pour récupérer le serveur...")).await;
             broadcast("⚠️ IMPORTANT : Le downloader va vous demander de vous authentifier via une URL.".to_string()).await;
             
             if let Err(e) = run_with_logs(
-                &mut tokio::process::Command::new(&executable_path).current_dir(&server_path_inner),
+                tokio::process::Command::new(&executable_path).current_dir(&server_path_inner),
                 pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
             ).await {
-                broadcast(format!("❌ {}", e)).await;
+                broadcast(format!("❌ {e}")).await;
             } else {
                 broadcast("✅ Downloader terminé avec succès.".to_string()).await;
             }
@@ -921,12 +918,12 @@ fn spawn_hytale_installation(pool: DbPool, pm: ProcessManager, id: String, serve
                          if ext == "zip" {
                               let file_name = path.file_name().unwrap().to_string_lossy();
                               if file_name != "hytale-downloader.zip" && file_name != "Assets.zip" {
-                                  broadcast(format!("📦 Décompression du serveur : {}...", file_name)).await;
+                                  broadcast(format!("📦 Décompression du serveur : {file_name}...")).await;
                                   if let Err(e) = run_with_logs(
-                                     &mut tokio::process::Command::new("unzip").arg("-o").arg(&path).arg("-d").arg(&server_path_inner),
+                                     tokio::process::Command::new("unzip").arg("-o").arg(&path).arg("-d").arg(&server_path_inner),
                                      pm_inner.clone(), id_inner.clone(), "", Some(install_log_path.clone())
                                   ).await {
-                                      broadcast(format!("❌ Erreur extraction: {}", e)).await;
+                                      broadcast(format!("❌ Erreur extraction: {e}")).await;
                                   } else {
                                      broadcast("✅ Décompression terminée.".to_string()).await;
                                      let _ = tokio::fs::remove_file(&path).await;
@@ -982,7 +979,7 @@ async fn run_with_logs(
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
     
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn command: {}", e))?;
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn command: {e}"))?;
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
     let mut stdout_reader = tokio::io::BufReader::new(stdout);
@@ -1000,7 +997,7 @@ async fn run_with_logs(
             if byte == b'\n' || byte == b'\r' {
                 if !buffer.is_empty() {
                     let line = String::from_utf8_lossy(&buffer).to_string();
-                    pm1.broadcast_log(&id1, format!("{}{}", p1, line)).await;
+                    pm1.broadcast_log(&id1, format!("{p1}{line}")).await;
                     if let Some(writer) = &fw1 {
                         let mut guard = writer.lock().await;
                         let _ = guard.write_all(line.as_bytes()).await;
@@ -1019,7 +1016,7 @@ async fn run_with_logs(
              if byte == b'\n' || byte == b'\r' {
                 if !buffer.is_empty() {
                     let line = String::from_utf8_lossy(&buffer).to_string();
-                    pm2.broadcast_log(&id2, format!("{}[ERR] {}", p2, line)).await;
+                    pm2.broadcast_log(&id2, format!("{p2}[ERR] {line}")).await;
                     if let Some(writer) = &fw2 {
                         let mut guard = writer.lock().await;
                         let _ = guard.write_all(line.as_bytes()).await;
@@ -1038,7 +1035,7 @@ async fn run_with_logs(
     match status {
         Ok(s) if s.success() => Ok(()),
         Ok(s) => Err(format!("Command failed with exit code: {:?}", s.code())),
-        Err(e) => Err(format!("Failed to wait for command: {}", e)),
+        Err(e) => Err(format!("Failed to wait for command: {e}")),
     }
 }
 

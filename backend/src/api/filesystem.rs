@@ -30,7 +30,7 @@ async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_jso
     let path = PathBuf::from(&base_path);
 
     if !path.exists() {
-        return Err(AppError::NotFound(format!("Path not found: {}", base_path)));
+        return Err(AppError::NotFound(format!("Path not found: {base_path}")));
     }
 
     if !path.is_dir() {
@@ -52,7 +52,7 @@ async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_jso
 
     // Read directory entries
     let read_dir = std::fs::read_dir(&path)
-        .map_err(|e| AppError::Internal(format!("Failed to read directory: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to read directory: {e}")))?;
 
     for entry in read_dir.flatten() {
         let entry_path = entry.path();

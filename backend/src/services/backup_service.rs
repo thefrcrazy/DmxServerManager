@@ -23,7 +23,7 @@ pub fn create_archive(source_dir: &str, backup_file_path: &str) -> Result<u64, B
     let backup_path = Path::new(backup_file_path);
 
     if !source_path.exists() {
-        return Err(BackupError::PathError(format!("Source directory not found: {}", source_dir)));
+        return Err(BackupError::PathError(format!("Source directory not found: {source_dir}")));
     }
 
     // Create parent directory for backup if it doesn't exist
@@ -53,7 +53,7 @@ pub fn extract_archive(backup_file_path: &str, dest_dir: &str) -> Result<(), Bac
     let dest_path = Path::new(dest_dir);
 
     if !backup_path.exists() {
-        return Err(BackupError::PathError(format!("Backup file not found: {}", backup_file_path)));
+        return Err(BackupError::PathError(format!("Backup file not found: {backup_file_path}")));
     }
 
     if !dest_path.exists() {

@@ -52,7 +52,7 @@ pub async fn list_server_files(
     };
     
     // Security: ensure path is within server directory
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -82,7 +82,7 @@ pub async fn list_server_files(
     
     // Read directory entries
     let read_dir = std::fs::read_dir(&full_path)
-        .map_err(|e| AppError::Internal(format!("Failed to read directory: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to read directory: {e}")))?;
     
     for entry in read_dir.flatten() {
         let entry_path = entry.path();
@@ -114,7 +114,7 @@ pub async fn list_server_files(
             let rel_path = if relative_path.is_empty() {
                 name_str.clone()
             } else {
-                format!("{}/{}", relative_path, name_str)
+                format!("{relative_path}/{name_str}")
             };
             
             entries.push(FileEntry {
@@ -168,7 +168,7 @@ pub async fn read_server_file(
     let full_path = base_path.join(&query.path);
     
     // Security check
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -181,7 +181,7 @@ pub async fn read_server_file(
     }
     
     let content = std::fs::read_to_string(&full_path)
-        .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?;
     
     Ok(Json(serde_json::json!({
         "path": query.path,
@@ -209,12 +209,12 @@ pub async fn write_server_file(
     let full_path = base_path.join(&body.path);
     
     // Security check
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
     std::fs::write(&full_path, &body.content)
-        .map_err(|e| AppError::Internal(format!("Failed to write file: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to write file: {e}")))?;
     
     info!("File written: {:?}", full_path);
     
@@ -244,7 +244,7 @@ pub async fn delete_server_file(
     let full_path = base_path.join(&body.path);
     
     // Security check
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -255,11 +255,11 @@ pub async fn delete_server_file(
     // Delete file or directory
     if full_path.is_dir() {
         std::fs::remove_dir_all(&full_path)
-            .map_err(|e| AppError::Internal(format!("Failed to delete directory: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to delete directory: {e}")))?;
         info!("Directory deleted: {:?}", full_path);
     } else {
         std::fs::remove_file(&full_path)
-            .map_err(|e| AppError::Internal(format!("Failed to delete file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to delete file: {e}")))?;
         info!("File deleted: {:?}", full_path);
     }
     
@@ -288,7 +288,7 @@ pub async fn create_folder(
     let full_path = base_path.join(&body.path);
     
     // Security check
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -297,7 +297,7 @@ pub async fn create_folder(
     }
     
     std::fs::create_dir_all(&full_path)
-        .map_err(|e| AppError::Internal(format!("Failed to create folder: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to create folder: {e}")))?;
     
     info!("Folder created: {:?}", full_path);
     
@@ -326,7 +326,7 @@ pub async fn create_file(
     let full_path = base_path.join(&body.path);
     
     // Security check
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -338,13 +338,13 @@ pub async fn create_file(
     if let Some(parent) = full_path.parent() {
         if !parent.exists() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::Internal(format!("Failed to create parent directories: {}", e)))?;
+                .map_err(|e| AppError::Internal(format!("Failed to create parent directories: {e}")))?;
         }
     }
     
     let content = body.content.unwrap_or_default();
     std::fs::write(&full_path, &content)
-        .map_err(|e| AppError::Internal(format!("Failed to create file: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to create file: {e}")))?;
     
     info!("File created: {:?}", full_path);
     
@@ -373,7 +373,7 @@ pub async fn upload_file(
     let mut uploaded_files: Vec<String> = Vec::new();
     let mut target_path = String::new();
     
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::BadRequest(format!("Failed to read multipart: {}", e)))? {
+    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::BadRequest(format!("Failed to read multipart: {e}")))? {
         let name = field.name().unwrap_or("").to_string();
         
         if name == "path" {
@@ -386,7 +386,7 @@ pub async fn upload_file(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "unnamed".to_string());
             
-            let data = field.bytes().await.map_err(|e| AppError::Internal(format!("Failed to read file data: {}", e)))?;
+            let data = field.bytes().await.map_err(|e| AppError::Internal(format!("Failed to read file data: {e}")))?;
             
             let file_path = if target_path.is_empty() {
                 base_path.join(&file_name)
@@ -395,7 +395,7 @@ pub async fn upload_file(
             };
             
             // Security check
-            if !file_path.starts_with(&base_path) {
+            if !file_path.starts_with(base_path) {
                 return Err(AppError::BadRequest("Invalid path".into()));
             }
             
@@ -403,12 +403,12 @@ pub async fn upload_file(
             if let Some(parent) = file_path.parent() {
                 if !parent.exists() {
                     std::fs::create_dir_all(parent)
-                        .map_err(|e| AppError::Internal(format!("Failed to create directories: {}", e)))?;
+                        .map_err(|e| AppError::Internal(format!("Failed to create directories: {e}")))?;
                 }
             }
             
             std::fs::write(&file_path, &data)
-                .map_err(|e| AppError::Internal(format!("Failed to write file: {}", e)))?;
+                .map_err(|e| AppError::Internal(format!("Failed to write file: {e}")))?;
             
             info!("File uploaded: {:?}", file_path);
             uploaded_files.push(file_name);
@@ -440,7 +440,7 @@ pub async fn download_file(
     let full_path = base_path.join(&query.path);
     
     // Security check
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -453,17 +453,17 @@ pub async fn download_file(
     }
     
     let mut file = tokio::fs::File::open(&full_path).await
-        .map_err(|e| AppError::Internal(format!("Failed to open file: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to open file: {e}")))?;
     
     let mut contents = Vec::new();
     file.read_to_end(&mut contents).await
-        .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?;
     
     let file_name = full_path.file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "download".to_string());
     
-    let content_disposition = format!("attachment; filename=\"{}\"", file_name);
+    let content_disposition = format!("attachment; filename=\"{file_name}\"");
     
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
@@ -489,7 +489,7 @@ pub async fn rename_file(
     let base_path = StdPath::new(&working_dir);
     let full_path = base_path.join(&body.path);
     
-    if !full_path.starts_with(&base_path) {
+    if !full_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -506,12 +506,12 @@ pub async fn rename_file(
         .ok_or_else(|| AppError::Internal("Cannot get parent directory".into()))?
         .join(&body.new_name);
     
-    if !new_path.starts_with(&base_path) {
+    if !new_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid destination path".into()));
     }
     
     std::fs::rename(&full_path, &new_path)
-        .map_err(|e| AppError::Internal(format!("Failed to rename: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to rename: {e}")))?;
     
     info!("Renamed {} to {}", body.path, body.new_name);
     
@@ -536,7 +536,7 @@ pub async fn copy_file(
     let source_path = base_path.join(&body.source);
     let dest_path = base_path.join(&body.destination);
     
-    if !source_path.starts_with(&base_path) || !dest_path.starts_with(&base_path) {
+    if !source_path.starts_with(base_path) || !dest_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -547,16 +547,16 @@ pub async fn copy_file(
     // Create parent directories if needed
     if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Internal(format!("Failed to create directories: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create directories: {e}")))?;
     }
     
     if source_path.is_dir() {
         // Recursive copy for directories
         copy_dir_recursive(&source_path, &dest_path)
-            .map_err(|e| AppError::Internal(format!("Failed to copy directory: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to copy directory: {e}")))?;
     } else {
         std::fs::copy(&source_path, &dest_path)
-            .map_err(|e| AppError::Internal(format!("Failed to copy file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to copy file: {e}")))?;
     }
     
     info!("Copied {} to {}", body.source, body.destination);
@@ -597,7 +597,7 @@ pub async fn move_file(
     let source_path = base_path.join(&body.source);
     let dest_path = base_path.join(&body.destination);
     
-    if !source_path.starts_with(&base_path) || !dest_path.starts_with(&base_path) {
+    if !source_path.starts_with(base_path) || !dest_path.starts_with(base_path) {
         return Err(AppError::BadRequest("Invalid path".into()));
     }
     
@@ -608,11 +608,11 @@ pub async fn move_file(
     // Create parent directories if needed
     if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Internal(format!("Failed to create directories: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create directories: {e}")))?;
     }
     
     std::fs::rename(&source_path, &dest_path)
-        .map_err(|e| AppError::Internal(format!("Failed to move file: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to move file: {e}")))?;
     
     info!("Moved {} to {}", body.source, body.destination);
     

@@ -24,7 +24,7 @@ pub fn start(pool: DbPool, process_manager: ProcessManager) {
             interval.tick().await;
             
             if let Err(e) = run_status_update(&pool, &mut sys, &process_manager).await {
-                eprintln!("Error in status scheduler: {}", e);
+                eprintln!("Error in status scheduler: {e}");
             }
         }
     });
@@ -119,14 +119,14 @@ async fn run_status_update(pool: &DbPool, sys: &mut System, pm: &ProcessManager)
                 }
             }
             
-            details.push_str(&format!("👥 {}/{}", online_players, max_players));
+            details.push_str(&format!("👥 {online_players}/{max_players}"));
             
             // 2. Uptime
             if let Some(started_at) = pm.get_server_started_at(&id).await {
                 let duration = chrono::Utc::now().signed_duration_since(started_at);
                 let hours = duration.num_hours();
                 let minutes = duration.num_minutes() % 60;
-                details.push_str(&format!(" • ⏱️ {}h{}m", hours, minutes));
+                details.push_str(&format!(" • ⏱️ {hours}h{minutes}m"));
             }
             
             // 3. CPU/RAM
@@ -143,16 +143,16 @@ async fn run_status_update(pool: &DbPool, sys: &mut System, pm: &ProcessManager)
                      let mem_gb = mem_mb / 1024.0;
                      
                      if mem_gb >= 1.0 {
-                         details.push_str(&format!(" • 📊 CPU: {:.1}% RAM: {:.1} GB", cpu, mem_gb));
+                         details.push_str(&format!(" • 📊 CPU: {cpu:.1}% RAM: {mem_gb:.1} GB"));
                      } else {
-                         details.push_str(&format!(" • 📊 CPU: {:.1}% RAM: {:.0} MB", cpu, mem_mb));
+                         details.push_str(&format!(" • 📊 CPU: {cpu:.1}% RAM: {mem_mb:.0} MB"));
                      }
                  }
             }
 
-            server_lines.push(format!("🟢 **{}**\n╰ {}", name, details));
+            server_lines.push(format!("🟢 **{name}**\n╰ {details}"));
         } else {
-            server_lines.push(format!("🔴 **{}**", name));
+            server_lines.push(format!("🔴 **{name}**"));
         }
     }
     

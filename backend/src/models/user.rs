@@ -36,7 +36,7 @@ impl std::str::FromStr for UserRole {
         match s.to_lowercase().as_str() {
             "admin" => Ok(UserRole::Admin),
             "user" => Ok(UserRole::User),
-            _ => Err(format!("Unknown role: {}", s)),
+            _ => Err(format!("Unknown role: {s}")),
         }
     }
 }

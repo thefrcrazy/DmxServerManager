@@ -105,7 +105,7 @@ async fn create_backup(
     // Create backups directory if not exists
     let backups_dir = std::path::Path::new("backups");
     if !backups_dir.exists() {
-        std::fs::create_dir_all(backups_dir).map_err(|e| AppError::Internal(format!("Failed to create backups dir: {}", e)))?;
+        std::fs::create_dir_all(backups_dir).map_err(|e| AppError::Internal(format!("Failed to create backups dir: {e}")))?;
     }
 
     let backup_path = backups_dir.join(&filename);
@@ -115,7 +115,7 @@ async fn create_backup(
     
     // Call service
     let size_bytes = crate::services::backup_service::create_archive(working_dir, backup_path.to_str().unwrap())
-        .map_err(|e| AppError::Internal(format!("Backup failed: {:?}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Backup failed: {e:?}")))?;
 
     let created_at = now.to_rfc3339();
 
@@ -174,7 +174,7 @@ async fn delete_backup(
          let backups_dir = std::path::Path::new("backups");
          let file_path = backups_dir.join(filename);
          if file_path.exists() {
-             std::fs::remove_file(file_path).map_err(|e| AppError::Internal(format!("Failed to delete backup file: {}", e)))?;
+             std::fs::remove_file(file_path).map_err(|e| AppError::Internal(format!("Failed to delete backup file: {e}")))?;
          }
     }
 
@@ -214,7 +214,7 @@ async fn restore_backup(
     
     // Restore
     crate::services::backup_service::extract_archive(file_path.to_str().unwrap(), &server.0)
-        .map_err(|e| AppError::Internal(format!("Restore failed: {:?}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Restore failed: {e:?}")))?;
 
     Ok(Json(serde_json::json!({
         "success": true,

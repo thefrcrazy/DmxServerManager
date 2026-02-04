@@ -103,7 +103,7 @@ async fn update_settings(
         if let Some(ref db_path) = body.database_path {
              match update_env_file("DATABASE_URL", db_path).await {
                  Ok(_) => {},
-                 Err(e) => eprintln!("Failed to update .env: {}", e),
+                 Err(e) => eprintln!("Failed to update .env: {e}"),
              }
         }
     }
@@ -140,7 +140,7 @@ async fn update_env_file(key: &str, value: &str) -> std::io::Result<()> {
 
     let mut new_lines = Vec::new();
     let mut key_found = false;
-    let new_line = format!("{}={}", key, value);
+    let new_line = format!("{key}={value}");
 
     for line in content.lines() {
         if line.starts_with(key) && line.contains('=') {

@@ -94,7 +94,7 @@ impl ProcessManager {
                                     }
                                 }
 
-                                let metrics_msg = format!("[METRICS]: {}", metrics_json);
+                                let metrics_msg = format!("[METRICS]: {metrics_json}");
                                 let _ = server_proc.log_tx.send(metrics_msg.clone());
                                 if let Ok(mut cache) = server_proc.last_metrics.write() {
                                     *cache = Some(metrics_msg);
@@ -326,8 +326,8 @@ impl ProcessManager {
         let heap_target_bytes = parse_memory_to_bytes(max_mem);
         let (xms, xmx) = calculate_jvm_tokens(heap_target_bytes);
 
-        cmd.arg(format!("-Xms{}", xms))
-            .arg(format!("-Xmx{}", xmx))
+        cmd.arg(format!("-Xms{xms}"))
+            .arg(format!("-Xmx{xmx}"))
             .arg("-Dterminal.jline=true")
             .arg("-Dterminal.ansi=true")
             .arg("-XX:AOTCache=HytaleServer.aot");
@@ -360,7 +360,7 @@ impl ProcessManager {
                 .unwrap_or("0.0.0.0");
 
             cmd.arg("--bind");
-            cmd.arg(format!("{}:{}", bind_ip, port));
+            cmd.arg(format!("{bind_ip}:{port}"));
         } else {
             // Default to standard port if no config
             cmd.arg("--bind");
@@ -373,7 +373,7 @@ impl ProcessManager {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| AppError::Internal(format!("Failed to start server: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to start server: {e}")))?;
 
         info!("Started server {} with PID {:?}", server_id, child.id());
 
@@ -428,7 +428,7 @@ impl ProcessManager {
                     // Write to file
                     if let Some(f) = &log_file_clone {
                         if let Ok(mut guard) = f.lock() {
-                            let _ = writeln!(guard, "{}", line);
+                            let _ = writeln!(guard, "{line}");
                         }
                     }
 
@@ -527,11 +527,11 @@ impl ProcessManager {
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    let log_line = format!("[STDERR] {}", line);
+                    let log_line = format!("[STDERR] {line}");
                      // Write to file
                     if let Some(f) = &log_file_clone {
                         if let Ok(mut guard) = f.lock() {
-                            let _ = writeln!(guard, "{}", log_line);
+                            let _ = writeln!(guard, "{log_line}");
                         }
                     }
                     let _ = tx.send(log_line);
@@ -563,7 +563,7 @@ impl ProcessManager {
                 last_disk: Arc::new(std::sync::RwLock::new(0)),
                 working_dir: working_dir.to_string(),
                 started_at: Some(chrono::Utc::now()),
-                auth_required: auth_required,
+                auth_required,
             },
         );
 
@@ -597,7 +597,7 @@ impl ProcessManager {
             if child.try_wait().map_err(|e| AppError::Internal(e.to_string()))?.is_none() {
                 child
                     .kill()
-                    .map_err(|e| AppError::Internal(format!("Failed to kill server: {}", e)))?;
+                    .map_err(|e| AppError::Internal(format!("Failed to kill server: {e}")))?;
             }
         }
         
@@ -619,7 +619,7 @@ impl ProcessManager {
             // Force kill immediately
             child
                 .kill()
-                .map_err(|e| AppError::Internal(format!("Failed to kill server: {}", e)))?;
+                .map_err(|e| AppError::Internal(format!("Failed to kill server: {e}")))?;
         }
 
         processes.remove(server_id);
@@ -668,8 +668,8 @@ impl ProcessManager {
 
         if let Some(child) = &mut proc.child {
             if let Some(stdin) = child.stdin.as_mut() {
-                writeln!(stdin, "{}", command)
-                    .map_err(|e| AppError::Internal(format!("Failed to send command: {}", e)))?;
+                writeln!(stdin, "{command}")
+                    .map_err(|e| AppError::Internal(format!("Failed to send command: {e}")))?;
             }
         }
 

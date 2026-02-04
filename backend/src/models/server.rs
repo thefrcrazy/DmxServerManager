@@ -54,7 +54,7 @@ impl std::str::FromStr for GameType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "hytale" => Ok(GameType::Hytale),
-            _ => Err(format!("Unknown game type: {}", s)),
+            _ => Err(format!("Unknown game type: {s}")),
         }
     }
 }

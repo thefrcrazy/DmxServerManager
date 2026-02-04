@@ -18,11 +18,11 @@ async fn upload_image(mut multipart: Multipart) -> Result<Json<serde_json::Value
     let upload_dir = std::path::Path::new(&upload_dir_str);
     if !upload_dir.exists() {
         std::fs::create_dir_all(upload_dir)
-            .map_err(|e| AppError::Internal(format!("Failed to create upload directory: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create upload directory: {e}")))?;
     }
 
     // Process the multipart form
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::Internal(format!("Multipart error: {}", e)))? {
+    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::Internal(format!("Multipart error: {e}")))? {
         
         // Get content type and validate it's an image
         let content_type = field.content_type().map(|ct| ct.to_string());
@@ -54,17 +54,17 @@ async fn upload_image(mut multipart: Multipart) -> Result<Json<serde_json::Value
         let filepath = upload_dir.join(&filename);
 
         // Read data
-        let data = field.bytes().await.map_err(|e| AppError::Internal(format!("Failed to read chunk: {}", e)))?;
+        let data = field.bytes().await.map_err(|e| AppError::Internal(format!("Failed to read chunk: {e}")))?;
 
         // Write file
         let mut file = std::fs::File::create(&filepath)
-            .map_err(|e| AppError::Internal(format!("Failed to create file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create file: {e}")))?;
         
         file.write_all(&data)
-            .map_err(|e| AppError::Internal(format!("Failed to write file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to write file: {e}")))?;
 
         // Return the URL to access the uploaded file
-        let url = format!("/uploads/{}", filename);
+        let url = format!("/uploads/{filename}");
         return Ok(Json(serde_json::json!({
             "success": true,
             "url": url,
