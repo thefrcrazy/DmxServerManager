@@ -209,36 +209,45 @@
     }
 
     .progress-container {
-        height: 6px;
+        height: 8px;
         background: var(--color-bg-elevated);
-        border-radius: 3px;
+        border-radius: 4px;
         overflow: hidden;
+        position: relative; // Added for stacking
 
         &--dimmed {
             background: rgba(255, 255, 255, 0.03);
-            height: 4px;
+            height: 8px; // Keep same height for alignment
         }
     }
 
     .progress-bar {
+        position: absolute; // Stack them
+        top: 0;
+        left: 0;
         height: 100%;
-        border-radius: 3px;
+        border-radius: 4px;
         transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 
         &--success {
             background: linear-gradient(90deg, #10b981, #34d399);
+            z-index: 1; // Base bar
         }
 
         &--warning {
             background: linear-gradient(90deg, #f59e0b, #fbbf24);
+            z-index: 1;
         }
 
         &--danger {
             background: linear-gradient(90deg, #ef4444, #f87171);
+            z-index: 1;
         }
 
         &--info {
             background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            z-index: 2; // Foreground bar (Managed)
+            box-shadow: 2px 0 10px rgba(59, 130, 246, 0.4);
         }
     }
 
