@@ -217,13 +217,23 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
     // Managed resource usage
     let mut managed_cpu = 0.0;
     let mut managed_ram = 0;
-    let mut managed_disk = 0;
-
+    
     let procs = pm.get_processes_read_guard().await;
     for proc in procs.values() {
         managed_cpu += proc.last_cpu.read().map(|g| *g).unwrap_or(0.0);
         managed_ram += proc.last_memory.read().map(|g| *g).unwrap_or(0);
-        managed_disk += proc.last_disk.read().map(|g| *g).unwrap_or(0);
+    }
+
+    // Calculate managed_disk by scanning all server directories in database
+    let mut managed_disk = 0;
+    if let Ok(server_rows) = sqlx::query!("SELECT working_dir FROM servers")
+        .fetch_all(&state.pool)
+        .await {
+        for row in server_rows {
+            if let Some(dir) = row.working_dir {
+                managed_disk += get_dir_size(&dir).await;
+            }
+        }
     }
 
     Ok(Json(SystemStatsResponse {
@@ -284,8 +294,51 @@ async fn get_cached_system_stats() -> (f32, f32, u64, u64, usize) {
 
         let cores = sys.cpus().len();
         
-        (cpu, percent, used, total, cores)
-    };
+            (cpu, percent, used, total, cores)
+        
+        }
+        
+        
+        
+        /// Recursively calculates the size of a directory in bytes
+        
+        async fn get_dir_size(path: &str) -> u64 {
+        
+            let path = std::path::Path::new(path);
+        
+            if !path.exists() || !path.is_dir() {
+        
+                return 0;
+        
+            }
+        
+        
+        
+            // Use a blocking thread for file system traversal to avoid blocking the async executor
+        
+            let path_buf = path.to_path_buf();
+        
+            tokio::task::spawn_blocking(move || {
+        
+                WalkDir::new(path_buf)
+        
+                    .into_iter()
+        
+                    .filter_map(|e| e.ok())
+        
+                    .filter(|e| e.file_type().is_file())
+        
+                    .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
+        
+                    .sum()
+        
+            })
+        
+            .await
+        
+            .unwrap_or(0)
+        
+        };
 
     // Update cache
     {
