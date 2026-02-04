@@ -66,7 +66,7 @@ jobs:
         working-directory: ./backend
         run: cargo test --verbose
         env:
-          DATABASE_URL: sqlite::memory:
+          DATABASE_URL: "sqlite::memory:"
 
   backend-security:
     name: Backend Security Audit
