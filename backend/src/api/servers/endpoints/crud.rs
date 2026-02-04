@@ -285,6 +285,7 @@ pub async fn get_server(
         is_whitelisted: false,
     })).collect();
 
+    // Merge with real-time online players
     if let Some(online_names) = pm.get_online_players(&id).await {
         for name in online_names {
             players_map.entry(name.clone())
@@ -303,25 +304,23 @@ pub async fn get_server(
         }
     }
 
+    // Load meta from server files (whitelist, etc.)
     let meta = load_player_meta(&server.working_dir).await;
-    
     for (name, m) in &meta {
-        players_map.entry(name.clone()).or_insert(Player {
-            name: name.clone(),
-            is_online: false,
-            last_seen: "Jamais".to_string(), 
-            is_op: m.is_op,
-            is_banned: m.is_banned,
-            is_whitelisted: m.is_whitelisted,
-        });
-    }
-
-    for (name, p) in players_map.iter_mut() {
-        if let Some(m) = meta.get(name) {
-            p.is_op = m.is_op;
-            p.is_banned = m.is_banned;
-            p.is_whitelisted = m.is_whitelisted;
-        }
+        players_map.entry(name.clone())
+            .and_modify(|p| {
+                p.is_op = m.is_op;
+                p.is_banned = m.is_banned;
+                p.is_whitelisted = m.is_whitelisted;
+            })
+            .or_insert(Player {
+                name: name.clone(),
+                is_online: false,
+                last_seen: "Jamais".to_string(), 
+                is_op: m.is_op,
+                is_banned: m.is_banned,
+                is_whitelisted: m.is_whitelisted,
+            });
     }
 
     let mut final_players: Vec<Player> = players_map.into_values().collect();
@@ -550,47 +549,67 @@ struct PlayerMeta {
 
 async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String, PlayerMeta> {
     let mut meta_map = std::collections::HashMap::new();
-    let server_path = StdPath::new(working_dir).join("server");
+    let base_path = StdPath::new(working_dir);
+    let server_path = base_path.join("server");
 
-    // OPs
-    let path = server_path.join("permissions.json");
-    if let Ok(c) = fs::read_to_string(&path).await {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
-             if let Some(arr) = json.as_array() {
-                 for item in arr {
-                     if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                         meta_map.entry(name.to_string()).or_insert(PlayerMeta { is_op: true, is_whitelisted: false, is_banned: false }).is_op = true;
+    // Helper to try multiple paths
+    let try_paths = |filename: &str| {
+        let p1 = server_path.join(filename);
+        let p2 = base_path.join(filename);
+        if p1.exists() { Some(p1) }
+        else if p2.exists() { Some(p2) }
+        else { None }
+    };
+
+    // OPs (permissions.json)
+    if let Some(path) = try_paths("permissions.json") {
+        if let Ok(c) = fs::read_to_string(&path).await {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
+                 if let Some(users) = json.get("users").and_then(|u| u.as_object()) {
+                     for uuid in users.keys() {
+                         meta_map.entry(uuid.to_string()).or_insert(PlayerMeta { is_op: true, is_whitelisted: false, is_banned: false }).is_op = true;
                      }
                  }
-             }
+            }
         }
     }
     
     // Whitelist
-    let path = server_path.join("whitelist.json");
-    if let Ok(c) = fs::read_to_string(&path).await {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
-             if let Some(arr) = json.as_array() {
-                 for item in arr {
-                     if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                         meta_map.entry(name.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: true, is_banned: false }).is_whitelisted = true;
+    if let Some(path) = try_paths("whitelist.json") {
+        if let Ok(c) = fs::read_to_string(&path).await {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
+                 // Try array format
+                 if let Some(arr) = json.as_array() {
+                     for item in arr {
+                         if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                             meta_map.entry(name.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: true, is_banned: false }).is_whitelisted = true;
+                         }
+                     }
+                 } 
+                 // Try Hytale object format { "list": [...] }
+                 else if let Some(list) = json.get("list").and_then(|l| l.as_array()) {
+                     for item in list {
+                         if let Some(s) = item.as_str() {
+                             meta_map.entry(s.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: true, is_banned: false }).is_whitelisted = true;
+                         }
                      }
                  }
-             }
+            }
         }
     }
 
     // Bans
-    let path = server_path.join("bans.json");
-    if let Ok(c) = fs::read_to_string(&path).await {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
-             if let Some(arr) = json.as_array() {
-                 for item in arr {
-                     if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                         meta_map.entry(name.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: false, is_banned: true }).is_banned = true;
+    if let Some(path) = try_paths("bans.json") {
+        if let Ok(c) = fs::read_to_string(&path).await {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
+                 if let Some(arr) = json.as_array() {
+                     for item in arr {
+                         if let Some(target) = item.get("target").and_then(|v| v.as_str()) {
+                             meta_map.entry(target.to_string()).or_insert(PlayerMeta { is_op: false, is_whitelisted: false, is_banned: true }).is_banned = true;
+                         }
                      }
                  }
-             }
+            }
         }
     }
 

@@ -66,6 +66,16 @@ pub struct AddOpRequest {
 
 // ================= HANDLERS =================
 
+fn get_player_file_path(working_dir: &str, filename: &str) -> std::path::PathBuf {
+    let base_path = StdPath::new(working_dir);
+    let server_path = base_path.join("server").join(filename);
+    if server_path.exists() {
+        server_path
+    } else {
+        base_path.join(filename)
+    }
+}
+
 // --- WHITELIST ---
 
 pub async fn get_whitelist(
@@ -78,7 +88,7 @@ pub async fn get_whitelist(
 
 pub async fn get_whitelist_internal(pool: &crate::core::database::DbPool, id: &str) -> Result<Vec<WhitelistEntry>, ApiError> {
     let server = get_server_by_id_internal(pool, id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("whitelist.json");
+    let path = get_player_file_path(&server.working_dir, "whitelist.json");
     
     // Default empty
     let mut list: Vec<WhitelistEntry> = Vec::new();
@@ -119,7 +129,7 @@ pub async fn add_whitelist(
     Json(payload): Json<AddWhitelistRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("whitelist.json");
+    let path = get_player_file_path(&server.working_dir, "whitelist.json");
 
     // We only support appending to Hytale structure which seems to be { "list": [...] } or standard []
     // But wait, the user showed us `whitelist.json`? No, only `bans.json` was shown explicitly.
@@ -181,7 +191,7 @@ pub async fn remove_whitelist(
     Json(payload): Json<RemoveWhitelistRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("whitelist.json");
+    let path = get_player_file_path(&server.working_dir, "whitelist.json");
     
     if !path.exists() { return Ok(Json(serde_json::json!({ "status": "ok" }))); }
 
@@ -233,7 +243,7 @@ pub async fn get_bans(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("bans.json");
+    let path = get_player_file_path(&server.working_dir, "bans.json");
     
     if !path.exists() { return Ok(Json(Vec::<BanEntry>::new())); }
 
@@ -249,7 +259,7 @@ pub async fn add_ban(
     Json(payload): Json<AddBanRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("bans.json");
+    let path = get_player_file_path(&server.working_dir, "bans.json");
     
     let mut bans: Vec<BanEntry> = if path.exists() {
         let c = fs::read_to_string(&path).await.unwrap_or_default();
@@ -286,7 +296,7 @@ pub async fn get_ops(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("permissions.json");
+    let path = get_player_file_path(&server.working_dir, "permissions.json");
 
     if !path.exists() { return Ok(Json(Vec::<OpEntry>::new())); }
 
@@ -317,7 +327,7 @@ pub async fn add_op(
     Json(payload): Json<AddOpRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("permissions.json");
+    let path = get_player_file_path(&server.working_dir, "permissions.json");
 
     let content = if path.exists() {
         fs::read_to_string(&path).await.unwrap_or_else(|_| "{}".to_string())
@@ -351,7 +361,7 @@ pub async fn remove_op(
     Json(payload): Json<AddOpRequest>, 
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("permissions.json");
+    let path = get_player_file_path(&server.working_dir, "permissions.json");
 
     if !path.exists() { return Ok(Json(serde_json::json!({"status": "ok"}))); }
 
@@ -372,7 +382,7 @@ pub async fn remove_ban(
     Json(payload): Json<AddBanRequest>, 
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
-    let path = StdPath::new(&server.working_dir).join("server").join("bans.json");
+    let path = get_player_file_path(&server.working_dir, "bans.json");
 
     if !path.exists() { return Ok(Json(serde_json::json!({"status": "ok"}))); }
     
@@ -388,3 +398,4 @@ pub async fn remove_ban(
     
     Ok(Json(serde_json::json!({"status": "ok"})))
 }
+

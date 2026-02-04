@@ -24,13 +24,14 @@ impl PlayerDetectionPatterns {
     /// Ready: "[HytaleServer] Universe ready!"
     fn hytale() -> Self {
         Self {
-            // Join: Adding player 'TheFRcRaZy (uuid)
-            join_regex: Regex::new(r"Adding player '([^']+)[']? \((.+?)\)").unwrap(),
-            // Leave: Removing player 'TheFRcRaZy' (uuid)
-            leave_regex: Regex::new(r"Removing player '(.+?)' \((.+?)\)").unwrap(),
+            // Join: [Universe|P] Adding player 'TheFRcRaZy' (uuid)
+            // Restricted to not match across quotes or newlines
+            join_regex: Regex::new(r"Adding player '([^']+)' \((.+?)\)").unwrap(),
+            // Leave: [Universe|P] Removing player 'TheFRcRaZy' (uuid)
+            leave_regex: Regex::new(r"Removing player '([^']+)' \((.+?)\)").unwrap(),
             server_ready_regex: Regex::new(r"Universe ready!").unwrap(),
             // IP: {Playing(QuicConnectionAddress{...} (/82.64.248.19:55745, ...)), UUID, Name}
-            ip_regex: Some(Regex::new(r"\{Playing\(.+? \(/([\d\.]+):\d+.*?\)\), ([0-9a-f-]+), (.+?)\}").unwrap()),
+            ip_regex: Some(Regex::new(r"\{Playing\(.+? \(/([\d\.]+):\d+.*?\)\), ([0-9a-f-]+), ([^}]+)\}").unwrap()),
         }
     }
 

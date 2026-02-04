@@ -710,18 +710,12 @@ export default function ServerDetail() {
         try {
             let list: Player[] = [];
 
-            // Always fetch online players from server status
-            const online = server.players || [];
-
             if (activePlayerTab === "online") {
-                list = online;
+                // Real-time online players from websocket/pm
+                list = onlinePlayers;
             } else if (activePlayerTab === "database") {
-                if (server.players) {
-                    list = server.players.map(p => ({
-                        ...p,
-                        is_online: false,
-                    }));
-                }
+                // All players ever seen from DB (included in server response)
+                list = server.players || [];
             } else if (activePlayerTab === "whitelist") {
                 const res = await fetch(`/api/v1/servers/${id}/whitelist`);
                 if (res.ok) {
@@ -742,7 +736,7 @@ export default function ServerDetail() {
                         name: b.username || "Inconnu (" + (b.target || "?") + ")",
                         uuid: b.target,
                         reason: b.reason,
-                        bannedBy: b.by,
+                        banned_by: b.by,
                         expires: b.type === "infinite" ? undefined : b.expires,
                         created: b.timestamp ? new Date(b.timestamp).toISOString() : undefined,
                         is_online: false,
