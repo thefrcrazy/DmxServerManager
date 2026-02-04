@@ -31,8 +31,8 @@ export function useBackups(initialServerId?: string): UseBackupsReturn {
         setLoading(true);
         setError(null);
         try {
-            const data = await apiService.getBackups(serverId);
-            setBackups(data);
+            const response = await apiService.getBackups(serverId);
+            setBackups(response.data || []);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Erreur de chargement');
         } finally {
@@ -46,9 +46,12 @@ export function useBackups(initialServerId?: string): UseBackupsReturn {
 
     const createBackup = useCallback(async (serverId: string): Promise<Backup | null> => {
         try {
-            const backup = await apiService.createBackup(serverId);
-            setBackups(prev => [backup, ...prev]);
-            return backup;
+            const response = await apiService.createBackup(serverId);
+            if (response.data) {
+                setBackups(prev => [response.data, ...prev]);
+                return response.data;
+            }
+            return null;
         } catch {
             return null;
         }

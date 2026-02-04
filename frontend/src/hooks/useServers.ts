@@ -1,23 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import apiService from '../services/api';
-
-export interface Server {
-    id: string;
-    name: string;
-    game_type: string;
-    status: string;
-    executable_path: string;
-    working_dir: string;
-    java_path?: string;
-    min_memory?: string;
-    max_memory?: string;
-    extra_args?: string;
-    auto_start: boolean;
-    created_at: string;
-    updated_at: string;
-    players?: string[]; // List of player names
-    max_players?: number;
-}
+import { Server } from '../types/api';
 
 interface UseServersReturn {
     servers: Server[];
@@ -44,8 +27,8 @@ export function useServers(): UseServersReturn {
         setLoading(true);
         setError(null);
         try {
-            const data = await apiService.getServers();
-            setServers(data);
+            const response = await apiService.getServers();
+            setServers(response.data || []);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Erreur de chargement');
         } finally {
@@ -110,9 +93,9 @@ export function useServers(): UseServersReturn {
 
     const createServer = useCallback(async (data: any): Promise<string | null> => {
         try {
-            const result = await apiService.createServer(data);
+            const response = await apiService.createServer(data);
             await refresh();
-            return result.id;
+            return response.data?.id || null;
         } catch {
             return null;
         }

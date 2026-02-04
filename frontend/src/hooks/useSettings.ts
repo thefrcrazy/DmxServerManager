@@ -27,8 +27,8 @@ export function useSettings(): UseSettingsReturn {
         setLoading(true);
         setError(null);
         try {
-            const data = await apiService.getSettings();
-            setSettings(data);
+            const response = await apiService.getSettings();
+            setSettings(response.data || null);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Erreur de chargement');
         } finally {
