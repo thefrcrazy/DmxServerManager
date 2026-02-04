@@ -25,7 +25,7 @@ impl PlayerDetectionPatterns {
     fn hytale() -> Self {
         Self {
             // Join: Adding player 'TheFRcRaZy (uuid)
-            join_regex: Regex::new(r"Adding player '(.+?) \((.+?)\)").unwrap(),
+            join_regex: Regex::new(r"Adding player '([^']+)[']? \((.+?)\)").unwrap(),
             // Leave: Removing player 'TheFRcRaZy' (uuid)
             leave_regex: Regex::new(r"Removing player '(.+?)' \((.+?)\)").unwrap(),
             server_ready_regex: Regex::new(r"Universe ready!").unwrap(),
