@@ -221,23 +221,23 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">{t("dashboard.managed_servers")} / {t("dashboard.global_system")}</span>
-                                <span className="resource-usage__value text-info">
-                                    {(systemStats.managed_cpu_normalized || 0).toFixed(1)}% 
-                                    <span className="text-muted ml-2">/ {systemStats.cpu.toFixed(1)}%</span>
-                                </span>
+                                <div className="resource-usage__label">
+                                    <span>{t("dashboard.managed_servers")}</span>
+                                    <small>{t("dashboard.global_system")} {systemStats.cpu_cores ? `(${systemStats.cpu_cores} ${t("dashboard.cores")})` : ""}</small>
+                                </div>
+                                <div className="resource-usage__value">
+                                    <span className="main-val">{(systemStats.managed_cpu_normalized || 0).toFixed(1)}%</span>
+                                    <span className="secondary-val">{systemStats.cpu.toFixed(1)}%</span>
+                                </div>
                             </div>
                             
                             <div className="progress-container">
                                 {/* Global System (Background) */}
-                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.cpu)}`} style={{ width: `${systemStats.cpu}%`, opacity: 0.3 }}></div>
+                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.cpu)}`} style={{ width: `${systemStats.cpu}%`, opacity: 0.2 }}></div>
                                 {/* Managed Servers (Foreground) */}
                                 <div className="progress-bar progress-bar--info" style={{ width: `${Math.min(100, systemStats.managed_cpu_normalized || 0)}%` }}></div>
                             </div>
                         </div>
-                    </div>
-                    <div className="stat-card__footer">
-                        <span className="text-muted">{systemStats.cpu_cores ? `${systemStats.cpu_cores} ${t("dashboard.cores")}` : "---"}</span>
                     </div>
                 </div>
 
@@ -255,16 +255,19 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">{t("dashboard.managed_servers")} / {t("dashboard.global_system")}</span>
-                                <span className="resource-usage__value text-info">
-                                    {formatBytes(systemStats.managed_ram)}
-                                    <span className="text-muted ml-2">/ {formatBytes(systemStats.ram_used)}</span>
-                                </span>
+                                <div className="resource-usage__label">
+                                    <span>{t("dashboard.managed_servers")}</span>
+                                    <small>{t("dashboard.global_system")}</small>
+                                </div>
+                                <div className="resource-usage__value">
+                                    <span className="main-val">{formatBytes(systemStats.managed_ram)}</span>
+                                    <span className="secondary-val">{formatBytes(systemStats.ram_used)} / {formatBytes(systemStats.ram_total)}</span>
+                                </div>
                             </div>
 
                             <div className="progress-container">
                                 {/* Global System (Background) */}
-                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.ram)}`} style={{ width: `${systemStats.ram}%`, opacity: 0.3 }}></div>
+                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.ram)}`} style={{ width: `${systemStats.ram}%`, opacity: 0.2 }}></div>
                                 {/* Managed Servers (Foreground) */}
                                 <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_ram / (systemStats.ram_total || 1)) * 100}%` }}></div>
                             </div>
@@ -286,16 +289,19 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">{t("dashboard.managed_servers")} / {t("dashboard.global_system")}</span>
-                                <span className="resource-usage__value text-info">
-                                    {formatBytes(systemStats.managed_disk)}
-                                    <span className="text-muted ml-2">/ {formatBytes(systemStats.disk_used)}</span>
-                                </span>
+                                <div className="resource-usage__label">
+                                    <span>{t("dashboard.managed_servers")}</span>
+                                    <small>{t("dashboard.global_system")}</small>
+                                </div>
+                                <div className="resource-usage__value">
+                                    <span className="main-val">{formatBytes(systemStats.managed_disk)}</span>
+                                    <span className="secondary-val">{formatBytes(systemStats.disk_used)} / {formatBytes(systemStats.disk_total)}</span>
+                                </div>
                             </div>
 
                             <div className="progress-container">
                                 {/* Global System (Background) */}
-                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.disk)}`} style={{ width: `${systemStats.disk}%`, opacity: 0.3 }}></div>
+                                <div className={`progress-bar progress-bar--${getStatColor(systemStats.disk)}`} style={{ width: `${systemStats.disk}%`, opacity: 0.2 }}></div>
                                 {/* Managed Servers (Foreground) */}
                                 <div className="progress-bar progress-bar--info" style={{ width: `${(systemStats.managed_disk / (systemStats.disk_total || 1)) * 100}%` }}></div>
                             </div>
