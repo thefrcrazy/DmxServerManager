@@ -132,7 +132,7 @@ jobs:
             echo "✅ Deployment completed at $(date)"
 
       - name: Notify Discord (Success)
-        if: success() && secrets.DISCORD_WEBHOOK != ''
+        if: success()
         uses: sarisia/actions-status-discord@v1
         continue-on-error: true
         with:
@@ -143,7 +143,7 @@ jobs:
           color: 0x00ff00
 
       - name: Notify Discord (Failure)
-        if: failure() && secrets.DISCORD_WEBHOOK != ''
+        if: failure()
         uses: sarisia/actions-status-discord@v1
         continue-on-error: true
         with:
