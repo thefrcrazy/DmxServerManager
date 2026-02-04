@@ -1,8 +1,7 @@
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use tracing::info;
 use chrono::Utc;
-use uuid::Uuid;
 
 pub type DbPool = Pool<Sqlite>;
 
@@ -63,7 +62,7 @@ pub async fn init_pool(database_url: &str) -> std::io::Result<DbPool> {
         .max_connections(5)
         .connect(database_url)
         .await
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
+        .map_err(|e| Error::other(e.to_string()))
 }
 
 pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
@@ -179,13 +178,13 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     )
     .execute(pool)
     .await
-    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| Error::other(e.to_string()))?;
 
     // Run migrations for existing databases
     let columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(users)")
         .fetch_all(pool)
         .await
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| Error::other(e.to_string()))?;
 
     let column_names: Vec<&str> = columns.iter().map(|c| c.1.as_str()).collect();
 
@@ -213,7 +212,7 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     let server_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(servers)")
         .fetch_all(pool)
         .await
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| Error::other(e.to_string()))?;
 
     let server_column_names: Vec<&str> = server_columns.iter().map(|c| c.1.as_str()).collect();
 

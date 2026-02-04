@@ -70,7 +70,7 @@ impl ProcessManager {
 
                                 // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
                                 let mut disk_size: u64 = 0;
-                                if tick_count % 15 == 0 {
+                                if tick_count.is_multiple_of(15) {
                                     let server_path = &server_proc.working_dir;
                                     let size: u64 = WalkDir::new(server_path)
                                         .into_iter()
@@ -110,7 +110,7 @@ impl ProcessManager {
                                 }
 
                                 // Save metrics to DB every 30 seconds (15 ticks)
-                                if tick_count % 15 == 0 {
+                                if tick_count.is_multiple_of(15) {
                                     if let Some(pool) = &pool_clone {
                                         let pool = pool.clone();
                                         let server_id = server_id.clone();
@@ -138,7 +138,7 @@ impl ProcessManager {
                 }
 
                 // Cleanup old metrics every hour (1800 ticks at 2s interval)
-                if tick_count % 1800 == 0 && tick_count > 0 {
+                if tick_count.is_multiple_of(1800) && tick_count > 0 {
                     if let Some(pool) = &pool_clone {
                         let pool = pool.clone();
                         tokio::spawn(async move {
@@ -289,6 +289,7 @@ impl ProcessManager {
         processes.remove(server_id);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn start(
         &self,
         server_id: &str,
@@ -392,7 +393,7 @@ impl ProcessManager {
 
         // Create log broadcaster
         let (log_tx, _) = broadcast::channel::<String>(1000);
-        let _ = log_tx.send(format!("[STATUS]: running"));
+        let _ = log_tx.send("[STATUS]: running".to_string());
 
         // Create players tracker
         let players = Arc::new(std::sync::RwLock::new(HashSet::new()));
@@ -489,7 +490,7 @@ impl ProcessManager {
                             }
                         }
                     } else if server_started_re.is_match(&line) {
-                         let _ = tx.send(format!("[STATUS]: running"));
+                         let _ = tx.send("[STATUS]: running".to_string());
                     }
 
                     // Runtime Auth Detection
@@ -505,7 +506,7 @@ impl ProcessManager {
                 }
                 
                 info!("Server {} stdout stream ended", server_id_clone);
-                let _ = tx.send(format!("[STATUS]: stopped"));
+                let _ = tx.send("[STATUS]: stopped".to_string());
                 
                  // Write stop marker to file
                 if let Some(f) = &log_file_clone {
@@ -627,6 +628,7 @@ impl ProcessManager {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn restart(
         &self,
         server_id: &str,

@@ -14,7 +14,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod api;
 mod config;
 mod db;
-mod db_tests;
 mod error;
 mod error_codes;
 mod models;

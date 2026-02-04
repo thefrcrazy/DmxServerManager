@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -21,8 +20,7 @@ use crate::error_codes::ErrorCode;
 
 // ============= Rate Limiting =============
 
-/// Simple in-memory rate limiter
-/// Tracks login attempts per IP address
+// Simple in-memory rate limiter - tracks login attempts per IP address
 lazy_static::lazy_static! {
     static ref LOGIN_ATTEMPTS: Arc<RwLock<HashMap<String, Vec<Instant>>>> = 
         Arc::new(RwLock::new(HashMap::new()));

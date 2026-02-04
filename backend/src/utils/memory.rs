@@ -1,6 +1,6 @@
 pub fn parse_memory_to_bytes(mem: &str) -> u64 {
     let mem = mem.to_uppercase();
-    let num_part: String = mem.chars().take_while(|c| c.is_digit(10)).collect();
+    let num_part: String = mem.chars().take_while(|c| c.is_ascii_digit()).collect();
     let val = num_part.parse::<u64>().unwrap_or(4);
     
     if mem.ends_with('G') {

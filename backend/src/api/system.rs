@@ -12,7 +12,6 @@ use tokio::sync::RwLock;
 
 use crate::AppState;
 use crate::error::AppError;
-use crate::utils::error_handling::{unwrap_or_error, path_to_string};
 
 #[derive(Debug, Serialize)]
 pub struct SystemStatsResponse {
