@@ -61,11 +61,17 @@ impl ProcessManager {
                                 let cores = system.cpus().len() as f32;
                                 let cpu_normalized = if cores > 0.0 { cpu / cores } else { 0.0 };
                                 let memory = process.memory(); // in bytes
+                                let players_list: Vec<String> = server_proc.players.read()
+                                    .map(|p| p.iter().cloned().collect())
+                                    .unwrap_or_default();
+                                let player_count = players_list.len();
                                 
                                 let mut metrics_json = serde_json::json!({
                                     "cpu": cpu,
                                     "cpu_normalized": cpu_normalized,
-                                    "memory": memory
+                                    "memory": memory,
+                                    "players": player_count,
+                                    "players_list": players_list
                                 });
 
                                 // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
@@ -254,6 +260,9 @@ impl ProcessManager {
          }
 
          let (log_tx, _) = broadcast::channel::<String>(1000);
+         // Broadcast initial installing status
+         let _ = log_tx.send("[STATUS]: installing".to_string());
+
          let players = Arc::new(std::sync::RwLock::new(HashSet::new()));
 
          processes.insert(
@@ -492,12 +501,13 @@ impl ProcessManager {
                          let _ = tx.send("[STATUS]: running".to_string());
                     }
 
-                    // Runtime Auth Detection
+                     // Runtime Auth Detection
                     if (line.contains("IMPORTANT") && (line.contains("authentifier") || line.contains("authenticate"))) ||
                        (line.contains("[HytaleServer] No server tokens configured")) ||
                        (line.contains("/auth login to authenticate")) {
                          if let Ok(mut auth) = auth_required_clone.write() {
                              *auth = true;
+                             let _ = tx.send("[STATUS]: auth_required".to_string());
                          }
                     }
 
@@ -541,6 +551,7 @@ impl ProcessManager {
                        (line.contains("/auth login to authenticate")) {
                             if let Ok(mut auth) = auth_required_clone.write() {
                              *auth = true;
+                             let _ = tx.send("[STATUS]: auth_required".to_string());
                          }
                     }
                 }

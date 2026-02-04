@@ -174,6 +174,8 @@ export default function ServerDetail() {
         isAuthRequired,
         setIsAuthRequired,
         sendCommand,
+        currentPlayers,
+        currentPlayersList,
     } = useServerWebSocket({
         serverId: id,
         serverStatus: server?.status,
@@ -778,6 +780,20 @@ export default function ServerDetail() {
         return false;
     })();
 
+    // Merge real-time players (names) with static player data (op, etc.)
+    const onlinePlayers: Player[] = currentPlayersList.map(name => {
+        const existing = server?.players?.find(p => p.name === name);
+        if (existing) return { ...existing, is_online: true };
+        return {
+            name,
+            is_online: true,
+            last_seen: new Date().toISOString(),
+            is_op: false,
+            is_banned: false,
+            is_whitelisted: false
+        };
+    });
+
     if (!server) return <div className="loading-screen"><div className="spinner"></div></div>;
 
     return (
@@ -785,7 +801,7 @@ export default function ServerDetail() {
             <div className="server-header-stats">
                 {/* ... Stats Pills (Keep as is, they were fine) ... */}
                 <div className="stat-pill"><div className="stat-pill__icon"><Clock size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">UPTIME</div><div className="stat-pill__value">{uptime}</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><Users size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">PLAYERS</div><div className="stat-pill__value">{server.players?.filter(p => p.is_online).length || 0} / {server.max_players || 100}</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><Users size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">PLAYERS</div><div className="stat-pill__value">{currentPlayersList.length} / {server.max_players || 100}</div></div></div>
                 <div className="stat-pill"><div className="stat-pill__icon"><Globe size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">ADDRESS</div><div className="stat-pill__value">{server.bind_address}:{server.port}</div></div></div>
                 <div className="stat-pill"><div className="stat-pill__icon"><Cpu size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">CPU</div><div className="stat-pill__value">{Math.round(cpuUsage)}%</div></div></div>
                 <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">RAM</div><div className="stat-pill__value">{formatGB(ramUsage)}</div></div></div>
@@ -868,7 +884,7 @@ export default function ServerDetail() {
 
                 {activeTab === "players" && (
                     <ServerPlayers
-                        players={server.players || []} // Online players
+                        players={onlinePlayers} // Real-time Online players
                         playerList={playerData} // Whitelist/Ban lists
                         activeTab={activePlayerTab}
                         onTabChange={setActivePlayerTab}
@@ -898,7 +914,7 @@ export default function ServerDetail() {
                         diskUsage={diskUsage}
                         maxHeapBytes={server?.max_heap_bytes}
                         serverStatus={server?.status || 'stopped'}
-                        currentPlayers={server?.players?.filter(p => p.is_online).length || 0}
+                        currentPlayers={currentPlayers}
                         maxPlayers={server?.max_players || 100}
                     />
                 )}

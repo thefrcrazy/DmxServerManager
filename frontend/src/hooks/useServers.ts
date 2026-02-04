@@ -43,33 +43,32 @@ export function useServers(): UseServersReturn {
     const startServer = useCallback(async (id: string): Promise<boolean> => {
         try {
             await apiService.startServer(id);
-            // Optimistic update
-            setServers(prev => prev.map(s => s.id === id ? { ...s, status: 'starting' } : s));
+            await refresh();
             return true;
         } catch {
             return false;
         }
-    }, []);
+    }, [refresh]);
 
     const stopServer = useCallback(async (id: string): Promise<boolean> => {
         try {
             await apiService.stopServer(id);
-            setServers(prev => prev.map(s => s.id === id ? { ...s, status: 'stopping' } : s));
+            await refresh();
             return true;
         } catch {
             return false;
         }
-    }, []);
+    }, [refresh]);
 
     const restartServer = useCallback(async (id: string): Promise<boolean> => {
         try {
             await apiService.restartServer(id);
-            setServers(prev => prev.map(s => s.id === id ? { ...s, status: 'restarting' } : s));
+            await refresh();
             return true;
         } catch {
             return false;
         }
-    }, []);
+    }, [refresh]);
 
     const deleteServer = useCallback(async (id: string): Promise<boolean> => {
         try {

@@ -455,6 +455,10 @@ pub async fn download_file(
     let file = tokio::fs::File::open(&full_path).await
         .map_err(|e| AppError::Internal(format!("Failed to open file: {e}")))?;
     
+    let metadata = file.metadata().await
+        .map_err(|e| AppError::Internal(format!("Failed to get file metadata: {e}")))?;
+    let size = metadata.len();
+
     let stream = tokio_util::io::ReaderStream::new(file);
     let body = Body::from_stream(stream);
     
@@ -467,6 +471,7 @@ pub async fn download_file(
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_DISPOSITION, content_disposition)
+        .header(header::CONTENT_LENGTH, size.to_string())
         .body(body)
         .unwrap())
 }

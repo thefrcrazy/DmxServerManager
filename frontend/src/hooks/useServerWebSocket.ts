@@ -2,8 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface WebSocketMetrics {
     cpu: number;
+    cpu_normalized?: number;
     memory: number;
     disk_bytes?: number;
+    players?: number;
+    players_list?: string[];
 }
 
 interface UseServerWebSocketReturn {
@@ -13,6 +16,8 @@ interface UseServerWebSocketReturn {
     cpuUsage: number;
     ramUsage: number;
     diskUsage: number | null;
+    currentPlayers: number;
+    currentPlayersList: string[];
     startTime: Date | null;
     setStartTime: React.Dispatch<React.SetStateAction<Date | null>>;
     isInstalling: boolean;
@@ -43,6 +48,8 @@ export function useServerWebSocket({
     const [cpuUsage, setCpuUsage] = useState(0);
     const [ramUsage, setRamUsage] = useState(0);
     const [diskUsage, setDiskUsage] = useState<number | null>(null);
+    const [currentPlayers, setCurrentPlayers] = useState(0);
+    const [currentPlayersList, setCurrentPlayersList] = useState<string[]>([]);
     const [isInstalling, setIsInstalling] = useState(false);
     const [isAuthRequired, setIsAuthRequired] = useState(false);
 
@@ -63,19 +70,10 @@ export function useServerWebSocket({
 
             if (installRes.ok) {
                 const data = await installRes.json();
-                if (data.content) {
-                    const lines = data.content.split("\n");
-                    const hasStart = lines.some((l: string) =>
-                        l.includes("Initialization de l'installation") ||
-                        l.includes("Starting Hytale Server Installation")
-                    );
-                    const hasEnd = lines.some((l: string) =>
-                        l.includes("Installation terminée") ||
-                        l.includes("Installation finished")
-                    );
-                    if (hasStart && !hasEnd && serverStatus !== "running") {
-                        setIsInstalling(true);
-                    }
+                // Just check for content, don't parse for status
+                if (data.content && serverStatus === "installing") {
+                    // If server status is installing, show install logs
+                    // But we might want to append? For now let's just respect the current logic priority
                 }
             }
 
@@ -90,6 +88,7 @@ export function useServerWebSocket({
                     setLogs(data.content.split("\n"));
                 }
             } else if (installRes.ok) {
+                // If no console log but install log exists, use that
                 const data = await installRes.json();
                 if (data.content) setLogs(data.content.split("\n"));
             }
@@ -124,9 +123,28 @@ export function useServerWebSocket({
             // Handle status updates
             if (message.startsWith("[STATUS]:")) {
                 const status = message.replace("[STATUS]:", "").trim();
+
+                // Update internal states based on status
+                if (status === "running") {
+                    setStartTime(new Date());
+                    setIsInstalling(false);
+                    setIsAuthRequired(false);
+                } else if (status === "installing") {
+                    setIsInstalling(true);
+                    setIsAuthRequired(false);
+                } else if (status === "auth_required") {
+                    setIsAuthRequired(true);
+                    // Don't change isInstalling here as it might be part of install flow? 
+                    // Actually, if auth is required, we are usually waiting, so not strictly "installing" actively
+                    // but let's keep isInstalling true or false based on prior state? 
+                    // Better: auth_required usually halts installation.
+                } else if (status === "stopped" || status === "offline") {
+                    setStartTime(null);
+                    setIsInstalling(false);
+                    setIsAuthRequired(false);
+                }
+
                 onStatusChange?.(status);
-                if (status === "running") setStartTime(new Date());
-                else setStartTime(null);
                 onServerUpdate();
                 return;
             }
@@ -135,8 +153,11 @@ export function useServerWebSocket({
             if (message.trim().startsWith("[METRICS]:")) {
                 try {
                     const metrics: WebSocketMetrics = JSON.parse(message.trim().substring(10));
-                    setCpuUsage(metrics.cpu || 0);
+                    // Use cpu_normalized (0-100%) instead of raw cpu (0-800% on 8 cores)
+                    setCpuUsage(metrics.cpu_normalized ?? metrics.cpu ?? 0);
                     setRamUsage(metrics.memory || 0);
+                    setCurrentPlayers(metrics.players || 0);
+                    setCurrentPlayersList(metrics.players_list || []);
                     if (metrics.disk_bytes !== undefined) setDiskUsage(metrics.disk_bytes);
                 } catch (e) {
                     console.error("Failed to parse metrics", e);
@@ -144,27 +165,11 @@ export function useServerWebSocket({
                 return;
             }
 
-            // Handle installation messages
-            if (message.includes("Initialization of installation") ||
-                message.includes("Initialization de l'installation")) {
-                setIsInstalling(true);
-                setIsAuthRequired(false);
-            }
-            if (message.includes("IMPORTANT") &&
-                (message.includes("authentifier") || message.includes("authenticate"))) {
-                if (serverStatusRef.current === "running" || serverStatusRef.current === "starting") {
-                    setIsAuthRequired(true);
-                }
-            }
-            if (message.includes("Authentication successful!") || message.includes("Success!")) {
-                setIsAuthRequired(false);
-            }
-            if (message.includes("Installation terminée") || message.includes("Installation finished")) {
-                setIsInstalling(false);
-                onServerUpdate();
-            }
-
-            setLogs((prev) => [...prev, message]);
+            setLogs((prev) => {
+                const newLogs = [...prev, message];
+                if (newLogs.length > 1000) return newLogs.slice(-1000);
+                return newLogs;
+            });
         };
 
         ws.onclose = () => {
@@ -244,6 +249,8 @@ export function useServerWebSocket({
         cpuUsage,
         ramUsage,
         diskUsage,
+        currentPlayers,
+        currentPlayersList,
         startTime,
         setStartTime,
         isInstalling,
