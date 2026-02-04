@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # App Container
+  # ==========================================
+  draveur:
+    image: draveur/manager:latest
+    build:
+      context: ../..
+      dockerfile: install/linux/Dockerfile
+    container_name: draveur-manager
+    restart: unless-stopped
+    networks:
+      - draveur-network
+    environment:
+      - TZ=Europe/Paris
+      - HOST=0.0.0.0
+      - PORT=5500
+      - IS_DOCKER=true
+      - DATABASE_URL=sqlite:/data/database.db?mode=rwc
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - SERVERS_DIR=/servers
+      - BACKUPS_DIR=/backups
+      - UPLOADS_DIR=/data/uploads
+      - RUST_LOG=info
+    volumes:
+      - ../../data:/data
+      - ../../servers:/servers
+      - ../../backups:/backups
+    # Traefik Labels for Auto-Discovery
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.draveur.rule=Host(`${DOMAIN_NAME:-localhost}`)"
+      - "traefik.http.routers.draveur.entrypoints=websecure"
+      - "traefik.http.routers.draveur.tls.certresolver=myresolver"
+      - "traefik.http.services.draveur.loadbalancer.server.port=5500"
+
+  # ==========================================
+  # Traefik Reverse Proxy (HTTPS)
+  # ==========================================
+  traefik:
+    image: traefik:v2.10
+    container_name: draveur-traefik
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true" # Dashboard on 8080 (optional)
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP -> HTTPS Redirect
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      # Let's Encrypt Resolver
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik_letsencrypt:/letsencrypt"
+    networks:
+      - draveur-network
+
+volumes:
+  traefik_letsencrypt:
+
+networks:
+  draveur-network:
+    name: draveur-network

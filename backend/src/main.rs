@@ -21,6 +21,8 @@ use core::{Settings, AppState};
 use services::game::ProcessManager;
 use core::database;
 use std::sync::Arc;
+use axum_server::tls_rustls::RustlsConfig;
+use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -41,7 +43,9 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&settings.uploads_dir).ok();
 
     info!("🚀 Draveur Manager v{}", env!("CARGO_PKG_VERSION"));
-    info!("📡 Starting server on {}:{}", settings.host, settings.port);
+
+    // Check if HTTPS is enabled
+    let use_https = std::env::var("USE_HTTPS").unwrap_or_else(|_| "false".into()) == "true";
 
     // Initialize database
     let pool = database::init_pool(&settings.database_url).await?;
@@ -65,8 +69,10 @@ async fn main() -> anyhow::Result<()> {
     let mut allowed_origins: Vec<axum::http::HeaderValue> = vec![
         "http://localhost:5173".parse().unwrap(), // Vite dev server
         "http://localhost:5500".parse().unwrap(), // Backend serving frontend
+        "https://localhost:5500".parse().unwrap(),
         "http://127.0.0.1:5173".parse().unwrap(),
         "http://127.0.0.1:5500".parse().unwrap(),
+        "https://127.0.0.1:5500".parse().unwrap(),
     ];
     
     // Add custom frontend URL from environment
@@ -103,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         .nest_service("/uploads", get_service(ServeDir::new(&uploads_dir)))
         
         // Serve frontend in production (static files)
+        // With fallback to index.html for SPA routing
         .nest_service("/", get_service(
             ServeDir::new("./static")
                 .fallback(tower_http::services::ServeFile::new("./static/index.html"))
@@ -112,10 +119,21 @@ async fn main() -> anyhow::Result<()> {
         .layer(cors)
         .with_state(state);
 
-    let addr = format!("{}:{}", settings.host, settings.port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
-    axum::serve(listener, app).await?;
+    let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
+
+    if use_https {
+        let (cert, key) = utils::tls::ensure_self_signed_certs()?;
+        let config = RustlsConfig::from_pem_file(cert, key).await?;
+        
+        info!("📡 Starting server on https://{}", addr);
+        axum_server::bind_rustls(addr, config)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        info!("📡 Starting server on http://{}", addr);
+        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
 }

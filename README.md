@@ -31,10 +31,36 @@ Des **fichiers de release** (binaires/archives) seront mis à disposition une fo
 
 ## 🚀 Installation
 
-### Linux (Docker) — Recommandé
+### Linux (Docker)
 
+Plusieurs variantes de déploiement sont disponibles selon vos besoins.
+
+#### 1. Standard (HTTP/HTTPS) — Rapide
+Idéal pour un usage local, en IP directe ou derrière votre propre proxy.
+
+**Accès HTTP (par défaut) :**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/linux/quick-install.sh | bash
+docker compose -f install/linux/docker-compose.yml up -d
+```
+
+**Accès HTTPS (Auto-signé) :**
+Pour chiffrer les communications sans nom de domaine (accès via IP), activez le HTTPS natif dans votre `.env` :
+```bash
+USE_HTTPS=true
+```
+Puis lancez le serveur normalement. Le backend générera automatiquement un certificat auto-signé.
+*Note : Le navigateur affichera une alerte de sécurité car le certificat n'est pas signé par une autorité officielle.*
+
+#### 2. Traefik (HTTPS Automatique) — Recommandé
+Gère automatiquement vos certificats SSL via Let's Encrypt.
+**Prérequis :** Créer un fichier `.env` avec vos infos :
+```bash
+DOMAIN_NAME=panel.votre-domaine.com
+ACME_EMAIL=votre@email.com
+```
+Lancer l'installation :
+```bash
+docker compose -f install/linux/docker-compose.traefik.yml up -d
 ```
 
 ### Linux (Sans Docker)
