@@ -10,6 +10,7 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
+      - TZ=Europe/Paris
       - HOST=0.0.0.0
       - PORT=5500
       - IS_DOCKER=true
