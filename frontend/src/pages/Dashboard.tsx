@@ -188,14 +188,14 @@ export default function Dashboard() {
                     label={t('servers.status')}
                     value={stats.running}
                     variant="success"
-                    sublabel="running"
+                    sublabel={t('dashboard.running')}
                 />
                 <StatPill
                     icon={<Square size={16} />}
                     label={t('servers.stop')}
                     value={stats.stopped}
                     variant="muted"
-                    sublabel="stopped"
+                    sublabel={t('dashboard.stopped')}
                 />
                 <StatPill
                     icon={<Users size={16} />}
@@ -221,7 +221,7 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">Global System</span>
+                                <span className="resource-usage__label">{t('dashboard.global_system')}</span>
                                 <span className="resource-usage__value">{systemStats.cpu.toFixed(1)}%</span>
                             </div>
                             <div className="progress-container">
@@ -229,7 +229,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">Managed Servers</span>
+                                <span className="resource-usage__label">{t('dashboard.managed_servers')}</span>
                                 <span className="resource-usage__value">{systemStats.managed_cpu.toFixed(1)}%</span>
                             </div>
                             <div className="progress-container progress-container--dimmed">
@@ -238,7 +238,7 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="stat-card__footer">
-                        <span className="text-muted">{systemStats.cpu_cores ? `${systemStats.cpu_cores} Cores` : '---'}</span>
+                        <span className="text-muted">{systemStats.cpu_cores ? `${systemStats.cpu_cores} ${t('dashboard.cores')}` : '---'}</span>
                     </div>
                 </div>
 
@@ -256,7 +256,7 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">Global System</span>
+                                <span className="resource-usage__label">{t('dashboard.global_system')}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.ram_used)} / {formatBytes(systemStats.ram_total)}</span>
                             </div>
                             <div className="progress-container">
@@ -264,7 +264,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">Managed Servers</span>
+                                <span className="resource-usage__label">{t('dashboard.managed_servers')}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.managed_ram)}</span>
                             </div>
                             <div className="progress-container progress-container--dimmed">
@@ -288,7 +288,7 @@ export default function Dashboard() {
                     <div className="stat-card__content">
                         <div className="resource-usage">
                             <div className="resource-usage__row">
-                                <span className="resource-usage__label">Global System</span>
+                                <span className="resource-usage__label">{t('dashboard.global_system')}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.disk_used)} / {formatBytes(systemStats.disk_total)}</span>
                             </div>
                             <div className="progress-container">
@@ -296,7 +296,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="resource-usage__row resource-usage__row--managed">
-                                <span className="resource-usage__label">Managed Servers</span>
+                                <span className="resource-usage__label">{t('dashboard.managed_servers')}</span>
                                 <span className="resource-usage__value">{formatBytes(systemStats.managed_disk)}</span>
                             </div>
                             <div className="progress-container progress-container--dimmed">
@@ -328,7 +328,7 @@ export default function Dashboard() {
                     <EmptyState
                         icon={<ServerIcon size={32} />}
                         title={t('servers.no_servers')}
-                        description={search || gameType !== 'all' ? 'No servers match your filters.' : t('dashboard.welcome')}
+                        description={search || gameType !== 'all' ? t('dashboard.no_filter_match') : t('dashboard.welcome')}
                         action={
                             (search === '' && gameType === 'all') && (
                                 <Link to="/servers/create" className="btn btn--primary">

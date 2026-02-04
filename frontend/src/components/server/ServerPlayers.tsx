@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Users, Shield, Ban, LogOut, Plus, Search, Trash2 } from "lucide-react";
+import { useDialog } from "../../contexts/DialogContext";
 
 interface Player {
     name: string;
@@ -42,6 +43,7 @@ export default function ServerPlayers({
     onRemovePlayer,
     onRefresh
 }: ServerPlayersProps) {
+    const { prompt } = useDialog();
     const [searchTerm, setSearchTerm] = useState("");
 
     // Determine which list to show
@@ -52,8 +54,8 @@ export default function ServerPlayers({
         p.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleAdd = () => {
-        const name = prompt("Nom du joueur :");
+    const handleAdd = async () => {
+        const name = await prompt("Nom du joueur :");
         if (name) onAddPlayer(name);
     };
 

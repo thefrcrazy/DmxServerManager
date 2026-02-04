@@ -23,6 +23,8 @@ import InstallationProgress from "../components/InstallationProgress";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePageTitle } from "../contexts/PageTitleContext";
 import { useServerWebSocket } from "../hooks";
+import { useToast } from "../contexts/ToastContext";
+import { useDialog } from "../contexts/DialogContext";
 
 // New Components
 import ServerConsole from "../components/server/ServerConsole";
@@ -132,6 +134,8 @@ interface Tab {
 export default function ServerDetail() {
     const { t } = useLanguage();
     const { setPageTitle } = usePageTitle();
+    const { success, error: showError } = useToast();
+    const { confirm } = useDialog();
     const { id } = useParams<{ id: string }>();
 
     const [server, setServer] = useState<Server | null>(null);
@@ -277,7 +281,7 @@ export default function ServerDetail() {
                     fetchServer();
                     return;
                 }
-                alert(t("server_detail.messages.action_error"));
+                showError(t("server_detail.messages.action_error"));
                 return;
             }
             if (action === "start") { setLogs([]); setIsAuthRequired(false); }
@@ -287,7 +291,7 @@ export default function ServerDetail() {
             setTimeout(fetchServer, 3000);
         } catch (e) {
             console.error(e);
-            alert(t("server_detail.messages.connection_error"));
+            showError(t("server_detail.messages.connection_error"));
         }
     }, [id, server, t, fetchServer]);
 
@@ -317,7 +321,7 @@ export default function ServerDetail() {
     };
 
     const deleteBackup = async (backupId: string) => {
-        if (!confirm(t("server_detail.delete_backup_confirm"))) return;
+        if (!await confirm(t("server_detail.delete_backup_confirm"), { isDestructive: true })) return;
         try {
             await fetch(`/api/v1/backups/${backupId}`, {
                 method: "DELETE",
@@ -328,13 +332,13 @@ export default function ServerDetail() {
     };
 
     const restoreBackup = async (backupId: string) => {
-        if (!confirm(t("server_detail.restore_backup_confirm"))) return;
+        if (!await confirm(t("server_detail.restore_backup_confirm"), { isDestructive: true })) return;
         try {
             await fetch(`/api/v1/backups/${backupId}/restore`, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
-            alert(t("server_detail.messages.backup_restored"));
+            success(t("server_detail.messages.backup_restored"));
         } catch (error) { console.error(error); }
     };
 
@@ -372,7 +376,7 @@ export default function ServerDetail() {
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
                 body: JSON.stringify({ path: selectedFile, content }),
             });
-            alert(t("server_detail.messages.file_saved"));
+            success(t("server_detail.messages.file_saved"));
         } catch (error) { console.error(error); } finally { setFileSaving(false); }
     };
 
@@ -389,7 +393,7 @@ export default function ServerDetail() {
                 fetchFiles(currentPath);
             } else {
                 const data = await response.json();
-                alert(data.error || t("server_detail.messages.action_error"));
+                showError(data.error || t("server_detail.messages.action_error"));
             }
         } catch (error) { console.error(error); }
     };
@@ -408,7 +412,7 @@ export default function ServerDetail() {
                 readFile(filePath);
             } else {
                 const data = await response.json();
-                alert(data.error || t("server_detail.messages.action_error"));
+                showError(data.error || t("server_detail.messages.action_error"));
             }
         } catch (error) { console.error(error); }
     };
@@ -430,7 +434,7 @@ export default function ServerDetail() {
                 fetchFiles(currentPath);
             } else {
                 const data = await response.json();
-                alert(data.error || t("server_detail.messages.action_error"));
+                showError(data.error || t("server_detail.messages.action_error"));
             }
         } catch (error) { console.error(error); }
     };
@@ -451,7 +455,7 @@ export default function ServerDetail() {
                 fetchFiles(currentPath);
             } else {
                 const data = await response.json();
-                alert(data.error || t("server_detail.messages.action_error"));
+                showError(data.error || t("server_detail.messages.action_error"));
             }
         } catch (error) { console.error(error); }
     };
@@ -468,7 +472,7 @@ export default function ServerDetail() {
                 fetchFiles(currentPath);
             } else {
                 const data = await response.json();
-                alert(data.error || t("server_detail.messages.action_error"));
+                showError(data.error || t("server_detail.messages.action_error"));
             }
         } catch (error) { console.error(error); }
     };
@@ -485,7 +489,7 @@ export default function ServerDetail() {
                 fetchFiles(currentPath);
             } else {
                 const data = await response.json();
-                alert(data.error || t("server_detail.messages.action_error"));
+                showError(data.error || t("server_detail.messages.action_error"));
             }
         } catch (error) { console.error(error); }
     };
@@ -502,7 +506,7 @@ export default function ServerDetail() {
                 fetchFiles(currentPath);
             } else {
                 const data = await response.json();
-                alert(data.error || t("server_detail.messages.action_error"));
+                showError(data.error || t("server_detail.messages.action_error"));
             }
         } catch (error) { console.error(error); }
     };
@@ -646,7 +650,7 @@ export default function ServerDetail() {
                 fetchServer();
                 // Fix: Update initial state to match the saved state so "has changes" becomes false
                 setInitialConfigFormData(JSON.parse(JSON.stringify(configFormData)));
-                alert(t("server_detail.messages.config_saved"));
+                success(t("server_detail.messages.config_saved"));
             }
             else { const data = await response.json(); setConfigError(data.error || t("server_detail.messages.save_error")); }
         } catch (err) { setConfigError(t("server_detail.messages.connection_error")); }
@@ -656,24 +660,24 @@ export default function ServerDetail() {
 
 
     const handleDeleteServer = async () => {
-        if (!confirm(t("server_detail.messages.delete_confirm"))) return;
+        if (!await confirm(t("server_detail.messages.delete_confirm"), { isDestructive: true })) return;
         try {
             const res = await fetch(`/api/v1/servers/${id}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             if (res.ok) {
-                alert(t("server_detail.messages.delete_success"));
+                success(t("server_detail.messages.delete_success"));
                 setPageTitle("Dashboard", "", { to: "/" }); // Reset title
                 window.location.href = "/";
             } else {
-                alert(t("server_detail.messages.delete_error"));
+                showError(t("server_detail.messages.delete_error"));
             }
         } catch (e) { console.error(e); }
     };
 
     const handleReinstallServer = async () => {
-        if (!confirm(t("server_detail.messages.reinstall_confirm"))) return;
+        if (!await confirm(t("server_detail.messages.reinstall_confirm"), { isDestructive: true })) return;
         try {
             const res = await fetch(`/api/v1/servers/${id}/reinstall`, {
                 method: "POST",
@@ -684,7 +688,7 @@ export default function ServerDetail() {
                 setLogs([]);
                 // Re-fetch server to get updated status if needed, though socket will do it
             } else {
-                alert(t("server_detail.messages.action_error"));
+                showError(t("server_detail.messages.action_error"));
             }
         } catch (e) { console.error(e); }
     };
@@ -740,7 +744,7 @@ export default function ServerDetail() {
                         {server.status}
                     </div>
                     <div className="header-controls">
-                        <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running"}><Play size={16} /> Start</button>
+                        <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running"}><Play size={16} /> {t("servers.start")}</button>
                         <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running"}><RotateCw size={16} /></button>
                         <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running"}><Square size={16} /></button>
                     </div>

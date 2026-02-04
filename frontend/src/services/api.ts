@@ -150,6 +150,12 @@ class ApiService {
         });
     }
 
+    async killServer(id: string): Promise<ApiResponse<{ success: boolean }>> {
+        return this.request<{ success: boolean }>(`/servers/${id}/kill`, {
+            method: 'POST',
+        });
+    }
+
     async reinstallServer(id: string): Promise<ApiResponse<{ success: boolean; message: string }>> {
         return this.request<{ success: boolean; message: string }>(`/servers/${id}/reinstall`, {
             method: 'POST',

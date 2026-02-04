@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
     Play, Square, RotateCw, Skull, Server as ServerIcon, AlertTriangle
 } from 'lucide-react';
+import { useState } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import { Server } from '../schemas/api';
 import Table from './Table';
 import ServerCard from './ServerCard';
@@ -13,12 +15,14 @@ import { getGameLogo } from '../utils/gameConfig';
 interface ServerListProps {
     servers: Server[];
     viewMode: 'grid' | 'list';
-    onAction: (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => void;
+    onAction: (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => Promise<boolean | void>;
 }
 
 export default function ServerList({ servers, viewMode, onAction }: ServerListProps) {
     const { t } = useLanguage();
     const navigate = useNavigate();
+    const { success, error } = useToast();
+    const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
     if (viewMode === 'grid') {
         return (
@@ -41,9 +45,23 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
         navigate(`/servers/${serverId}`);
     };
 
-    const handleActionClick = (e: React.MouseEvent, serverId: string, action: 'start' | 'stop' | 'restart' | 'kill') => {
+    const handleActionClick = async (e: React.MouseEvent, serverId: string, action: 'start' | 'stop' | 'restart' | 'kill') => {
         e.stopPropagation();
-        onAction(serverId, action);
+        if (loadingAction) return;
+
+        setLoadingAction(`${serverId}-${action}`);
+        try {
+            const result = await onAction(serverId, action);
+            if (result) {
+                success(t(`servers.action_${action}_success`) || `Action ${action} successful`);
+            } else {
+                error(t('servers.action_failed') || 'Action failed');
+            }
+        } catch (err) {
+            error(t('servers.action_failed') || 'Action failed');
+        } finally {
+            setLoadingAction(null);
+        }
     };
 
     return (
@@ -65,13 +83,14 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
                     const isMissing = server.status === 'missing';
                     const isInstalling = server.status === 'installing';
                     const isAuthRequired = server.status === 'auth_required';
+                    const isActionLoading = loadingAction?.startsWith(`${server.id}-`);
 
                     return (
                         <tr
                             key={server.id}
-                            className={`server-row ${isRunning ? 'server-row--running' : ''} ${isMissing ? 'server-row--missing' : ''} ${isInstalling ? 'server-row--installing' : ''}`}
+                            className={`server-row ${isRunning ? 'server-row--running' : ''} ${isMissing ? 'server-row--missing' : ''} ${isInstalling ? 'server-row--installing' : ''} ${isActionLoading ? 'server-row--disabled' : ''}`}
                             onClick={(e) => handleRowClick(e, server.id)}
-                            style={{ cursor: 'pointer' }}
+                            style={{ cursor: isActionLoading ? 'default' : 'pointer' }}
                         >
                             <td>
                                 <div className="server-name">
@@ -115,22 +134,25 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
                                                 className="btn btn--icon btn--ghost text-info"
                                                 onClick={(e) => handleActionClick(e, server.id, 'restart')}
                                                 title={t('servers.restart')}
+                                                disabled={!!loadingAction}
                                             >
-                                                <RotateCw size={16} />
+                                                {loadingAction === `${server.id}-restart` ? <RotateCw size={16} className="spin" /> : <RotateCw size={16} />}
                                             </button>
                                             <button
                                                 className="btn btn--icon btn--ghost text-danger"
                                                 onClick={(e) => handleActionClick(e, server.id, 'stop')}
                                                 title={t('servers.stop')}
+                                                disabled={!!loadingAction}
                                             >
-                                                <Square size={16} />
+                                                {loadingAction === `${server.id}-stop` ? <RotateCw size={16} className="spin" /> : <Square size={16} />}
                                             </button>
                                             <button
                                                 onClick={(e) => handleActionClick(e, server.id, 'kill')}
                                                 title={t('servers.kill')}
                                                 className="btn btn--icon btn--ghost text-danger btn-kill"
+                                                disabled={!!loadingAction}
                                             >
-                                                <Skull size={16} />
+                                                {loadingAction === `${server.id}-kill` ? <RotateCw size={16} className="spin" /> : <Skull size={16} />}
                                             </button>
                                         </>
                                     ) : (
@@ -138,8 +160,9 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
                                             className="btn btn--icon btn--ghost text-success"
                                             onClick={(e) => handleActionClick(e, server.id, 'start')}
                                             title={t('servers.start')}
+                                            disabled={!!loadingAction}
                                         >
-                                            <Play size={18} />
+                                            {loadingAction === `${server.id}-start` ? <RotateCw size={18} className="spin" /> : <Play size={18} />}
                                         </button>
                                     )}
                                 </div>

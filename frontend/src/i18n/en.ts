@@ -42,7 +42,13 @@ export const en: TranslationType = {
         disk_usage: "Disk Usage",
         active_servers: "Active Servers",
         active_servers_status: "{{count}} active server(s)",
-        total_servers: "Total Servers"
+        total_servers: "Total Servers",
+        global_system: "Global System",
+        managed_servers: "Managed Servers",
+        cores: "Cores",
+        running: "running",
+        stopped: "stopped",
+        no_filter_match: "No servers match your filters."
     },
     servers: {
         title: "My Servers",
@@ -68,7 +74,12 @@ export const en: TranslationType = {
         server_header: "Server",
         kill: "Kill",
         not_found: "Server not found",
-        create_success_message: "Server structure created. Download files via hytale-downloader."
+        create_success_message: "Server structure created. Download files via hytale-downloader.",
+        action_start_success: "Server started successfully",
+        action_stop_success: "Server stopped successfully",
+        action_restart_success: "Server restarted successfully",
+        action_kill_success: "Server killed successfully",
+        action_failed: "Action failed"
     },
     auth: {
         login: "Login",
@@ -135,7 +146,9 @@ export const en: TranslationType = {
         restoring: "Restoring...",
         success_create: "Backup created successfully",
         success_restore: "Backup restored successfully",
-        success_delete: "Backup deleted"
+        success_delete: "Backup deleted",
+        restore_launched: "Restore started successfully.",
+        restore_error: "Error during restore."
     },
     users: {
         title: "Users",
@@ -158,6 +171,7 @@ export const en: TranslationType = {
         title: "Panel Settings",
         subtitle: "Global configuration for Draveur Manager",
         save_success: "Settings saved",
+        save_message: "Settings saved successfully!",
         general_title: "General",
         app_url: "Application URL",
         servers_path: "Servers Directory",
@@ -171,7 +185,27 @@ export const en: TranslationType = {
         test_success: "Test sent successfully",
         appearance_title: "Appearance",
         login_bg: "Background Image (Login)",
-        login_color: "Default Color (Login)"
+        login_color: "Default Color (Login)",
+        invalid_image: "Please select a valid image",
+        image_size_error: "Image must not exceed 5MB",
+        upload_error: "Error during upload",
+        connection_error: "Server connection error",
+        browse: "Browse",
+        preview: "Preview",
+        upload_image: "Upload Image",
+        roles_title: "Roles",
+        roles_subtitle: "Manage roles and permissions",
+        create_role: "Create Role",
+        role_name: "Role Name",
+        permissions: "Permissions",
+        users_count: "Users",
+        roles_coming_soon: "Advanced role management will be available in a future version.",
+        tabs: {
+            general: "General",
+            users: "Users",
+            roles: "Roles"
+        },
+        search_placeholder: "Search user..."
     },
     server_detail: {
         status: "Status",

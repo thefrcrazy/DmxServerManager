@@ -40,7 +40,13 @@ export const fr = {
         disk_usage: "Utilisation Disque",
         active_servers: "Serveurs Actifs",
         active_servers_status: "{{count}} serveur(s) actif(s)",
-        total_servers: "Total Serveurs"
+        total_servers: "Total Serveurs",
+        global_system: "Système Global",
+        managed_servers: "Serveurs Gérés",
+        cores: "Cœurs",
+        running: "en ligne",
+        stopped: "arrêté",
+        no_filter_match: "Aucun serveur ne correspond à vos filtres."
     },
     servers: {
         title: "Mes Serveurs",
@@ -66,7 +72,12 @@ export const fr = {
         server_header: "Serveur",
         kill: "Forcer l'arrêt",
         not_found: "Serveur non trouvé",
-        create_success_message: "Structure du serveur créée. Téléchargez les fichiers via hytale-downloader."
+        create_success_message: "Structure du serveur créée. Téléchargez les fichiers via hytale-downloader.",
+        action_start_success: "Serveur démarré avec succès",
+        action_stop_success: "Serveur arrêté avec succès",
+        action_restart_success: "Serveur redémarré avec succès",
+        action_kill_success: "Serveur tué avec succès",
+        action_failed: "L'action a échoué"
     },
     auth: {
         login: "Connexion",
@@ -129,12 +140,15 @@ export const fr = {
         restoring: "Restauration...",
         success_create: "Sauvegarde créée avec succès",
         success_restore: "Sauvegarde restaurée avec succès",
-        success_delete: "Sauvegarde supprimée"
+        success_delete: "Sauvegarde supprimée",
+        restore_launched: "Restauration lancée avec succès.",
+        restore_error: "Erreur lors de la restauration."
     },
     panel_settings: {
         title: "Paramètres Panel",
         subtitle: "Configuration globale de Draveur Manager",
         save_success: "Paramètres sauvegardés",
+        save_message: "Paramètres sauvegardés avec succès !",
         general_title: "Général",
         app_url: "URL de l'application",
         servers_path: "Dossier des serveurs",
@@ -148,7 +162,27 @@ export const fr = {
         test_success: "Test envoyé avec succès",
         appearance_title: "Apparence",
         login_bg: "Image de fond (Login)",
-        login_color: "Couleur par défaut (Login)"
+        login_color: "Couleur par défaut (Login)",
+        invalid_image: "Veuillez sélectionner une image valide",
+        image_size_error: "L'image ne doit pas dépasser 5 Mo",
+        upload_error: "Erreur lors de l'upload",
+        connection_error: "Erreur de connexion au serveur",
+        browse: "Parcourir",
+        preview: "Aperçu",
+        upload_image: "Uploader une image",
+        roles_title: "Rôles",
+        roles_subtitle: "Gérez les rôles et permissions",
+        create_role: "Créer un rôle",
+        role_name: "Nom du rôle",
+        permissions: "Permissions",
+        users_count: "Utilisateurs",
+        roles_coming_soon: "La gestion avancée des rôles sera disponible dans une prochaine version.",
+        tabs: {
+            general: "Général",
+            users: "Utilisateurs",
+            roles: "Rôles"
+        },
+        search_placeholder: "Rechercher un utilisateur..."
     },
     server_detail: {
         status: "Statut",

@@ -30,9 +30,8 @@ export default function Servers() {
     }, [setPageTitle, t]);
 
     // Adapter function to match ServerList's expected signature
-    const onAction = useCallback((id: string, action: 'start' | 'stop' | 'restart' | 'kill') => {
-        if (action === 'kill') return; // kill not supported in useFilteredServers
-        handleServerAction(action, id);
+    const onAction = useCallback(async (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => {
+        return handleServerAction(action, id);
     }, [handleServerAction]);
 
     if (loading) {

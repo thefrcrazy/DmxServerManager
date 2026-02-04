@@ -12,9 +12,14 @@ interface Backup {
 
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
+import { useToast } from '../contexts/ToastContext';
+import { useDialog } from '../contexts/DialogContext';
+
 
 export default function Backups() {
     const { t } = useLanguage();
+    const { success, error } = useToast();
+    const { confirm } = useDialog();
     const [backups, setBackups] = useState<Backup[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -43,21 +48,21 @@ export default function Backups() {
     };
 
     const handleRestore = async (id: string) => {
-        if (!confirm(t('backups.restore_confirm'))) return;
+        if (!await confirm(t('backups.restore_confirm'), { isDestructive: true, confirmLabel: t('backups.restore') })) return;
 
         try {
             await fetch(`/api/v1/backups/${id}/restore`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             });
-            alert('Restauration lancée avec succès.');
+            success(t('backups.restore_launched'));
         } catch {
-            alert('Erreur lors de la restauration.');
+            error(t('backups.restore_error'));
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm(t('backups.delete_confirm'))) return;
+        if (!await confirm(t('backups.delete_confirm'), { isDestructive: true, confirmLabel: t('common.delete') })) return;
 
         await fetch(`/api/v1/backups/${id}`, {
             method: 'DELETE',

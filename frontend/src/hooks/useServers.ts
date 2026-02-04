@@ -12,6 +12,7 @@ interface UseServersReturn {
     restartServer: (id: string) => Promise<boolean>;
     reinstallServer: (id: string) => Promise<boolean>;
     deleteServer: (id: string) => Promise<boolean>;
+    killServer: (id: string) => Promise<boolean>;
     createServer: (data: Omit<Server, 'id' | 'status' | 'created_at' | 'updated_at'>) => Promise<string | null>;
     // Computed values
     onlineCount: number;
@@ -80,6 +81,16 @@ export function useServers(): UseServersReturn {
         }
     }, []);
 
+    const killServer = useCallback(async (id: string): Promise<boolean> => {
+        try {
+            await apiService.killServer(id);
+            await refresh();
+            return true;
+        } catch {
+            return false;
+        }
+    }, [refresh]);
+
     const reinstallServer = useCallback(async (id: string): Promise<boolean> => {
         try {
             await apiService.reinstallServer(id);
@@ -120,6 +131,7 @@ export function useServers(): UseServersReturn {
         restartServer,
         reinstallServer,
         deleteServer,
+        killServer,
         createServer,
         onlineCount,
         offlineCount,

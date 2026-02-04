@@ -16,6 +16,7 @@ export function useFilteredServers(options: UseFilteredServersOptions = {}) {
         startServer,
         stopServer,
         restartServer,
+        killServer,
     } = useServers();
 
     const [search, setSearch] = useState(options.initialSearch || '');
@@ -41,19 +42,18 @@ export function useFilteredServers(options: UseFilteredServersOptions = {}) {
         offline: servers.filter(s => s.status === 'stopped' || s.status === 'offline').length,
     }), [servers]);
 
-    const handleServerAction = useCallback(async (action: 'start' | 'stop' | 'restart', serverId: string) => {
+    const handleServerAction = useCallback(async (action: 'start' | 'stop' | 'restart' | 'kill', serverId: string) => {
         switch (action) {
             case 'start':
-                await startServer(serverId);
-                break;
+                return await startServer(serverId);
             case 'stop':
-                await stopServer(serverId);
-                break;
+                return await stopServer(serverId);
             case 'restart':
-                await restartServer(serverId);
-                break;
+                return await restartServer(serverId);
+            case 'kill':
+                return await killServer(serverId);
         }
-    }, [startServer, stopServer, restartServer]);
+    }, [startServer, stopServer, restartServer, killServer]);
 
     return {
         // Data

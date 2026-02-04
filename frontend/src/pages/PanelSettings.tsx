@@ -8,6 +8,8 @@ import DirectoryPicker from '../components/DirectoryPicker';
 import Table from '../components/Table';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
+import { useToast } from '../contexts/ToastContext';
+import { useDialog } from '../contexts/DialogContext';
 import Tabs from '../components/Tabs';
 import { ColorPicker, LoadingScreen } from '../components/common';
 
@@ -49,6 +51,8 @@ type ActiveTab = 'general' | 'users' | 'roles';
 
 export default function PanelSettings() {
     const { t } = useLanguage();
+    const { success, error: showError } = useToast();
+    const { confirm } = useDialog();
     const [searchParams, setSearchParams] = useSearchParams();
     const tabParam = searchParams.get('tab') as ActiveTab | null;
     const [activeTab, setActiveTab] = useState<ActiveTab>(tabParam || 'general');
@@ -84,7 +88,7 @@ export default function PanelSettings() {
     const [backupsDir, setBackupsDir] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
-    const [saveMessage, setSaveMessage] = useState('Paramètres sauvegardés avec succès !');
+    const [saveMessage, setSaveMessage] = useState(t('panel_settings.save_message'));
     const [isLoading, setIsLoading] = useState(true);
     const [showServersDirPicker, setShowServersDirPicker] = useState(false);
     const [showBackupsDirPicker, setShowBackupsDirPicker] = useState(false);
@@ -98,8 +102,8 @@ export default function PanelSettings() {
 
     // Roles state (placeholder for future)
     const [roles] = useState<Role[]>([
-        { id: '1', name: 'Administrateur', permissions: ['all'], color: '#FF591E' },
-        { id: '2', name: 'Utilisateur', permissions: ['view', 'manage_own_servers'], color: '#3A82F6' },
+        { id: '1', name: t('user_settings.role_admin'), permissions: ['all'], color: '#FF591E' },
+        { id: '2', name: t('user_settings.role_user'), permissions: ['view', 'manage_own_servers'], color: '#3A82F6' },
     ]);
 
     useEffect(() => {
@@ -143,13 +147,14 @@ export default function PanelSettings() {
         const file = e.target.files?.[0];
         if (!file) return;
 
+
         if (!file.type.startsWith('image/')) {
-            alert('Veuillez sélectionner une image valide');
+            showError(t('panel_settings.invalid_image'));
             return;
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            alert('L\'image ne doit pas dépasser 5 Mo');
+            showError(t('panel_settings.image_size_error'));
             return;
         }
 
@@ -171,10 +176,10 @@ export default function PanelSettings() {
                 setLoginCustomization(prev => ({ ...prev, background_url: data.url }));
             } else {
                 const errorData = await response.json();
-                alert(errorData.error || 'Erreur lors de l\'upload');
+                showError(errorData.error || t('panel_settings.upload_error'));
             }
         } catch (error) {
-            alert('Erreur de connexion au serveur');
+            showError(t('panel_settings.connection_error'));
         } finally {
             setIsUploadingImage(false);
         }
@@ -256,7 +261,7 @@ export default function PanelSettings() {
     };
 
     const handleDeleteUser = async (user: User) => {
-        if (!confirm(t('common.delete') + ` "${user.username}" ?`)) return;
+        if (!await confirm(t('common.delete') + ` "${user.username}" ?`, { isDestructive: true })) return;
         try {
             const response = await fetch(`/api/v1/users/${user.id}`, {
                 method: 'DELETE',
@@ -298,9 +303,9 @@ export default function PanelSettings() {
     }
 
     const tabs = [
-        { id: 'general', label: 'Général', icon: <FolderOpen size={18} /> },
-        { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
-        { id: 'roles', label: 'Rôles', icon: <Shield size={18} /> },
+        { id: 'general', label: t('panel_settings.tabs.general'), icon: <FolderOpen size={18} /> },
+        { id: 'users', label: t('panel_settings.tabs.users'), icon: <Users size={18} /> },
+        { id: 'roles', label: t('panel_settings.tabs.roles'), icon: <Shield size={18} /> },
     ];
 
     return (
@@ -390,7 +395,7 @@ export default function PanelSettings() {
                                             type="button"
                                             className="btn btn--secondary btn--sm"
                                             onClick={() => setShowServersDirPicker(true)}
-                                            title="Parcourir"
+                                            title={t('panel_settings.browse')}
                                         >
                                             <FolderSearch size={16} />
                                         </button>
@@ -414,7 +419,7 @@ export default function PanelSettings() {
                                             type="button"
                                             className="btn btn--secondary btn--sm"
                                             onClick={() => setShowBackupsDirPicker(true)}
-                                            title="Parcourir"
+                                            title={t('panel_settings.browse')}
                                         >
                                             <FolderSearch size={16} />
                                         </button>
@@ -436,7 +441,7 @@ export default function PanelSettings() {
                         </p>
 
                         <div className="form-group">
-                            <label className="form-label">Couleur par défaut</label>
+                            <label className="form-label">{t('panel_settings.login_color')}</label>
                             <ColorPicker
                                 value={loginCustomization.default_color}
                                 onChange={(color) => setLoginCustomization(prev => ({ ...prev, default_color: color }))}
@@ -446,7 +451,7 @@ export default function PanelSettings() {
                         <div className="form-group">
                             <label className="form-label">
                                 <Image size={16} className="mr-2 v-middle" />
-                                Image de fond
+                                {t('panel_settings.login_bg')}
                             </label>
                             <div className="info-list__input-group">
                                 <input
@@ -467,7 +472,7 @@ export default function PanelSettings() {
                                     <label
                                         htmlFor="bg-upload"
                                         className={`btn btn--secondary btn--sm ${isUploadingImage ? 'btn--loading' : ''}`}
-                                        title="Uploader une image"
+                                        title={t('panel_settings.upload_image')}
                                     >
                                         {isUploadingImage ? (
                                             <div className="spinner-sm"></div>
@@ -481,7 +486,7 @@ export default function PanelSettings() {
 
                         {loginCustomization.background_url && (
                             <div className="login-preview">
-                                <label className="form-label">Aperçu</label>
+                                <label className="form-label">{t('panel_settings.preview')}</label>
                                 <div
                                     className="login-preview__image"
                                     style={{ backgroundImage: `url(${loginCustomization.background_url})` }}
@@ -510,14 +515,14 @@ export default function PanelSettings() {
                     <div className="user-list-header">
                         <input
                             type="text"
-                            placeholder="Rechercher un utilisateur..."
+                            placeholder={t('panel_settings.search_placeholder')}
                             className="form-input search-input"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                         <Link to="/panel-settings/users/new" className="btn btn--primary">
                             <Plus size={18} />
-                            Créer un utilisateur
+                            {t('users.create_user')}
                         </Link>
                     </div>
 
@@ -541,7 +546,7 @@ export default function PanelSettings() {
                                             </div>
                                             <div className="user-cell__info">
                                                 <span className="user-cell__name">{user.username}</span>
-                                                <span className="user-cell__created">Créé le {formatDate(user.created_at)}</span>
+                                                <span className="user-cell__created">{t('common.create')} {formatDate(user.created_at)}</span>
                                             </div>
                                         </div>
                                     </td>
@@ -552,7 +557,7 @@ export default function PanelSettings() {
                                     </td>
                                     <td>
                                         <span className={`badge badge--${user.is_active ? 'success' : 'danger'}`}>
-                                            {user.is_active ? 'Actif' : 'Désactivé'}
+                                            {user.is_active ? t('common.active') : t('common.inactive')}
                                         </span>
                                     </td>
                                     <td className="text-muted">{formatDate(user.last_login)}</td>
@@ -592,19 +597,19 @@ export default function PanelSettings() {
             {activeTab === 'roles' && (
                 <div>
                     <div className="user-list-header">
-                        <p className="text-muted">Gérez les rôles et permissions de vos utilisateurs</p>
+                        <p className="text-muted">{t('panel_settings.roles_subtitle')}</p>
                         <button className="btn btn--primary">
                             <Plus size={18} />
-                            Créer un rôle
+                            {t('panel_settings.create_role')}
                         </button>
                     </div>
 
                     <Table>
                         <thead>
                             <tr>
-                                <th>Nom du rôle</th>
-                                <th>Permissions</th>
-                                <th>Utilisateurs</th>
+                                <th>{t('panel_settings.role_name')}</th>
+                                <th>{t('panel_settings.permissions')}</th>
+                                <th>{t('panel_settings.users_count')}</th>
                                 <th className="table-col-actions">{t('common.actions')}</th>
                             </tr>
                         </thead>
@@ -646,7 +651,7 @@ export default function PanelSettings() {
 
                     <div className="alert alert--info mt-4">
                         <AlertTriangle size={16} />
-                        <span>La gestion avancée des rôles sera disponible dans une prochaine version.</span>
+                        <span>{t('panel_settings.roles_coming_soon')}</span>
                     </div>
                 </div>
             )}
@@ -657,7 +662,7 @@ export default function PanelSettings() {
                 onClose={() => setShowServersDirPicker(false)}
                 onSelect={(path) => setServersDir(path)}
                 initialPath={serversDir || '/'}
-                title="Sélectionner le répertoire des serveurs"
+                title={t('panel_settings.servers_dir_title')}
             />
 
             <DirectoryPicker
@@ -665,7 +670,7 @@ export default function PanelSettings() {
                 onClose={() => setShowBackupsDirPicker(false)}
                 onSelect={(path) => setBackupsDir(path)}
                 initialPath={backupsDir || '/'}
-                title="Sélectionner le répertoire des backups"
+                title={t('panel_settings.backups_dir_title')}
             />
         </div>
     );
