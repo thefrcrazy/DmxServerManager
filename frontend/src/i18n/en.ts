@@ -343,6 +343,46 @@ export const en: TranslationType = {
             metrics: "Metrics",
             webhooks: "Webhooks"
         },
+        schedule: {
+            title: "Task Scheduler",
+            subtitle: "Automate your server actions.",
+            create_task: "Create Task",
+            no_tasks: "No scheduled tasks",
+            empty_desc: "You haven't configured any automation for this server yet.",
+            create_first: "Create my first task",
+            edit_task: "Edit Task",
+            
+            name: "Name",
+            name_placeholder: "My scheduled task",
+            type: "Trigger Type",
+            action: "Action to execute",
+            interval: "Interval",
+            interval_help: "Frequency of task execution",
+            time: "Execution Time",
+            enabled: "Enabled",
+            delete_after: "Delete after execution",
+            
+            types: {
+                basic: "Basic",
+                cron: "Cron (Expert)",
+                chain: "Chain Reaction"
+            },
+            
+            actions: {
+                start: "Start Server",
+                restart: "Restart Server",
+                stop: "Stop Server",
+                backup: "Create Backup",
+                command: "Custom Command"
+            },
+            
+            units: {
+                minutes: "Minutes",
+                hours: "Hours",
+                days: "Days",
+                weeks: "Weeks"
+            }
+        },
         messages: {
             config_saved: "Configuration saved!",
             connection_error: "Connection error",

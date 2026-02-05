@@ -52,8 +52,10 @@ pub async fn list_servers(
                 for p_name in online {
                      players_vec.push(Player {
                          name: p_name,
+                         uuid: None,
                          is_online: true,
                          last_seen: Utc::now().to_rfc3339(),
+                         player_ip: None,
                          is_op: false,
                          is_banned: false,
                          is_whitelisted: false,
@@ -269,7 +271,7 @@ pub async fn get_server(
     };
     
     let player_rows: Vec<PlayerRow> = sqlx::query_as(
-        "SELECT player_name, is_online, last_seen FROM server_players WHERE server_id = ?"
+        "SELECT player_name, player_id, player_ip, is_online, last_seen FROM server_players WHERE server_id = ?"
     )
     .bind(&id)
     .fetch_all(&state.pool)
@@ -278,8 +280,10 @@ pub async fn get_server(
 
     let mut players_map: std::collections::HashMap<String, Player> = player_rows.into_iter().map(|row| (row.player_name.clone(), Player {
         name: row.player_name,
+        uuid: row.player_id,
         is_online: row.is_online != 0,
         last_seen: row.last_seen,
+        player_ip: row.player_ip,
         is_op: false,
         is_banned: false,
         is_whitelisted: false,
@@ -295,8 +299,10 @@ pub async fn get_server(
                 })
                 .or_insert(Player {
                     name: name.clone(),
+                    uuid: None, // We don't have UUID from pm.get_online_players (only names)
                     is_online: true,
                     last_seen: chrono::Utc::now().to_rfc3339(),
+                    player_ip: None,
                     is_op: false,
                     is_banned: false,
                     is_whitelisted: false,
@@ -315,8 +321,10 @@ pub async fn get_server(
             })
             .or_insert(Player {
                 name: name.clone(),
+                uuid: None,
                 is_online: false,
                 last_seen: "Jamais".to_string(), 
+                player_ip: None,
                 is_op: m.is_op,
                 is_banned: m.is_banned,
                 is_whitelisted: m.is_whitelisted,

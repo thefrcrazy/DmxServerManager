@@ -9,6 +9,7 @@ export interface Player {
     uuid?: string;
     is_online: boolean;
     last_seen?: string;
+    player_ip?: string;
     is_op?: boolean;
     is_banned?: boolean;
     is_whitelisted?: boolean;
@@ -146,7 +147,10 @@ export default function ServerPlayers({
                                                 </div>
                                                 <div className="player-info">
                                                     <div className="player-name">{player.name || t("common.unknown")}</div>
-                                                    {player.uuid && <div className="player-uuid" title={player.uuid}>{player.uuid.substring(0, 8)}...</div>}
+                                                    <div className="player-meta-row">
+                                                        {player.uuid && <span className="player-uuid" title={player.uuid}>{player.uuid.substring(0, 8)}...</span>}
+                                                        {player.player_ip && <span className="player-ip">{player.player_ip}</span>}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
@@ -172,18 +176,23 @@ export default function ServerPlayers({
                                             </>
                                         ) : (
                                             <td className="td-status">
-                                                {activeTab === "online" ? (
-                                                    <span className="status-badge status-badge--online">{t("server_detail.players.status.connected")}</span>
-                                                ) : activeTab === "whitelist" ? (
-                                                    <span className="text-muted text-sm">{t("server_detail.players.status.whitelisted")}</span>
-                                                ) : activeTab === "database" ? (
-                                                    <span className="text-muted text-sm">{t("server_detail.players.status.offline")}</span>
-                                                ) : (
-                                                    <span className="text-muted text-sm">{t("server_detail.players.status.group")} {player.reason || "Default"}</span>
-                                                )}
-                                                {player.last_seen && (activeTab !== "online" && activeTab !== "database") && (
-                                                    <div className="last-seen">{t("server_detail.players.status.seen")} {formatDate(player.last_seen)}</div>
-                                                )}
+                                                <div className="status-container">
+                                                    {activeTab === "online" ? (
+                                                        <span className="status-badge status-badge--online">{t("server_detail.players.status.connected")}</span>
+                                                    ) : activeTab === "whitelist" ? (
+                                                        <span className="text-muted text-sm">{t("server_detail.players.status.whitelisted")}</span>
+                                                    ) : activeTab === "database" ? (
+                                                        <span className="text-muted text-sm">{t("server_detail.players.status.offline")}</span>
+                                                    ) : (
+                                                        <span className="text-muted text-sm">{t("server_detail.players.status.group")} {player.reason || "Default"}</span>
+                                                    )}
+                                                    {player.last_seen && (
+                                                        <div className="last-seen">
+                                                            <Calendar size={10} />
+                                                            {formatDate(player.last_seen)}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                         )}
 

@@ -1,11 +1,16 @@
 use std::time::Duration;
 use tokio::time;
 use sysinfo::{System, RefreshKind, CpuRefreshKind, MemoryRefreshKind};
+use chrono::Utc;
+use tracing::info;
 use crate::core::database::DbPool;
 use crate::services::game::manager::ProcessManager;
 use crate::services::system::discord;
 
 pub fn start(pool: DbPool, process_manager: ProcessManager) {
+    let pool_clone = pool.clone();
+    let pm_clone = process_manager.clone();
+
     tokio::spawn(async move {
         // Wait a bit for server start
         time::sleep(Duration::from_secs(5)).await;
@@ -23,11 +28,120 @@ pub fn start(pool: DbPool, process_manager: ProcessManager) {
         loop {
             interval.tick().await;
             
-            if let Err(e) = run_status_update(&pool, &mut sys, &process_manager).await {
+            if let Err(e) = run_status_update(&pool_clone, &mut sys, &pm_clone).await {
                 eprintln!("Error in status scheduler: {e}");
             }
         }
     });
+
+    start_task_scheduler(pool, process_manager);
+}
+
+fn start_task_scheduler(pool: DbPool, pm: ProcessManager) {
+    tokio::spawn(async move {
+        // Run every minute at :00
+        let mut interval = time::interval(Duration::from_secs(60));
+        
+        loop {
+            interval.tick().await;
+            if let Err(e) = check_and_run_tasks(&pool, &pm).await {
+                eprintln!("Error in task scheduler: {e}");
+            }
+        }
+    });
+}
+
+async fn check_and_run_tasks(pool: &DbPool, pm: &ProcessManager) -> anyhow::Result<()> {
+    let now = chrono::Local::now();
+    let now_time = now.format("%H:%M").to_string();
+    
+    // We only support "basic" for now in this simple implementation
+    
+    let schedules: Vec<crate::api::servers::models::ScheduleRow> = sqlx::query_as(
+        "SELECT * FROM schedules WHERE enabled = 1"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for s in schedules {
+        let should_run = match s.task_type.as_str() {
+            "basic" => {
+                if let Some(time) = &s.time {
+                    time == &now_time
+                } else {
+                    false
+                }
+            },
+            _ => false, // Cron not yet supported without a library
+        };
+
+        if should_run {
+            info!("Running scheduled task '{}' for server {}", s.name, s.server_id);
+            
+            // Fetch server details needed for start/restart
+            let server: Option<crate::api::servers::models::ServerRow> = sqlx::query_as("SELECT * FROM servers WHERE id = ?")
+                .bind(&s.server_id)
+                .fetch_optional(pool)
+                .await?;
+
+            if let Some(srv) = server {
+                let config_json = srv.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
+                
+                match s.action.as_str() {
+                    "start" => { 
+                        let _ = pm.start(
+                            &srv.id,
+                            &srv.executable_path,
+                            &srv.working_dir,
+                            srv.java_path.as_deref(),
+                            srv.min_memory.as_deref(),
+                            srv.max_memory.as_deref(),
+                            srv.extra_args.as_deref(),
+                            config_json.as_ref(),
+                            &srv.game_type
+                        ).await; 
+                    },
+                    "stop" => { let _ = pm.stop(&s.server_id).await; },
+                    "restart" => { 
+                        let _ = pm.restart(
+                            &srv.id,
+                            &srv.executable_path,
+                            &srv.working_dir,
+                            srv.java_path.as_deref(),
+                            srv.min_memory.as_deref(),
+                            srv.max_memory.as_deref(),
+                            srv.extra_args.as_deref(),
+                            config_json.as_ref(),
+                            &srv.game_type
+                        ).await; 
+                    },
+                    "backup" => {
+                        let filename = format!("backup_{}_{}.tar.gz", s.server_id, Utc::now().format("%Y%m%d_%H%M%S"));
+                        let backup_path = format!("backups/{filename}");
+                        if let Ok(size) = crate::services::system::backup::create_archive(&srv.working_dir, &backup_path) {
+                             let _ = sqlx::query("INSERT INTO backups (id, server_id, filename, size_bytes, created_at) VALUES (?, ?, ?, ?, ?)")
+                                .bind(uuid::Uuid::new_v4().to_string())
+                                .bind(&s.server_id)
+                                .bind(&filename)
+                                .bind(size as i64)
+                                .bind(Utc::now().to_rfc3339())
+                                .execute(pool)
+                                .await;
+                        }
+                    },
+                    _ => {}
+                }
+            } else {
+                eprintln!("Server {} not found for scheduled task {}", s.server_id, s.id);
+            }
+
+            if s.delete_after != 0 {
+                sqlx::query("DELETE FROM schedules WHERE id = ?").bind(&s.id).execute(pool).await?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 async fn run_status_update(pool: &DbPool, sys: &mut System, pm: &ProcessManager) -> anyhow::Result<()> {

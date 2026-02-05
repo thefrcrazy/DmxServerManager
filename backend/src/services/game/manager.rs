@@ -449,9 +449,10 @@ impl ProcessManager {
                     if let Some(caps) = join_re.captures(&line) {
                         if let Some(name) = caps.get(1) {
                             let player_name = name.as_str().trim().to_string();
+                            // Safely get UUID if it exists (index 2)
                             let player_id = caps.get(2).map(|m| m.as_str().to_string());
                             
-                            info!("Player joined server {}: {} (Example UUID: {:?})", server_id_clone, player_name, player_id);
+                            info!("Player joined server {}: {} (UUID: {:?})", server_id_clone, player_name, player_id);
                             if let Ok(mut p) = players_clone.write() {
                                 p.insert(player_name.clone());
                             }

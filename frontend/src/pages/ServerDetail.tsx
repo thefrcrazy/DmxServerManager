@@ -34,8 +34,10 @@ import {
     ServerConfig,
     ServerPlayers,
     ServerMetrics,
+    ServerSchedule,
     AddPlayerModal
 } from "@/components/features/server";
+import { Schedule } from "@/components/features/server/ServerSchedule";
 import { Tabs } from "@/components/ui";
 import { WorkInProgress, InstallationProgress } from "@/components/shared";
 
@@ -216,6 +218,10 @@ export default function ServerDetail() {
     const [backupsLoading, setBackupsLoading] = useState(false);
     const [creatingBackup, setCreatingBackup] = useState(false);
 
+    // Schedules tab state
+    const [schedules, setSchedules] = useState<Schedule[]>([]);
+    const [schedulesLoading, setSchedulesLoading] = useState(false);
+
     // Files tab state
     const [files, setFiles] = useState<FileEntry[]>([]);
     const [currentPath, setCurrentPath] = useState("");
@@ -352,6 +358,75 @@ export default function ServerDetail() {
                 headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             success(t("server_detail.messages.backup_restored"));
+        } catch (error) { console.error(error); }
+    };
+
+    const fetchSchedules = useCallback(async () => {
+        if (!id) return;
+        setSchedulesLoading(true);
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/schedules`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (response.ok) {
+                setSchedules(await response.json());
+            }
+        } catch (error) { console.error(error); } finally { setSchedulesLoading(false); }
+    }, [id]);
+
+    const saveSchedule = async (schedule: Partial<Schedule>) => {
+        if (!id) return;
+        try {
+            const method = schedule.id ? "PUT" : "POST";
+            const url = schedule.id 
+                ? `/api/v1/servers/${id}/schedules/${schedule.id}`
+                : `/api/v1/servers/${id}/schedules`;
+            
+            const response = await fetch(url, {
+                method,
+                headers: { 
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${localStorage.getItem("token")}` 
+                },
+                body: JSON.stringify({ ...schedule, server_id: id }),
+            });
+
+            if (response.ok) {
+                success(t("server_detail.messages.save_success"));
+                fetchSchedules();
+            } else {
+                showError(t("server_detail.messages.save_error"));
+            }
+        } catch (error) { console.error(error); showError(t("server_detail.messages.connection_error")); }
+    };
+
+    const deleteSchedule = async (scheduleId: string) => {
+        if (!await confirm(t("server_detail.messages.item_deleted"), { isDestructive: true })) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/schedules/${scheduleId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (response.ok) {
+                success(t("server_detail.messages.item_deleted"));
+                fetchSchedules();
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const toggleSchedule = async (scheduleId: string, enabled: boolean) => {
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/schedules/${scheduleId}/toggle`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${localStorage.getItem("token")}` 
+                },
+                body: JSON.stringify({ enabled }),
+            });
+            if (response.ok) {
+                fetchSchedules();
+            }
         } catch (error) { console.error(error); }
     };
 
@@ -972,6 +1047,7 @@ export default function ServerDetail() {
     // Effect triggers
     useEffect(() => {
         if (activeTab === "backups") fetchBackups();
+        else if (activeTab === "schedule") fetchSchedules();
         else if (activeTab === "files") { fetchFiles(); setSelectedFile(null); setFileContent(""); }
         else if (activeTab === "logs") {
             fetchLogFiles();
@@ -989,9 +1065,9 @@ export default function ServerDetail() {
                         {server.status}
                     </div>
                     <div className="header-controls">
-                        <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running"}><Play size={16} /> {t("servers.start")}</button>
-                        <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running"}><RotateCw size={16} /></button>
-                        <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running"}><Square size={16} /></button>
+                        <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running" || server.status === "starting" || server.status === "auth_required"}><Play size={16} /> {t("servers.start")}</button>
+                        <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running" && server.status !== "auth_required"}><RotateCw size={16} /></button>
+                        <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running" && server.status !== "auth_required"}><Square size={16} /></button>
                     </div>
                 </div>
             );
@@ -1052,14 +1128,14 @@ export default function ServerDetail() {
 
             <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
-            {isInstalling && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => setIsInstalling(false)} onSendAuth={() => sendCommand("auth")} />}
+            {(isInstalling || isAuthRequired) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => setIsInstalling(false)} onSendAuth={() => sendCommand("auth")} />}
 
             <div className="tab-content">
                 {activeTab === "console" && (
                     <ServerConsole
                         logs={logs}
                         isConnected={isConnected}
-                        isRunning={server.status === "running" || server.status === "starting"}
+                        isRunning={server.status === "running" || server.status === "starting" || server.status === "auth_required"}
                         onSendCommand={sendCommand}
                     />
                 )}
@@ -1108,6 +1184,16 @@ export default function ServerDetail() {
                             fetchLogFiles();
                             if (selectedLogFile) readLogFile(selectedLogFile);
                         }}
+                    />
+                )}
+
+                {activeTab === "schedule" && (
+                    <ServerSchedule
+                        schedules={schedules}
+                        isLoading={schedulesLoading}
+                        onSave={saveSchedule}
+                        onDelete={deleteSchedule}
+                        onToggle={toggleSchedule}
                     />
                 )}
 

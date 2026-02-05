@@ -304,6 +304,46 @@ export const fr = {
             metrics: "Métriques",
             webhooks: "Webhooks"
         },
+        schedule: {
+            title: "Planification des Tâches",
+            subtitle: "Automatisez les actions de votre serveur.",
+            create_task: "Créer une tâche",
+            no_tasks: "Aucune tâche planifiée",
+            empty_desc: "Vous n'avez pas encore configuré d'automatisation pour ce serveur.",
+            create_first: "Créer ma première tâche",
+            edit_task: "Modifier la tâche",
+            
+            name: "Nom",
+            name_placeholder: "Ma tâche planifiée",
+            type: "Type de déclencheur",
+            action: "Action à exécuter",
+            interval: "Intervalle",
+            interval_help: "Fréquence d'exécution de la tâche",
+            time: "Heure d'exécution",
+            enabled: "Activé",
+            delete_after: "Supprimer après exécution",
+            
+            types: {
+                basic: "Basique",
+                cron: "Cron (Expert)",
+                chain: "Réaction en chaîne"
+            },
+            
+            actions: {
+                start: "Démarrer le serveur",
+                restart: "Redémarrer le serveur",
+                stop: "Arrêter le serveur",
+                backup: "Créer une sauvegarde",
+                command: "Commande personnalisée"
+            },
+            
+            units: {
+                minutes: "Minutes",
+                hours: "Heures",
+                days: "Jours",
+                weeks: "Semaines"
+            }
+        },
         messages: {
             config_saved: "Configuration sauvegardée !",
             connection_error: "Erreur de connexion",

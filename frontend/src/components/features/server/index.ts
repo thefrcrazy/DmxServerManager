@@ -8,5 +8,6 @@ export { default as ServerLogs } from "./ServerLogs";
 export { default as ServerConfig } from "./ServerConfig";
 export { default as ServerPlayers } from "./ServerPlayers";
 export { default as ServerMetrics } from "./ServerMetrics";
+export { default as ServerSchedule } from "./ServerSchedule";
 export { default as ActionMenu } from "./ActionMenu";
 export { default as AddPlayerModal } from "./AddPlayerModal";

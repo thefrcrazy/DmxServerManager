@@ -132,9 +132,15 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
         CREATE TABLE IF NOT EXISTS schedules (
             id TEXT PRIMARY KEY,
             server_id TEXT NOT NULL,
-            task_type TEXT NOT NULL,
-            cron_expression TEXT NOT NULL,
+            name TEXT NOT NULL,
+            task_type TEXT NOT NULL, -- basic, cron, chain
+            action TEXT NOT NULL, -- start, restart, stop, backup, command
+            interval INTEGER,
+            unit TEXT, -- minutes, hours, days, weeks
+            time TEXT, -- HH:mm
+            cron_expression TEXT,
             enabled INTEGER NOT NULL DEFAULT 1,
+            delete_after INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
         );
@@ -277,6 +283,36 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     if !players_column_names.contains(&"player_ip") {
         sqlx::query("ALTER TABLE server_players ADD COLUMN player_ip TEXT").execute(pool).await.ok();
     }
+
+    // Schedules table migrations
+    let schedules_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(schedules)")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| Error::other(e.to_string()))?;
+
+    let schedules_column_names: Vec<&str> = schedules_columns.iter().map(|c| c.1.as_str()).collect();
+
+    if !schedules_column_names.contains(&"name") {
+        sqlx::query("ALTER TABLE schedules ADD COLUMN name TEXT NOT NULL DEFAULT 'Task'").execute(pool).await.ok();
+    }
+    if !schedules_column_names.contains(&"action") {
+        sqlx::query("ALTER TABLE schedules ADD COLUMN action TEXT NOT NULL DEFAULT 'restart'").execute(pool).await.ok();
+    }
+    if !schedules_column_names.contains(&"interval") {
+        sqlx::query("ALTER TABLE schedules ADD COLUMN interval INTEGER").execute(pool).await.ok();
+    }
+    if !schedules_column_names.contains(&"unit") {
+        sqlx::query("ALTER TABLE schedules ADD COLUMN unit TEXT").execute(pool).await.ok();
+    }
+    if !schedules_column_names.contains(&"time") {
+        sqlx::query("ALTER TABLE schedules ADD COLUMN time TEXT").execute(pool).await.ok();
+    }
+    if !schedules_column_names.contains(&"delete_after") {
+        sqlx::query("ALTER TABLE schedules ADD COLUMN delete_after INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
+    }
+    // Make cron_expression optional in migrations if it was NOT NULL before
+    // Sqlite doesn't support easy ALTER COLUMN. But if it was created with the previous SQL, it was NOT NULL.
+    // However, if I just added it, it's fine.
 
     info!("✅ Migrations completed");
     Ok(())

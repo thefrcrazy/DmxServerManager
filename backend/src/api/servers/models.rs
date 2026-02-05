@@ -35,8 +35,10 @@ pub struct CreateServerRequest {
 #[derive(Debug, Serialize)]
 pub struct Player {
     pub name: String,
+    pub uuid: Option<String>,
     pub is_online: bool,
     pub last_seen: String,
+    pub player_ip: Option<String>,
     pub is_op: bool,
     pub is_banned: bool,
     pub is_whitelisted: bool,
@@ -89,6 +91,8 @@ pub struct ServerResponse {
 #[derive(FromRow)]
 pub struct PlayerRow {
     pub player_name: String,
+    pub player_id: Option<String>,
+    pub player_ip: Option<String>,
     pub is_online: i32,
     pub last_seen: String,
 }
@@ -204,4 +208,56 @@ pub struct CopyFileRequest {
 pub struct MoveFileRequest {
     pub source: String,
     pub destination: String,
+}
+
+// ============= Schedules API Models =============
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct ScheduleRow {
+    pub id: String,
+    pub server_id: String,
+    pub name: String,
+    pub task_type: String,
+    pub action: String,
+    pub interval: Option<i32>,
+    pub unit: Option<String>,
+    pub time: Option<String>,
+    pub cron_expression: Option<String>,
+    pub enabled: i32,
+    pub delete_after: i32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ScheduleResponse {
+    pub id: String,
+    pub server_id: String,
+    pub name: String,
+    pub task_type: String,
+    pub action: String,
+    pub interval: Option<i32>,
+    pub unit: Option<String>,
+    pub time: Option<String>,
+    pub cron_expression: Option<String>,
+    pub enabled: bool,
+    pub delete_after: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateScheduleRequest {
+    pub name: String,
+    pub task_type: String,
+    pub action: String,
+    pub interval: Option<i32>,
+    pub unit: Option<String>,
+    pub time: Option<String>,
+    pub cron_expression: Option<String>,
+    pub enabled: Option<bool>,
+    pub delete_after: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToggleScheduleRequest {
+    pub enabled: bool,
 }

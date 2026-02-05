@@ -562,7 +562,12 @@ export default function PanelSettings() {
                                             {user.is_active ? t("common.active") : t("common.inactive")}
                                         </span>
                                     </td>
-                                    <td className="text-muted">{formatDate(user.last_login)}</td>
+                                    <td>
+                                        <div className="last-login-cell">
+                                            <div className="text-muted">{formatDate(user.last_login)}</div>
+                                            {user.last_ip && <div className="text-xs text-muted-more">{user.last_ip}</div>}
+                                        </div>
+                                    </td>
                                     <td>
                                         <div className="table__actions">
                                             <button

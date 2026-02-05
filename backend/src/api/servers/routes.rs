@@ -1,10 +1,10 @@
 use axum::{
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use crate::core::AppState;
 
-use super::endpoints::{crud, lifecycle, files, players, console};
+use super::endpoints::{crud, lifecycle, files, players, console, schedules};
 use crate::api::metrics;
 
 pub fn routes() -> Router<AppState> {
@@ -38,6 +38,11 @@ pub fn routes() -> Router<AppState> {
         .route("/:id/whitelist", get(players::get_whitelist).post(players::add_whitelist).delete(players::remove_whitelist))
         .route("/:id/bans", get(players::get_bans).post(players::add_ban).delete(players::remove_ban))
         .route("/:id/ops", get(players::get_ops).post(players::add_op).delete(players::remove_op))
+        
+        // Schedules API
+        .route("/:id/schedules", get(schedules::list_schedules).post(schedules::create_schedule))
+        .route("/:id/schedules/:schedule_id", put(schedules::update_schedule).delete(schedules::delete_schedule))
+        .route("/:id/schedules/:schedule_id/toggle", post(schedules::toggle_schedule))
         
         // Metrics merging (retained from original mod.rs)
         .merge(metrics::routes())

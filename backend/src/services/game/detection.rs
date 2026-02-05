@@ -25,10 +25,10 @@ impl PlayerDetectionPatterns {
     fn hytale() -> Self {
         Self {
             // Join: [Universe|P] Adding player 'TheFRcRaZy' (uuid)
-            // Restricted to not match across quotes or newlines
-            join_regex: Regex::new(r"Adding player '([^']+)' \((.+?)\)").unwrap(),
+            // Restrict name to alphanumeric, underscore, space, dash. Restrict UUID to hex/dash.
+            join_regex: Regex::new(r"Adding player '([a-zA-Z0-9_\- ]+)'(?:\s*\(([a-f0-9\-]+)\))?").unwrap(),
             // Leave: [Universe|P] Removing player 'TheFRcRaZy' (uuid)
-            leave_regex: Regex::new(r"Removing player '([^']+)' \((.+?)\)").unwrap(),
+            leave_regex: Regex::new(r"Removing player '([a-zA-Z0-9_\- ]+)'(?:\s*\(([a-f0-9\-]+)\))?").unwrap(),
             server_ready_regex: Regex::new(r"Universe ready!").unwrap(),
             // IP: {Playing(QuicConnectionAddress{...} (/82.64.248.19:55745, ...)), UUID, Name}
             ip_regex: Some(Regex::new(r"\{Playing\(.+? \(/([\d\.]+):\d+.*?\)\), ([0-9a-f-]+), ([^}]+)\}").unwrap()),
