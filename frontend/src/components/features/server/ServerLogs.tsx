@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import Ansi from "ansi-to-react";
 import { AlertCircle, RefreshCw, Download } from "lucide-react";
 import Select from "@/components/ui/Select";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { Tooltip } from "@/components/ui";
 import { enhanceLogContent } from "@/utils/logUtils";
 
 interface FileEntry {
@@ -27,6 +29,7 @@ export default function ServerLogs({
     onSelectLogFile,
     onRefresh
 }: ServerLogsProps) {
+    const { t } = useLanguage();
     const logsContentRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll logic similar to console but for static content rendering
@@ -56,7 +59,7 @@ export default function ServerLogs({
             <div className="console-container logs-container">
                 <div className="console-header">
                     <div className="console-header__title">
-                        <span className="console-path">{selectedLogFile || "Aucun fichier sélectionné"}</span>
+                        <span className="console-path">{selectedLogFile || t("server_detail.files.no_file_selected") || "Aucun fichier sélectionné"}</span>
                     </div>
 
                     <div className="console-header__actions">
@@ -72,17 +75,20 @@ export default function ServerLogs({
                                 />
                             </div>
                         )}
-                        <button
-                            onClick={handleDownload}
-                            className="btn btn--secondary btn--icon btn--xs"
-                            title="Télécharger"
-                            disabled={!selectedLogFile}
-                        >
-                            <Download size={14} />
-                        </button>
-                        <button onClick={onRefresh} className="btn btn--secondary btn--icon btn--xs" title="Rafraîchir">
-                            <RefreshCw size={14} />
-                        </button>
+                        <Tooltip content={t("common.download")} position="bottom">
+                            <button
+                                onClick={handleDownload}
+                                className="btn btn--secondary btn--icon btn--xs"
+                                disabled={!selectedLogFile}
+                            >
+                                <Download size={14} />
+                            </button>
+                        </Tooltip>
+                        <Tooltip content={t("common.refresh")} position="bottom">
+                            <button onClick={onRefresh} className="btn btn--secondary btn--icon btn--xs">
+                                <RefreshCw size={14} />
+                            </button>
+                        </Tooltip>
                     </div>
                 </div>
 
@@ -94,15 +100,15 @@ export default function ServerLogs({
                         <div className="console-output__empty">
                             <AlertCircle size={32} />
                             <div className="center-text">
-                                <p className="font-medium">Aucun fichier de log trouvé</p>
-                                <p className="text-xs">Le dossier logs est vide.</p>
+                                <p className="font-medium">{t("server_detail.files.no_log_found") || "Aucun fichier de log trouvé"}</p>
+                                <p className="text-xs">{t("server_detail.files.empty_logs_desc") || "Le dossier logs est vide."}</p>
                             </div>
                         </div>
                     ) : (
                         <pre className="log-pre">
                             <Ansi useClasses={false}>
                                 {enhanceLogContent(
-                                    logContent || "Chargement... ou fichier vide.",
+                                    logContent || t("common.loading") || "Chargement... ou fichier vide.",
                                     serverType,
                                 ) || ""}
                             </Ansi>

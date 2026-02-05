@@ -1,6 +1,8 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Folder, File, FolderOpen, Save, CornerUpLeft, Home, RefreshCw, FolderPlus, FilePlus, Upload, Trash2, X, Download, CheckSquare, Square, MoreHorizontal, Copy, Move, Pencil } from "lucide-react";
 import { formatBytes } from "@/utils/formatters";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { Tooltip } from "@/components/ui";
 
 interface FileEntry {
     name: string;
@@ -60,6 +62,7 @@ export default function ServerFiles({
     onCopyFile,
     onMoveFile
 }: ServerFilesProps) {
+    const { t } = useLanguage();
     const [editorContent, setEditorContent] = React.useState(fileContent);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
     const [inputValue, setInputValue] = useState("");
@@ -391,30 +394,40 @@ export default function ServerFiles({
                             <span className="breadcrumb-separator">/</span>
                         </React.Fragment>
                     ))}
-                    {currentPath === "" && <span className="breadcrumb-placeholder">racine</span>}
+                    {currentPath === "" && <span className="breadcrumb-placeholder">{t("server_detail.files.root")}</span>}
                 </div>
                 <div className="quick-actions">
                     {selectedItems.size > 0 && (
                         <>
-                            <span className="selection-count">{selectedItems.size} sélectionné(s)</span>
-                            <button onClick={deleteSelected} className="btn btn--xs btn--danger" title="Supprimer la sélection">
-                                <Trash2 size={14} />
-                            </button>
-                            <button onClick={clearSelection} className="btn btn--xs btn--ghost" title="Désélectionner">
-                                <X size={14} />
-                            </button>
+                            <span className="selection-count">{selectedItems.size} {t("common.selected") || "sélectionné(s)"}</span>
+                            <Tooltip content={t("common.delete")} position="bottom">
+                                <button onClick={deleteSelected} className="btn btn--xs btn--danger">
+                                    <Trash2 size={14} />
+                                </button>
+                            </Tooltip>
+                            <Tooltip content={t("common.deselect") || "Désélectionner"} position="bottom">
+                                <button onClick={clearSelection} className="btn btn--xs btn--ghost">
+                                    <X size={14} />
+                                </button>
+                            </Tooltip>
                             <div className="separator-vertical"></div>
                         </>
                     )}
-                    <button onClick={() => setActiveModal("folder")} className="btn btn--xs btn--ghost" title="Nouveau dossier">
-                        <FolderPlus size={14} />
-                    </button>
-                    <button onClick={() => setActiveModal("file")} className="btn btn--xs btn--ghost" title="Nouveau fichier">
-                        <FilePlus size={14} />
-                    </button>
-                    <button onClick={() => fileInputRef.current?.click()} className="btn btn--xs btn--ghost" title="Upload">
-                        <Upload size={14} />
-                    </button>
+                    <Tooltip content={t("common.new_folder") || "Nouveau dossier"} position="bottom">
+                        <button onClick={() => setActiveModal("folder")} className="btn btn--xs btn--ghost">
+                            <FolderPlus size={14} />
+                        </button>
+                    </Tooltip>
+                    <Tooltip content={t("common.new_file") || "Nouveau fichier"} position="bottom">
+                        <button onClick={() => setActiveModal("file")} className="btn btn--xs btn--ghost">
+                            <FilePlus size={14} />
+                        </button>
+                    </Tooltip>
+                    <Tooltip content={t("common.upload")} position="bottom">
+                        <button onClick={() => fileInputRef.current?.click()} className="btn btn--xs btn--ghost">
+                            <Upload size={14} />
+                        </button>
+                    </Tooltip>
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -423,19 +436,27 @@ export default function ServerFiles({
                         onChange={handleFileInputChange}
                     />
                     <div className="separator-vertical"></div>
-                    <button onClick={onRefresh} className="btn btn--xs btn--ghost" title="Actualiser">
-                        <RefreshCw size={14} />
-                    </button>
+                    <Tooltip content={t("common.refresh")} position="bottom">
+                        <button onClick={onRefresh} className="btn btn--xs btn--ghost">
+                            <RefreshCw size={14} />
+                        </button>
+                    </Tooltip>
                     <div className="separator-vertical"></div>
-                    <button onClick={() => onNavigate("mods")} className="btn btn--xs btn--ghost" title="Mods">
-                        Mods
-                    </button>
-                    <button onClick={() => onNavigate("universe")} className="btn btn--xs btn--ghost" title="Mondes">
-                        Universe
-                    </button>
-                    <button onClick={() => onNavigate("logs")} className="btn btn--xs btn--ghost" title="Logs">
-                        Logs
-                    </button>
+                    <Tooltip content={t("server_detail.tabs.mods")} position="bottom">
+                        <button onClick={() => onNavigate("mods")} className="btn btn--xs btn--ghost">
+                            {t("server_detail.tabs.mods")}
+                        </button>
+                    </Tooltip>
+                    <Tooltip content="Mondes" position="bottom">
+                        <button onClick={() => onNavigate("universe")} className="btn btn--xs btn--ghost">
+                            Universe
+                        </button>
+                    </Tooltip>
+                    <Tooltip content={t("server_detail.tabs.logs")} position="bottom">
+                        <button onClick={() => onNavigate("logs")} className="btn btn--xs btn--ghost">
+                            {t("server_detail.tabs.logs")}
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
@@ -587,7 +608,7 @@ export default function ServerFiles({
                 <div className="file-manager__list-wrapper">
                     <div className="file-tree">
                         <div className="file-tree-header">
-                            Explorateur
+                            {t("server_detail.files.explorer")}
                         </div>
                         <div className="file-tree-content" onContextMenu={handleEmptyContextMenu}>
                             {isLoading ? (
@@ -597,7 +618,7 @@ export default function ServerFiles({
                             ) : files.length === 0 ? (
                                 <div className="empty-state">
                                     <FolderOpen size={32} />
-                                    <span>Dossier vide</span>
+                                    <span>{t("server_detail.files.empty_folder")}</span>
                                 </div>
                             ) : (
                                 <div className="file-table-wrapper">
@@ -612,11 +633,11 @@ export default function ServerFiles({
                                                 )}
                                             </button>
                                         </div>
-                                        <div className="file-table-cell file-table-cell--name">Nom</div>
-                                        <div className="file-table-cell file-table-cell--type">Type</div>
-                                        <div className="file-table-cell file-table-cell--modified">Modifié</div>
-                                        <div className="file-table-cell file-table-cell--size">Taille</div>
-                                        <div className="file-table-cell file-table-cell--options">Options</div>
+                                        <div className="file-table-cell file-table-cell--name">{t("common.name") || "Nom"}</div>
+                                        <div className="file-table-cell file-table-cell--type">{t("server_detail.files.file_type")}</div>
+                                        <div className="file-table-cell file-table-cell--modified">{t("server_detail.files.modified")}</div>
+                                        <div className="file-table-cell file-table-cell--size">{t("server_detail.files.size")}</div>
+                                        <div className="file-table-cell file-table-cell--options">{t("server_detail.files.options")}</div>
                                     </div>
 
                                     {/* Parent directory */}
@@ -728,7 +749,7 @@ export default function ServerFiles({
                                         onClick={onCloseEditor}
                                         className="btn btn--xs btn--ghost"
                                     >
-                                        Fermer
+                                        {t("server_detail.files.close")}
                                     </button>
                                     <button
                                         onClick={() => onSaveFile(editorContent)}
@@ -736,7 +757,7 @@ export default function ServerFiles({
                                         className="btn btn--primary btn--sm"
                                     >
                                         <Save size={14} />
-                                        {isSaving ? "Sauvegarde..." : "Enregistrer"}
+                                        {isSaving ? t("common.saving") : t("server_detail.files.save")}
                                     </button>
                                 </div>
                             </div>

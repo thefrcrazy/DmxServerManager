@@ -26,6 +26,10 @@ export const en: TranslationType = {
         refresh: "Refresh",
         actions: "Actions",
         unknown: "Unknown",
+        selected: "selected",
+        deselect: "Deselect",
+        new_folder: "New Folder",
+        new_file: "New File",
         send: "Send",
         saving: "Saving...",
         save_file: "Save File",
@@ -321,7 +325,6 @@ export const en: TranslationType = {
         java_version: "Java Version",
         memory: "Memory",
         reinstall_confirm: "Are you sure you want to reinstall this server? This will delete all current files.",
-        delete_confirm: "To confirm deletion, please type the server name:",
         delete_backup_confirm: "Are you sure you want to delete this backup?",
         restore_backup_confirm: "Are you sure you want to restore this backup? Current data will be overwritten.",
         save_success: "File saved!",
@@ -343,6 +346,20 @@ export const en: TranslationType = {
             metrics: "Metrics",
             webhooks: "Webhooks"
         },
+        files: {
+            root: "root",
+            explorer: "Explorer",
+            empty_folder: "Empty folder",
+            file_type: "Type",
+            modified: "Modified",
+            size: "Size",
+            options: "Options",
+            close: "Close",
+            save: "Save",
+            no_file_selected: "No file selected",
+            no_log_found: "No log files found",
+            empty_logs_desc: "The logs folder is empty."
+        },
         schedule: {
             title: "Task Scheduler",
             subtitle: "Automate your server actions.",
@@ -351,7 +368,7 @@ export const en: TranslationType = {
             empty_desc: "You haven't configured any automation for this server yet.",
             create_first: "Create my first task",
             edit_task: "Edit Task",
-            
+
             name: "Name",
             name_placeholder: "My scheduled task",
             type: "Trigger Type",
@@ -361,13 +378,13 @@ export const en: TranslationType = {
             time: "Execution Time",
             enabled: "Enabled",
             delete_after: "Delete after execution",
-            
+
             types: {
                 basic: "Basic",
                 cron: "Cron (Expert)",
                 chain: "Chain Reaction"
             },
-            
+
             actions: {
                 start: "Start Server",
                 restart: "Restart Server",
@@ -375,19 +392,32 @@ export const en: TranslationType = {
                 backup: "Create Backup",
                 command: "Custom Command"
             },
-            
+
             units: {
                 minutes: "Minutes",
                 hours: "Hours",
                 days: "Days",
                 weeks: "Weeks"
-            }
+            },
+
+            execution_once: "Execution once",
+            days_label: "Execution Days",
+            time_label: "Execution Time",
+            select_all: "Select All",
+            simplified_config: "Simplified Configuration",
+            cron_advanced: "Cron Expression (Advanced)",
+            cron_hint: "Minute Hour Day Month Day-Week",
+            run_now: "Run Now",
+            every: "Every",
+            at: "At"
         },
         messages: {
             config_saved: "Configuration saved!",
             connection_error: "Connection error",
             save_error: "Error while saving",
             reinstall_error: "Error initiating reinstall.",
+            delete_confirm: "Are you sure you want to delete this server? This action is irreversible. To confirm, type the server name:",
+            delete_confirm_label: "Server name",
             delete_error: "Error while deleting.",
             item_deleted: "Deleted!",
             backup_created: "Backup created!",

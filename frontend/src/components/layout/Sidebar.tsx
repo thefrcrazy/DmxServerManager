@@ -49,13 +49,14 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     return (
         <aside className={`sidebar ${isCollapsed ? "sidebar--collapsed" : ""}`}>
             {/* Toggle Button - Always first when collapsed */}
-            <button
-                className="sidebar__toggle"
-                onClick={onToggle}
-                title={isCollapsed ? t("sidebar.expand_menu") : t("sidebar.collapse_menu")}
-            >
-                <ChevronsLeft size={16} />
-            </button>
+            <Tooltip content={isCollapsed ? t("sidebar.expand_menu") : t("sidebar.collapse_menu")} position="right">
+                <button
+                    className="sidebar__toggle"
+                    onClick={onToggle}
+                >
+                    <ChevronsLeft size={16} />
+                </button>
+            </Tooltip>
 
             <div className="sidebar__header">
                 <Link to="/" className="sidebar__logo-link">

@@ -3,6 +3,7 @@ import { X, Save, Clock, Zap, Play, Power, RotateCw, HardDrive, AlertCircle } fr
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Schedule } from "./ServerSchedule";
 import { Select, Checkbox, Input } from "@/components/ui";
+import cronstrue from "cronstrue/i18n";
 
 interface ScheduleModalProps {
     isOpen: boolean;
@@ -26,21 +27,22 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
         cron_expression: "0 0 * * *",
     });
 
-    // Helper for Cron simplified UI
-    const [cronDays, setCronDays] = useState<number[]>([]); // 0-6
+    const [cronDays, setCronDays] = useState<number[]>([]);
     const [cronHour, setCronHour] = useState("00:00");
+    const [cronDesc, setCronDesc] = useState("");
 
     useEffect(() => {
         if (schedule) {
             setFormData(schedule);
-            // Parse existing cron if possible for simplified UI
             if (schedule.type === "cron" && schedule.cron_expression) {
                 const parts = schedule.cron_expression.split(" ");
                 if (parts.length >= 5) {
                     const dow = parts[4];
                     if (dow === "*") setCronDays([0,1,2,3,4,5,6]);
                     else setCronDays(dow.split(",").map(Number));
-                    setCronHour(`${parts[1].padStart(2, "0")}:${parts[0].padStart(2, "0")}`);
+                    const min = parts[0].padStart(2, "0");
+                    const hour = parts[1].padStart(2, "0");
+                    setCronHour(`${hour}:${min}`);
                 }
             }
         } else {
@@ -60,17 +62,28 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
         }
     }, [schedule, isOpen]);
 
-    // Update cron_expression when simplified UI changes
     useEffect(() => {
-        if (formData.type === "cron") {
-            const [hour, minute] = cronHour.split(":");
-            const dow = cronDays.length === 7 ? "*" : cronDays.length === 0 ? "*" : cronDays.join(",");
-            const newCron = `${parseInt(minute)} ${parseInt(hour)} * * ${dow}`;
-            if (newCron !== formData.cron_expression) {
-                setFormData(prev => ({ ...prev, cron_expression: newCron }));
+        if (formData.type === "cron" && isOpen) {
+             const [hour, minute] = cronHour.split(":");
+             const dow = cronDays.length === 7 ? "*" : cronDays.length === 0 ? "*" : cronDays.join(",");
+             if (hour && minute) {
+                 const newCron = `${parseInt(minute)} ${parseInt(hour)} * * ${dow}`;
+                 if (newCron !== formData.cron_expression) {
+                     setFormData(prev => ({ ...prev, cron_expression: newCron }));
+                 }
+             }
+        }
+    }, [cronDays, cronHour, formData.type, isOpen]);
+
+    useEffect(() => {
+        if (formData.cron_expression) {
+            try {
+                setCronDesc(cronstrue.toString(formData.cron_expression, { locale: "fr" }));
+            } catch (e) {
+                setCronDesc("");
             }
         }
-    }, [cronDays, cronHour, formData.type]);
+    }, [formData.cron_expression]);
 
     if (!isOpen) return null;
 
@@ -83,7 +96,6 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
     const typeOptions = [
         { value: "basic", label: t("server_detail.schedule.types.basic"), icon: <Zap size={14} /> },
         { value: "cron", label: t("server_detail.schedule.types.cron"), icon: <Clock size={14} /> },
-        { value: "chain", label: t("server_detail.schedule.types.chain"), icon: <RotateCw size={14} /> },
     ];
 
     const actionOptions = [
@@ -101,241 +113,147 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
         { value: "weeks", label: t("server_detail.schedule.units.weeks") },
     ];
 
-    const weekdays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-    // Maps Hytale/Cron (0=Sun) to our UI (0=Mon)
-    const mapToCron = (idx: number) => (idx + 1) % 7;
-    const mapFromCron = (val: number) => (val + 6) % 7;
+    const weekdays = [
+        { id: 1, label: "Lun" }, { id: 2, label: "Mar" }, { id: 3, label: "Mer" },
+        { id: 4, label: "Jeu" }, { id: 5, label: "Ven" }, { id: 6, label: "Sam" }, { id: 0, label: "Dim" }
+    ];
 
-    const toggleDay = (idx: number) => {
-        const cronVal = mapToCron(idx);
-        if (cronDays.includes(cronVal)) {
-            setCronDays(cronDays.filter(d => d !== cronVal));
-        } else {
-            setCronDays([...cronDays, cronVal].sort());
-        }
+    const toggleDay = (dayId: number) => {
+        if (cronDays.includes(dayId)) setCronDays(cronDays.filter(d => d !== dayId));
+        else setCronDays([...cronDays, dayId].sort());
     };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal modal--large" onClick={e => e.stopPropagation()} style={{ minHeight: "550px", display: "flex", flexDirection: "column" }}>
+            <div className="modal modal-schedule" onClick={e => e.stopPropagation()}>
                 <div className="modal__header">
-                    <h3>{schedule ? t("server_detail.schedule.edit_task") : t("server_detail.schedule.create_task")}</h3>
-                    <button className="modal-close" onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}><X size={20} /></button>
+                    <h3 className="modal__title">{schedule ? t("server_detail.schedule.edit_task") : t("server_detail.schedule.create_task")}</h3>
+                    <button className="modal__close" onClick={onClose}><X size={18} /></button>
                 </div>
                 
-                <form onSubmit={handleSubmit} style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div className="modal__body" style={{ flex: 1, overflow: "visible" }}>
-                        <div className="form-grid">
-                            <div className="form-group full-width">
-                                <label className="form-label">{t("server_detail.schedule.name")}</label>
-                                <Input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder={t("server_detail.schedule.name_placeholder")}
-                                    required
-                                />
+                <form onSubmit={handleSubmit} className="modal__form">
+                    <div className="modal__body">
+                        <div className="form-section">
+                            <label className="field-label">{t("server_detail.schedule.name").toUpperCase()}</label>
+                            <Input
+                                value={formData.name}
+                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                placeholder={t("server_detail.schedule.name_placeholder")}
+                                required
+                            />
+                        </div>
+
+                        <div className="form-row">
+                            <div className="form-section">
+                                <label className="field-label">{t("server_detail.schedule.type").toUpperCase()}</label>
+                                <Select options={typeOptions} value={formData.type || "basic"} onChange={val => setFormData({ ...formData, type: val as any })} />
                             </div>
-
-                            <div className="form-group">
-                                <label className="form-label">{t("server_detail.schedule.type")}</label>
-                                <Select
-                                    options={typeOptions}
-                                    value={formData.type || "basic"}
-                                    onChange={val => setFormData({ ...formData, type: val as any })}
-                                />
+                            <div className="form-section">
+                                <label className="field-label">{t("server_detail.schedule.action").toUpperCase()}</label>
+                                <Select options={actionOptions} value={formData.action || "restart"} onChange={val => setFormData({ ...formData, action: val as any })} />
                             </div>
+                        </div>
 
-                            <div className="form-group">
-                                <label className="form-label">{t("server_detail.schedule.action")}</label>
-                                <Select
-                                    options={actionOptions}
-                                    value={formData.action || "restart"}
-                                    onChange={val => setFormData({ ...formData, action: val as any })}
-                                />
-                            </div>
-
-                            {formData.type === "basic" && (
-                                <>
-                                    <div className="form-group">
-                                        <label className="form-label">{t("server_detail.schedule.interval")}</label>
-                                        <div className="input-group">
-                                            <span className="text-muted self-center">Chaque</span>
-                                            <Input
-                                                type="number"
-                                                value={formData.interval}
-                                                onChange={e => setFormData({ ...formData, interval: parseInt(e.target.value) })}
-                                                min="1"
-                                                style={{ width: "70px" }}
-                                            />
-                                            <Select
-                                                className="flex-1"
-                                                options={unitOptions}
-                                                value={formData.unit || "days"}
-                                                onChange={val => setFormData({ ...formData, unit: val as any })}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label className="form-label">{t("server_detail.schedule.time")}</label>
-                                        <Input
-                                            type="time"
-                                            value={formData.time}
-                                            onChange={e => setFormData({ ...formData, time: e.target.value })}
-                                            icon={<Clock size={16} />}
-                                        />
-                                    </div>
-                                </>
-                            )}
-
-                            {formData.type === "cron" && (
-                                <div className="full-width">
-                                    <div className="cron-simple-ui card bg-darker p-4 mb-4">
-                                        <label className="form-label mb-3">Exécuter ces jours :</label>
-                                        <div className="weekday-selector mb-4">
-                                            {weekdays.map((day, idx) => (
-                                                <button
-                                                    key={day}
-                                                    type="button"
-                                                    className={`weekday-btn ${cronDays.includes(mapToCron(idx)) ? "active" : ""}`}
-                                                    onClick={() => toggleDay(idx)}
-                                                >
-                                                    {day}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="form-label">À cette heure :</label>
-                                            <Input
-                                                type="time"
-                                                value={cronHour}
-                                                onChange={e => setCronHour(e.target.value)}
-                                                icon={<Clock size={16} />}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label className="form-label">Expression Cron (Avancé)</label>
-                                        <Input
-                                            type="text"
-                                            value={formData.cron_expression || ""}
-                                            onChange={e => setFormData({ ...formData, cron_expression: e.target.value })}
-                                            placeholder="* * * * *"
-                                        />
-                                        <p className="form-help">Format: minute heure jour mois jour-semaine</p>
+                        {formData.type === "basic" ? (
+                            <div className="form-row">
+                                <div className="form-section">
+                                    <label className="field-label">{t("server_detail.schedule.interval").toUpperCase()}</label>
+                                    <div className="interval-group">
+                                        <span>{t("server_detail.schedule.every")}</span>
+                                        <Input type="number" value={formData.interval} onChange={e => setFormData({ ...formData, interval: parseInt(e.target.value) })} min="1" className="small-input" />
+                                        <Select options={unitOptions} value={formData.unit || "days"} onChange={val => setFormData({ ...formData, unit: val as any })} />
                                     </div>
                                 </div>
-                            )}
-
-                            <div className="full-width flex-row mt-4">
-                                <Checkbox
-                                    checked={!!formData.enabled}
-                                    onChange={val => setFormData({ ...formData, enabled: val })}
-                                    label={t("server_detail.schedule.enabled")}
-                                />
-
-                                <Checkbox
-                                    checked={!!formData.delete_after}
-                                    onChange={val => setFormData({ ...formData, delete_after: val })}
-                                    label={t("server_detail.schedule.delete_after")}
-                                />
+                                <div className="form-section">
+                                    <label className="field-label">{t("server_detail.schedule.time").toUpperCase()}</label>
+                                    <Input type="time" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} icon={<Clock size={14} />} />
+                                </div>
                             </div>
+                        ) : (
+                            <div className="cron-container">
+                                <div className="cron-simple">
+                                    <div className="cron-simple__header">
+                                        <label className="field-label">{t("server_detail.schedule.simplified_config").toUpperCase()}</label>
+                                        <button type="button" className="text-btn" onClick={() => setCronDays([0,1,2,3,4,5,6])}>{t("server_detail.schedule.select_all")}</button>
+                                    </div>
+                                    <div className="days-picker">
+                                        <label className="sub-label">{t("server_detail.schedule.days_label")}</label>
+                                        <div className="days-row">
+                                            {weekdays.map(day => (
+                                                <button key={day.id} type="button" className={`day-btn ${cronDays.includes(day.id) ? "active" : ""}`} onClick={() => toggleDay(day.id)}>{day.label}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="time-picker mt-3">
+                                        <label className="sub-label">{t("server_detail.schedule.time_label")}</label>
+                                        <Input type="time" value={cronHour} onChange={e => setCronHour(e.target.value)} icon={<Clock size={14} />} />
+                                    </div>
+                                </div>
+
+                                <div className="cron-advanced mt-4">
+                                    <label className="field-label">{t("server_detail.schedule.cron_advanced").toUpperCase()}</label>
+                                    <Input value={formData.cron_expression || ""} onChange={e => setFormData({ ...formData, cron_expression: e.target.value })} placeholder="* * * * *" />
+                                    {cronDesc && <div className="cron-hint"><Zap size={12} /> {cronDesc}</div>}
+                                    <p className="cron-help">{t("server_detail.schedule.cron_hint")}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="form-footer-toggles mt-4">
+                            <Checkbox checked={!!formData.enabled} onChange={val => setFormData({ ...formData, enabled: val })} label={t("server_detail.schedule.enabled")} />
+                            <Checkbox checked={!!formData.delete_after} onChange={val => setFormData({ ...formData, delete_after: val })} label={t("server_detail.schedule.delete_after")} />
                         </div>
                     </div>
                     
                     <div className="modal__footer">
-                        <button type="button" className="btn btn--secondary" onClick={onClose}>
-                            {t("common.cancel")}
-                        </button>
-                        <button type="submit" className="btn btn--primary">
-                            <Save size={18} />
-                            {t("common.save")}
-                        </button>
+                        <div className="footer-actions">
+                            <button type="button" className="btn btn--secondary" onClick={onClose}>{t("common.cancel")}</button>
+                            <button type="submit" className="btn btn--primary">
+                                <Save size={16} />
+                                {t("common.save")}
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>
 
             <style>{`
-                .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-                .full-width { grid-column: span 2; }
-                .flex-row { display: flex; gap: 32px; align-items: center; }
-                .flex-1 { flex: 1; }
-                .self-center { align-self: center; }
+                .modal-schedule { width: 520px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); }
+                .modal__header { padding: var(--spacing-5) var(--spacing-6); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; }
+                .modal__title { font-size: var(--font-size-lg); font-weight: 600; margin: 0; }
+                .modal__close { background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: var(--spacing-1); }
+                .modal__close:hover { color: var(--color-text-primary); }
                 
-                .form-group { display: flex; flex-direction: column; gap: 8px; }
-                .form-label { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-                .form-help { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+                .modal__body { padding: var(--spacing-6); display: flex; flex-direction: column; gap: var(--spacing-5); }
+                .form-section { display: flex; flex-direction: column; gap: var(--spacing-3); }
+                .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-5); }
                 
-                .input-group { display: flex; gap: 12px; align-items: flex-start; }
+                .field-label { font-size: var(--font-size-xs); font-weight: 700; color: var(--color-text-muted); letter-spacing: 0.05em; }
+                .sub-label { font-size: var(--font-size-sm); color: var(--color-text-primary); margin-bottom: var(--spacing-2); display: block; }
                 
-                .bg-darker { background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--border-card); }
+                .interval-group { display: flex; align-items: center; gap: var(--spacing-3); color: var(--color-text-primary); font-size: var(--font-size-sm); }
+                .small-input { width: 60px !important; }
                 
-                .weekday-selector { display: flex; gap: 8px; flex-wrap: wrap; }
-                .weekday-btn {
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    border: 1px solid var(--border-card);
-                    background: var(--bg-secondary);
-                    color: var(--text-primary);
-                    cursor: pointer;
-                    font-size: 0.85rem;
-                    transition: all 0.2s;
-                }
-                .weekday-btn:hover { border-color: var(--primary-color); }
-                .weekday-btn.active {
-                    background: var(--primary-color);
-                    border-color: var(--primary-color);
-                    color: white;
-                }
+                .cron-container { background: var(--color-bg-tertiary); padding: var(--spacing-5); border-radius: var(--radius-md); border: 1px solid var(--color-border); }
+                .cron-simple__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4); }
+                .text-btn { background: none; border: none; color: var(--color-text-secondary); font-size: var(--font-size-sm); cursor: pointer; padding: 0; }
+                .text-btn:hover { color: var(--color-accent); text-decoration: underline; }
                 
-                    <div className="modal__footer">
-                        <button type="button" className="btn btn--secondary" onClick={onClose}>
-                            {t("common.cancel")}
-                        </button>
-                        <button type="submit" className="btn btn--primary">
-                            <Save size={18} />
-                            {t("common.save")}
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <style>{`
-                .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-                .full-width { grid-column: span 2; }
-                .flex-row { display: flex; gap: 32px; align-items: center; }
-                .flex-1 { flex: 1; }
-                .self-center { align-self: center; }
+                .days-row { display: flex; gap: var(--spacing-2); }
+                .day-btn { flex: 1; height: 32px; background: none; border: 1px solid var(--color-border); color: var(--color-text-muted); border-radius: var(--radius-md); cursor: pointer; font-size: var(--font-size-xs); transition: var(--transition-fast); }
+                .day-btn:hover { border-color: var(--color-border-hover); color: var(--color-text-primary); }
+                .day-btn.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-text-inverse); font-weight: 600; }
                 
-                .form-group { display: flex; flex-direction: column; gap: 8px; }
-                .form-label { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-                .form-help { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+                .cron-hint { margin-top: var(--spacing-3); font-size: var(--font-size-sm); color: var(--color-text-primary); display: flex; align-items: center; gap: var(--spacing-2); }
+                .cron-help { font-size: var(--font-size-xs); color: var(--color-text-muted); margin-top: var(--spacing-1); }
                 
-                .input-group { display: flex; gap: 12px; align-items: flex-start; }
+                .form-footer-toggles { display: flex; gap: var(--spacing-8); padding-top: var(--spacing-4); border-top: 1px solid var(--color-border); }
                 
-                .bg-darker { background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--border-card); }
+                .modal__footer { padding: var(--spacing-4) var(--spacing-6); background: var(--color-bg-tertiary); border-top: 1px solid var(--color-border); border-radius: 0 0 var(--radius-md) var(--radius-md); }
+                .footer-actions { display: flex; justify-content: flex-end; gap: var(--spacing-3); }
                 
-                .weekday-selector { display: flex; gap: 8px; flex-wrap: wrap; }
-                .weekday-btn {
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    border: 1px solid var(--border-card);
-                    background: var(--bg-secondary);
-                    color: var(--text-primary);
-                    cursor: pointer;
-                    font-size: 0.85rem;
-                    transition: all 0.2s;
-                }
-                .weekday-btn:hover { border-color: var(--primary-color); }
-                .weekday-btn.active {
-                    background: var(--primary-color);
-                    border-color: var(--primary-color);
-                    color: white;
-                }
-                
-                .mt-4 { margin-top: 16px; }
+                .mt-3 { margin-top: var(--spacing-3); }
+                .mt-4 { margin-top: var(--spacing-4); }
             `}</style>
         </div>
     );

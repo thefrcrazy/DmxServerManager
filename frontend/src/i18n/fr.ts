@@ -24,6 +24,10 @@ export const fr = {
         refresh: "Actualiser",
         actions: "Actions",
         unknown: "Inconnu",
+        selected: "sélectionné(s)",
+        deselect: "Désélectionner",
+        new_folder: "Nouveau dossier",
+        new_file: "Nouveau fichier",
         send: "Envoyer",
         saving: "Sauvegarde...",
         save_file: "Enregistrer le fichier",
@@ -282,7 +286,6 @@ export const fr = {
         java_version: "Version Java",
         memory: "Mémoire",
         reinstall_confirm: "Êtes-vous sûr de vouloir réinstaller ce serveur ? Cette action supprimera les fichiers binaires du serveur et en téléchargera de nouveaux. Vos mondes et configurations seront conservés.",
-        delete_confirm: "Pour confirmer la suppression, tapez",
         delete_backup_confirm: "Supprimer ce backup ?",
         restore_backup_confirm: "Restaurer ce backup ? Les données actuelles seront écrasées.",
         save_success: "Fichier sauvegardé !",
@@ -304,6 +307,20 @@ export const fr = {
             metrics: "Métriques",
             webhooks: "Webhooks"
         },
+        files: {
+            root: "racine",
+            explorer: "Explorateur",
+            empty_folder: "Dossier vide",
+            file_type: "Type",
+            modified: "Modifié",
+            size: "Taille",
+            options: "Options",
+            close: "Fermer",
+            save: "Enregistrer",
+            no_file_selected: "Aucun fichier sélectionné",
+            no_log_found: "Aucun fichier de log trouvé",
+            empty_logs_desc: "Le dossier logs est vide."
+        },
         schedule: {
             title: "Planification des Tâches",
             subtitle: "Automatisez les actions de votre serveur.",
@@ -312,7 +329,7 @@ export const fr = {
             empty_desc: "Vous n'avez pas encore configuré d'automatisation pour ce serveur.",
             create_first: "Créer ma première tâche",
             edit_task: "Modifier la tâche",
-            
+
             name: "Nom",
             name_placeholder: "Ma tâche planifiée",
             type: "Type de déclencheur",
@@ -322,13 +339,13 @@ export const fr = {
             time: "Heure d'exécution",
             enabled: "Activé",
             delete_after: "Supprimer après exécution",
-            
+
             types: {
                 basic: "Basique",
                 cron: "Cron (Expert)",
                 chain: "Réaction en chaîne"
             },
-            
+
             actions: {
                 start: "Démarrer le serveur",
                 restart: "Redémarrer le serveur",
@@ -336,19 +353,33 @@ export const fr = {
                 backup: "Créer une sauvegarde",
                 command: "Commande personnalisée"
             },
-            
+
             units: {
                 minutes: "Minutes",
                 hours: "Heures",
                 days: "Jours",
                 weeks: "Semaines"
-            }
+            },
+
+            // New additions
+            execution_once: "Exécution unique",
+            days_label: "Jours d'exécution",
+            time_label: "Heure d'exécution",
+            select_all: "Tout sélectionner",
+            simplified_config: "Configuration Simplifiée",
+            cron_advanced: "Expression Cron (Avancé)",
+            cron_hint: "Minute Heure Jour Mois Jour-Semaine",
+            run_now: "Exécuter maintenant",
+            every: "Chaque",
+            at: "À"
         },
         messages: {
             config_saved: "Configuration sauvegardée !",
             connection_error: "Erreur de connexion",
             save_error: "Erreur lors de la sauvegarde",
             reinstall_error: "Erreur lors du lancement de la réinstallation.",
+            delete_confirm: "Êtes-vous sûr de vouloir supprimer ce serveur ? Cette action est irréversible. Pour confirmer, tapez le nom du serveur :",
+            delete_confirm_label: "Nom du serveur",
             delete_error: "Erreur lors de la suppression.",
             item_deleted: "Supprimé !",
             backup_created: "Backup créé !",

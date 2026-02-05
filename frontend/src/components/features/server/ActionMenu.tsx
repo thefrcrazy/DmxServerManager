@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { MoreVertical } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Tooltip } from "@/components/ui";
 
 interface ActionItem {
     label: string;
@@ -49,13 +50,14 @@ export default function ActionMenu({ actions }: ActionMenuProps) {
 
     return (
         <div className="action-menu-container" ref={menuRef}>
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`btn btn--icon btn--ghost ${isOpen ? "active" : ""}`}
-                title={t("common.actions")}
-            >
-                <MoreVertical size={16} />
-            </button>
+            <Tooltip content={t("common.actions")} position="top">
+                <button
+                    onClick={() => setIsOpen(!isOpen)}
+                    className={`btn btn--icon btn--ghost ${isOpen ? "active" : ""}`}
+                >
+                    <MoreVertical size={16} />
+                </button>
+            </Tooltip>
 
             {isOpen && (
                 <div 

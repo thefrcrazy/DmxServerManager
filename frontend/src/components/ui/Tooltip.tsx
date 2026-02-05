@@ -28,7 +28,7 @@ export default function Tooltip({
         // Calculate position based on prop
         let top = 0;
         let left = 0;
-        const offset = 8; // spacing
+        const offset = 10; // spacing
 
         switch (position) {
             case "right":
@@ -40,11 +40,11 @@ export default function Tooltip({
                 left = rect.left - offset;
                 break;
             case "top":
-                top = rect.top - offset;
+                top = rect.top - (offset / 2);
                 left = rect.left + rect.width / 2;
                 break;
             case "bottom":
-                top = rect.bottom + offset;
+                top = rect.bottom + (offset / 2);
                 left = rect.left + rect.width / 2;
                 break;
         }

@@ -19,6 +19,8 @@ export default function DialogContainer() {
     if (!activeDialog) return null;
 
     const handleConfirm = () => {
+        if (activeDialog.verificationString && inputValue !== activeDialog.verificationString) return;
+        
         if (activeDialog.type === "prompt") {
             closeDialog(inputValue);
         } else {
@@ -34,8 +36,10 @@ export default function DialogContainer() {
         }
     };
 
+    const isConfirmDisabled = activeDialog.verificationString ? inputValue !== activeDialog.verificationString : false;
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter") handleConfirm();
+        if (e.key === "Enter" && !isConfirmDisabled) handleConfirm();
         if (e.key === "Escape" && activeDialog.type !== "alert") handleCancel();
     };
 
@@ -69,6 +73,23 @@ export default function DialogContainer() {
                             onKeyDown={handleKeyDown}
                         />
                     )}
+                    {activeDialog.verificationString && (
+                        <div className="verification-field mt-4">
+                            <label className="field-label mb-2">
+                                {activeDialog.verificationLabel || "Veuillez saisir le texte de confirmation"}
+                            </label>
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                className="input"
+                                placeholder={activeDialog.verificationString}
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                autoFocus
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <div className="dialog__footer">
@@ -80,6 +101,7 @@ export default function DialogContainer() {
                     <button
                         className={`btn ${activeDialog.isDestructive ? "btn--danger" : "btn--primary"}`}
                         onClick={handleConfirm}
+                        disabled={isConfirmDisabled}
                     >
                         {activeDialog.confirmLabel}
                     </button>

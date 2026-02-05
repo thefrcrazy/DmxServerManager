@@ -6,6 +6,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 export interface Player {
     name: string;
+    username?: string;
     uuid?: string;
     is_online: boolean;
     last_seen?: string;

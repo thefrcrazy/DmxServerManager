@@ -43,6 +43,7 @@ pub fn routes() -> Router<AppState> {
         .route("/:id/schedules", get(schedules::list_schedules).post(schedules::create_schedule))
         .route("/:id/schedules/:schedule_id", put(schedules::update_schedule).delete(schedules::delete_schedule))
         .route("/:id/schedules/:schedule_id/toggle", post(schedules::toggle_schedule))
+        .route("/:id/schedules/:schedule_id/run", post(schedules::run_schedule))
         
         // Metrics merging (retained from original mod.rs)
         .merge(metrics::routes())

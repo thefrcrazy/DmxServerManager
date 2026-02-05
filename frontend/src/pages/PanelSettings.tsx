@@ -5,7 +5,7 @@ import {
     Users, Shield, Plus, Edit2, Trash2, ShieldOff, User as UserIcon
 } from "lucide-react";
 import { DirectoryPicker, LoadingScreen } from "@/components/shared";
-import { Table, Tabs, ColorPicker } from "@/components/ui";
+import { Table, Tabs, ColorPicker, Tooltip } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -570,27 +570,30 @@ export default function PanelSettings() {
                                     </td>
                                     <td>
                                         <div className="table__actions">
-                                            <button
-                                                className="btn btn--icon btn--ghost"
-                                                onClick={() => handleToggleUserActive(user)}
-                                                title={user.is_active ? t("common.disable") : t("common.enable")}
-                                            >
-                                                {user.is_active ? <ShieldOff size={16} /> : <Shield size={16} />}
-                                            </button>
-                                            <Link
-                                                to={`/panel-settings/users/${user.id}`}
-                                                className="btn btn--icon btn--ghost"
-                                                title={t("common.edit")}
-                                            >
-                                                <Edit2 size={16} />
-                                            </Link>
-                                            <button
-                                                className="btn btn--icon btn--ghost btn--danger"
-                                                onClick={() => handleDeleteUser(user)}
-                                                title={t("common.delete")}
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <Tooltip content={user.is_active ? t("common.disable") : t("common.enable")} position="top">
+                                                <button
+                                                    className="btn btn--icon btn--ghost"
+                                                    onClick={() => handleToggleUserActive(user)}
+                                                >
+                                                    {user.is_active ? <ShieldOff size={16} /> : <Shield size={16} />}
+                                                </button>
+                                            </Tooltip>
+                                            <Tooltip content={t("common.edit")} position="top">
+                                                <Link
+                                                    to={`/panel-settings/users/${user.id}`}
+                                                    className="btn btn--icon btn--ghost"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </Link>
+                                            </Tooltip>
+                                            <Tooltip content={t("common.delete")} position="top">
+                                                <button
+                                                    className="btn btn--icon btn--ghost btn--danger"
+                                                    onClick={() => handleDeleteUser(user)}
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </Tooltip>
                                         </div>
                                     </td>
                                 </tr>

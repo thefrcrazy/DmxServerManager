@@ -78,7 +78,6 @@
         border-radius: var(--radius-md);
         background: var(--color-accent);
         border: none;
-        outline: none;
         color: white;
         display: flex;
         align-items: center;
@@ -97,7 +96,6 @@
         }
 
         &:focus {
-            outline: none;
         }
 
         &:focus-visible {
@@ -220,56 +218,54 @@
 .tooltip-wrapper {
     position: relative;
     display: inline-flex;
-    width: 100%;
 }
 
 .tooltip {
     position: fixed;
     padding: var(--spacing-2) var(--spacing-3);
-    background: var(--color-bg-tertiary);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--color-text-primary);
     white-space: nowrap;
-    z-index: 9999;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 10000;
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
     animation: tooltipFadeIn 0.15s ease-out;
 
     &--top {
-        bottom: calc(100% + 8px);
-        left: 50%;
-        transform: translateX(-50%);
+        transform: translate(-50%, -100%);
     }
 
     &--right {
-        left: calc(100% + 16px);
-        top: 50%;
-        transform: translateY(-50%);
+        transform: translate(0, -50%);
     }
 
     &--bottom {
-        top: calc(100% + 8px);
-        left: 50%;
-        transform: translateX(-50%);
+        transform: translate(-50%, 0);
     }
 
     &--left {
-        right: calc(100% + 8px);
-        top: 50%;
-        transform: translateY(-50%);
+        transform: translate(-100%, -50%);
     }
 }
 
 @keyframes tooltipFadeIn {
     from {
         opacity: 0;
-        transform: translateY(-50%) translateX(-4px);
+        transform: scale(0.95) translate(-50%, -100%);
     }
 
     to {
         opacity: 1;
-        transform: translateY(-50%) translateX(0);
+        transform: scale(1) translate(-50%, -100%);
     }
 }
+
+// Override specific transforms for each position in animation if needed, 
+// but scale is enough for a clean effect.
+.tooltip--right { @keyframes tooltipFadeInRight { from { opacity: 0; transform: scale(0.95) translate(0, -50%); } to { opacity: 1; transform: scale(1) translate(0, -50%); } } animation-name: tooltipFadeInRight; }
+.tooltip--bottom { @keyframes tooltipFadeInBottom { from { opacity: 0; transform: scale(0.95) translate(-50%, 0); } to { opacity: 1; transform: scale(1) translate(-50%, 0); } } animation-name: tooltipFadeInBottom; }
+.tooltip--left { @keyframes tooltipFadeInLeft { from { opacity: 0; transform: scale(0.95) translate(-100%, -50%); } to { opacity: 1; transform: scale(1) translate(-100%, -50%); } } animation-name: tooltipFadeInLeft; }

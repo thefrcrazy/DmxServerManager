@@ -6,7 +6,7 @@ import {
 import { useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
 import { Server } from "@/schemas/api";
-import { Table } from "@/components/ui";
+import { Table, Tooltip } from "@/components/ui";
 import ServerCard from "./ServerCard";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { formatBytes, formatGB } from "@/utils/formatters";
@@ -130,40 +130,44 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
                                         </Link>
                                     ) : isRunning ? (
                                         <>
-                                            <button
-                                                className="btn btn--icon btn--ghost text-info"
-                                                onClick={(e) => handleActionClick(e, server.id, "restart")}
-                                                title={t("servers.restart")}
-                                                disabled={!!loadingAction}
-                                            >
-                                                {loadingAction === `${server.id}-restart` ? <RotateCw size={16} className="spin" /> : <RotateCw size={16} />}
-                                            </button>
-                                            <button
-                                                className="btn btn--icon btn--ghost text-danger"
-                                                onClick={(e) => handleActionClick(e, server.id, "stop")}
-                                                title={t("servers.stop")}
-                                                disabled={!!loadingAction}
-                                            >
-                                                {loadingAction === `${server.id}-stop` ? <RotateCw size={16} className="spin" /> : <Square size={16} />}
-                                            </button>
-                                            <button
-                                                onClick={(e) => handleActionClick(e, server.id, "kill")}
-                                                title={t("servers.kill")}
-                                                className="btn btn--icon btn--ghost text-danger btn-kill"
-                                                disabled={!!loadingAction}
-                                            >
-                                                {loadingAction === `${server.id}-kill` ? <RotateCw size={16} className="spin" /> : <Skull size={16} />}
-                                            </button>
+                                            <Tooltip content={t("servers.restart")} position="top">
+                                                <button
+                                                    className="btn btn--icon btn--ghost text-info"
+                                                    onClick={(e) => handleActionClick(e, server.id, "restart")}
+                                                    disabled={!!loadingAction}
+                                                >
+                                                    {loadingAction === `${server.id}-restart` ? <RotateCw size={16} className="spin" /> : <RotateCw size={16} />}
+                                                </button>
+                                            </Tooltip>
+                                            <Tooltip content={t("servers.stop")} position="top">
+                                                <button
+                                                    className="btn btn--icon btn--ghost text-danger"
+                                                    onClick={(e) => handleActionClick(e, server.id, "stop")}
+                                                    disabled={!!loadingAction}
+                                                >
+                                                    {loadingAction === `${server.id}-stop` ? <RotateCw size={16} className="spin" /> : <Square size={16} />}
+                                                </button>
+                                            </Tooltip>
+                                            <Tooltip content={t("servers.kill")} position="top">
+                                                <button
+                                                    onClick={(e) => handleActionClick(e, server.id, "kill")}
+                                                    className="btn btn--icon btn--ghost text-danger btn-kill"
+                                                    disabled={!!loadingAction}
+                                                >
+                                                    {loadingAction === `${server.id}-kill` ? <RotateCw size={16} className="spin" /> : <Skull size={16} />}
+                                                </button>
+                                            </Tooltip>
                                         </>
                                     ) : (
-                                        <button
-                                            className="btn btn--icon btn--ghost text-success"
-                                            onClick={(e) => handleActionClick(e, server.id, "start")}
-                                            title={t("servers.start")}
-                                            disabled={!!loadingAction}
-                                        >
-                                            {loadingAction === `${server.id}-start` ? <RotateCw size={18} className="spin" /> : <Play size={18} />}
-                                        </button>
+                                        <Tooltip content={t("servers.start")} position="top">
+                                            <button
+                                                className="btn btn--icon btn--ghost text-success"
+                                                onClick={(e) => handleActionClick(e, server.id, "start")}
+                                                disabled={!!loadingAction}
+                                            >
+                                                {loadingAction === `${server.id}-start` ? <RotateCw size={18} className="spin" /> : <Play size={18} />}
+                                            </button>
+                                        </Tooltip>
                                     )}
                                 </div>
                             </td>

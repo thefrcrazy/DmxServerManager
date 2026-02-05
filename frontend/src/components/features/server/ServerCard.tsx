@@ -6,6 +6,7 @@ import {
 import { Server } from "@/schemas/api";
 import { formatGB } from "@/utils/formatters";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Tooltip } from "@/components/ui";
 import { getGameLogo } from "@/utils/gameConfig";
 
 interface ServerCardProps {
@@ -120,27 +121,30 @@ export default function ServerCard({ server, onAction }: ServerCardProps) {
                         </Link>
                     ) : isRunning ? (
                         <>
-                            <button
-                                className="btn btn--icon btn--ghost text-info"
-                                onClick={(e) => handleActionClick(e, "restart")}
-                                title={t("servers.restart")}
-                            >
-                                <RotateCw size={18} />
-                            </button>
-                            <button
-                                className="btn btn--icon btn--ghost text-danger"
-                                onClick={(e) => handleActionClick(e, "stop")}
-                                title={t("servers.stop")}
-                            >
-                                <Square size={18} />
-                            </button>
-                            <button
-                                onClick={(e) => handleActionClick(e, "kill")}
-                                title={t("servers.kill")}
-                                className="btn btn--icon btn--ghost text-danger"
-                            >
-                                <Skull size={18} />
-                            </button>
+                            <Tooltip content={t("servers.restart")} position="top">
+                                <button
+                                    className="btn btn--icon btn--ghost text-info"
+                                    onClick={(e) => handleActionClick(e, "restart")}
+                                >
+                                    <RotateCw size={18} />
+                                </button>
+                            </Tooltip>
+                            <Tooltip content={t("servers.stop")} position="top">
+                                <button
+                                    className="btn btn--icon btn--ghost text-danger"
+                                    onClick={(e) => handleActionClick(e, "stop")}
+                                >
+                                    <Square size={18} />
+                                </button>
+                            </Tooltip>
+                            <Tooltip content={t("servers.kill")} position="top">
+                                <button
+                                    onClick={(e) => handleActionClick(e, "kill")}
+                                    className="btn btn--icon btn--ghost text-danger"
+                                >
+                                    <Skull size={18} />
+                                </button>
+                            </Tooltip>
                         </>
                     ) : (
                         <button

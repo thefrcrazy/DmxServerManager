@@ -12,6 +12,8 @@ export interface DialogOptions {
     type?: DialogType;
     defaultValue?: string; // For prompt
     isDestructive?: boolean;
+    verificationString?: string; // String to match for confirmation
+    verificationLabel?: string; // Label for the verification input
 }
 
 interface DialogRequest extends DialogOptions {
@@ -53,6 +55,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 cancelLabel: options.cancelLabel || t("common.cancel"),
                 defaultValue: options.defaultValue || "",
                 isDestructive: options.isDestructive || false,
+                verificationString: options.verificationString,
+                verificationLabel: options.verificationLabel,
             });
         });
     }, [t]);

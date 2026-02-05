@@ -46,7 +46,6 @@
     cursor: pointer;
     transition: all var(--transition-fast);
     border: 1px solid transparent;
-    outline: none;
     text-decoration: none;
     line-height: 1.2;
 
@@ -67,7 +66,6 @@
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    outline: none;
     transition: all var(--transition-fast);
 
     &::placeholder {

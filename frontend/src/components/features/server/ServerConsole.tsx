@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import Ansi from "ansi-to-react";
 import { Terminal, Send, AlertTriangle, ExternalLink } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Tooltip } from "@/components/ui";
 import { enhanceLogContent } from "@/utils/logUtils";
 
 interface ServerConsoleProps {
@@ -151,14 +152,15 @@ export default function ServerConsole({
                             autoComplete="off"
                         />
                     </div>
-                    <button
-                        type="submit"
-                        disabled={!isConnected || !isRunning || !command.trim()}
-                        className="btn btn--primary btn--icon"
-                        title={t("common.send")}
-                    >
-                        <Send size={16} />
-                    </button>
+                    <Tooltip content={t("common.send")} position="top">
+                        <button
+                            type="submit"
+                            disabled={!isConnected || !isRunning || !command.trim()}
+                            className="btn btn--primary btn--icon"
+                        >
+                            <Send size={16} />
+                        </button>
+                    </Tooltip>
                 </form>
             </div>
 

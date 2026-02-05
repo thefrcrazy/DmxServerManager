@@ -9,7 +9,6 @@ import {
     Terminal,
     Users,
     Settings,
-    History,
     FolderOpen,
     FileText,
     Webhook,
@@ -28,7 +27,6 @@ import { useDialog } from "../contexts/DialogContext";
 // New Components
 import {
     ServerConsole,
-    ServerBackups,
     ServerFiles,
     ServerLogs,
     ServerConfig,
@@ -38,16 +36,8 @@ import {
     AddPlayerModal
 } from "@/components/features/server";
 import { Schedule } from "@/components/features/server/ServerSchedule";
-import { Tabs } from "@/components/ui";
+import { Tabs, Tooltip } from "@/components/ui";
 import { WorkInProgress, InstallationProgress } from "@/components/shared";
-
-interface Backup {
-    id: string;
-    server_id: string;
-    filename: string;
-    size_bytes: number;
-    created_at: string;
-}
 
 interface FileEntry {
     name: string;
@@ -222,11 +212,6 @@ export default function ServerDetail() {
 
     const [uptime, setUptime] = useState("--:--:--");
 
-    // Backups tab state
-    const [backups, setBackups] = useState<Backup[]>([]);
-    const [backupsLoading, setBackupsLoading] = useState(false);
-    const [creatingBackup, setCreatingBackup] = useState(false);
-
     // Schedules tab state
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [schedulesLoading, setSchedulesLoading] = useState(false);
@@ -266,7 +251,6 @@ export default function ServerDetail() {
         { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
         { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
         { id: "schedule", label: t("server_detail.tabs.schedule"), icon: <Clock size={18} /> },
-        { id: "backups", label: t("server_detail.tabs.backups"), icon: <History size={18} /> },
         { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
         { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
         { id: "mods", label: t("server_detail.tabs.mods"), icon: <Package size={18} /> },
@@ -326,53 +310,6 @@ export default function ServerDetail() {
             showError(t("server_detail.messages.connection_error"));
         }
     }, [id, server, t, fetchServer]);
-
-    const fetchBackups = useCallback(async () => {
-        if (!id) return;
-        setBackupsLoading(true);
-        try {
-            const response = await fetch(`/api/v1/backups?server_id=${id}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            const data = await response.json();
-            setBackups(data);
-        } catch (error) { console.error(error); } finally { setBackupsLoading(false); }
-    }, [id]);
-
-    const createBackup = async () => {
-        if (!id) return;
-        setCreatingBackup(true);
-        try {
-            await fetch("/api/v1/backups", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ server_id: id }),
-            });
-            fetchBackups();
-        } catch (error) { console.error(error); } finally { setCreatingBackup(false); }
-    };
-
-    const deleteBackup = async (backupId: string) => {
-        if (!await confirm(t("server_detail.delete_backup_confirm"), { isDestructive: true })) return;
-        try {
-            await fetch(`/api/v1/backups/${backupId}`, {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            fetchBackups();
-        } catch (error) { console.error(error); }
-    };
-
-    const restoreBackup = async (backupId: string) => {
-        if (!await confirm(t("server_detail.restore_backup_confirm"), { isDestructive: true })) return;
-        try {
-            await fetch(`/api/v1/backups/${backupId}/restore`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            success(t("server_detail.messages.backup_restored"));
-        } catch (error) { console.error(error); }
-    };
 
     const fetchSchedules = useCallback(async () => {
         if (!id) return;
@@ -441,6 +378,21 @@ export default function ServerDetail() {
                 fetchSchedules();
             }
         } catch (error) { console.error(error); }
+    };
+
+    const runSchedule = async (scheduleId: string) => {
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/schedules/${scheduleId}/run`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (response.ok) {
+                success(t("server_detail.messages.action_success") || "Tâche exécutée avec succès");
+                fetchSchedules(); // Refresh because delete_after might have been triggered
+            } else {
+                showError(t("server_detail.messages.action_error"));
+            }
+        } catch (error) { console.error(error); showError(t("server_detail.messages.connection_error")); }
     };
 
     const fetchFiles = useCallback(async (path = "") => {
@@ -803,7 +755,19 @@ export default function ServerDetail() {
 
 
     const handleDeleteServer = async () => {
-        if (!await confirm(t("server_detail.messages.delete_confirm"), { isDestructive: true })) return;
+        if (!server) return;
+        
+        const confirmed = await confirm(
+            t("server_detail.messages.delete_confirm") + ` "${server.name}"`, 
+            { 
+                isDestructive: true,
+                verificationString: server.name,
+                verificationLabel: t("server_detail.messages.delete_confirm_label")
+            }
+        );
+        
+        if (!confirmed) return;
+        
         try {
             const res = await fetch(`/api/v1/servers/${id}`, {
                 method: "DELETE",
@@ -1059,14 +1023,13 @@ export default function ServerDetail() {
 
     // Effect triggers
     useEffect(() => {
-        if (activeTab === "backups") fetchBackups();
-        else if (activeTab === "schedule") fetchSchedules();
+        if (activeTab === "schedule") fetchSchedules();
         else if (activeTab === "files") { fetchFiles(); setSelectedFile(null); setFileContent(""); }
         else if (activeTab === "logs") {
             fetchLogFiles();
             if (selectedLogFile) readLogFile(selectedLogFile);
         }
-    }, [activeTab, fetchBackups, fetchFiles]);
+    }, [activeTab, fetchFiles]);
 
     // Page Title
     useEffect(() => {
@@ -1078,9 +1041,15 @@ export default function ServerDetail() {
                         {server.status}
                     </div>
                     <div className="header-controls">
-                        <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running" || server.status === "starting" || server.status === "auth_required"}><Play size={16} /> {t("servers.start")}</button>
-                        <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running" && server.status !== "auth_required"}><RotateCw size={16} /></button>
-                        <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running" && server.status !== "auth_required"}><Square size={16} /></button>
+                        <Tooltip content={t("servers.start")} position="bottom">
+                            <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running" || server.status === "starting" || server.status === "auth_required"}><Play size={16} /> {t("servers.start")}</button>
+                        </Tooltip>
+                        <Tooltip content={t("servers.restart")} position="bottom">
+                            <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running" && server.status !== "auth_required"}><RotateCw size={16} /></button>
+                        </Tooltip>
+                        <Tooltip content={t("servers.stop")} position="bottom">
+                            <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running" && server.status !== "auth_required"}><Square size={16} /></button>
+                        </Tooltip>
                     </div>
                 </div>
             );
@@ -1155,17 +1124,6 @@ export default function ServerDetail() {
                     />
                 )}
 
-                {activeTab === "backups" && (
-                    <ServerBackups
-                        backups={backups}
-                        isLoading={backupsLoading}
-                        isCreating={creatingBackup}
-                        onCreateBackup={createBackup}
-                        onRestoreBackup={restoreBackup}
-                        onDeleteBackup={deleteBackup}
-                    />
-                )}
-
                 {activeTab === "files" && (
                     <ServerFiles
                         files={files}
@@ -1209,6 +1167,7 @@ export default function ServerDetail() {
                         onSave={saveSchedule}
                         onDelete={deleteSchedule}
                         onToggle={toggleSchedule}
+                        onRun={runSchedule}
                     />
                 )}
 
