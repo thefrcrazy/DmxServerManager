@@ -94,6 +94,8 @@ interface Server {
     disk_usage_bytes?: number;
     bind_address?: string;
     port?: number;
+    motd?: string;
+    password?: string;
     auth_mode?: "authenticated" | "offline";
     allow_op?: boolean;
     backup_enabled?: boolean;
@@ -102,6 +104,7 @@ interface Server {
     seed?: string;
     world_gen_type?: string;
     world_name?: string;
+    game_mode?: string;
     view_distance?: number;
     gameplay_config?: string;
     is_pvp_enabled?: boolean;
@@ -587,6 +590,26 @@ export default function ServerDetail() {
                         if (server.config.MaxViewRadius) fullData.view_distance = server.config.MaxViewRadius;
                         if (server.config.Seed) fullData.seed = server.config.Seed;
                         if (server.config.ServerName) fullData.name = server.config.ServerName;
+                        if (server.config.MOTD) fullData.motd = server.config.MOTD;
+                        if (server.config.Password) fullData.password = server.config.Password;
+                        if (server.config.Defaults?.GameMode) fullData.game_mode = server.config.Defaults.GameMode;
+                        if (server.config.Defaults?.World) fullData.world_name = server.config.Defaults.World;
+
+                        // Auth mode mapping
+                        if (server.config.AuthCredentialStore || server.config.auth_mode === "authenticated") {
+                            fullData.auth_mode = "authenticated";
+                        } else if (server.config.auth_mode === "offline") {
+                            fullData.auth_mode = "offline";
+                        }
+
+                        // World and Gameplay mapping from Hytale config keys
+                        if (server.config.WorldGen?.Type) fullData.world_gen_type = server.config.WorldGen.Type;
+                        if (server.config.IsPvpEnabled !== undefined) fullData.is_pvp_enabled = server.config.IsPvpEnabled;
+                        if (server.config.IsFallDamageEnabled !== undefined) fullData.is_fall_damage_enabled = server.config.IsFallDamageEnabled;
+                        if (server.config.IsSpawningNPC !== undefined) fullData.is_spawning_npc = server.config.IsSpawningNPC;
+                        if (server.config.IsGameTimePaused !== undefined) fullData.is_game_time_paused = server.config.IsGameTimePaused;
+                        if (server.config.IsSavingPlayers !== undefined) fullData.is_saving_players = server.config.IsSavingPlayers;
+                        if (server.config.IsSavingChunks !== undefined) fullData.is_saving_chunks = server.config.IsSavingChunks;
                     }
 
                     // Whitelist only the fields we edit in the form to avoid noise from other server props
@@ -596,7 +619,8 @@ export default function ServerDetail() {
                         "name", "game_type", "executable_path", "working_dir",
                         "auth_mode",
                         "min_memory", "max_memory", "java_path", "extra_args",
-                        "bind_address", "port",
+                        "bind_address", "port", "motd", "password",
+                        "world_name", "game_mode",
                         "allow_op", "disable_sentry", "accept_early_plugins",
                         "world_gen_type", "seed", "view_distance", "max_players",
                         "is_pvp_enabled", "is_fall_damage_enabled", "is_spawning_npc",
@@ -647,9 +671,30 @@ export default function ServerDetail() {
             if (payload.port) payload.config.port = Number(payload.port);
             if (payload.bind_address) payload.config.bind_address = payload.bind_address;
             if (payload.auth_mode) payload.config.auth_mode = payload.auth_mode;
+            
+            // New fields
+            if (payload.motd !== undefined) payload.config.MOTD = payload.motd;
+            if (payload.password !== undefined) payload.config.Password = payload.password;
+            if (payload.game_mode || payload.world_name) {
+                if (!payload.config.Defaults) payload.config.Defaults = {};
+                if (payload.game_mode) payload.config.Defaults.GameMode = payload.game_mode;
+                if (payload.world_name) payload.config.Defaults.World = payload.world_name;
+            }
             if (payload.allow_op !== undefined) payload.config.allow_op = payload.allow_op;
             if (payload.disable_sentry !== undefined) payload.config.disable_sentry = payload.disable_sentry;
             if (payload.accept_early_plugins !== undefined) payload.config.accept_early_plugins = payload.accept_early_plugins;
+
+            // Sync Gameplay and World toggles back to Hytale config keys
+            if (payload.world_gen_type) {
+                if (!payload.config.WorldGen) payload.config.WorldGen = {};
+                payload.config.WorldGen.Type = payload.world_gen_type;
+            }
+            if (payload.is_pvp_enabled !== undefined) payload.config.IsPvpEnabled = payload.is_pvp_enabled;
+            if (payload.is_fall_damage_enabled !== undefined) payload.config.IsFallDamageEnabled = payload.is_fall_damage_enabled;
+            if (payload.is_spawning_npc !== undefined) payload.config.IsSpawningNPC = payload.is_spawning_npc;
+            if (payload.is_game_time_paused !== undefined) payload.config.IsGameTimePaused = payload.is_game_time_paused;
+            if (payload.is_saving_players !== undefined) payload.config.IsSavingPlayers = payload.is_saving_players;
+            if (payload.is_saving_chunks !== undefined) payload.config.IsSavingChunks = payload.is_saving_chunks;
 
             const response = await fetch(`/api/v1/servers/${id}`, {
                 method: "PUT",
@@ -1025,7 +1070,6 @@ export default function ServerDetail() {
 
                 {activeTab === "config" && (
                     <ServerConfig
-                        serverId={id}
                         configFormData={configFormData}
                         configSaving={configSaving}
                         configError={configError}

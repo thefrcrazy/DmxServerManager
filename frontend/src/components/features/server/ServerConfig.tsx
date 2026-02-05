@@ -4,10 +4,8 @@ import Checkbox from "@/components/ui/Checkbox";
 import RangeSlider from "@/components/ui/RangeSlider";
 import Select from "@/components/ui/Select";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useToast } from "@/contexts/ToastContext";
 
 interface ServerConfigProps {
-    serverId?: string;
     configFormData: any;
     configSaving: boolean;
     configError: string;
@@ -65,7 +63,6 @@ const CollapsibleSection = ({
 );
 
 export default function ServerConfig({
-    serverId,
     configFormData,
     configSaving,
     configError,
@@ -134,6 +131,26 @@ export default function ServerConfig({
                                         ]}
                                         value={configFormData.auth_mode || "authenticated"}
                                         onChange={(v) => updateConfigValue("auth_mode", v)}
+                                    />
+                                </div>
+                                <div className="form-group grid-full">
+                                    <label>MOTD</label>
+                                    <input
+                                        type="text"
+                                        value={configFormData.motd || ""}
+                                        onChange={(e) => updateConfigValue("motd", e.target.value)}
+                                        className="input"
+                                        placeholder="Message of the Day"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>{t("auth.password")}</label>
+                                    <input
+                                        type="text"
+                                        value={configFormData.password || ""}
+                                        onChange={(e) => updateConfigValue("password", e.target.value)}
+                                        className="input font-mono"
+                                        placeholder="(Optional) Server Password"
                                     />
                                 </div>
                             </div>
@@ -217,7 +234,7 @@ export default function ServerConfig({
 
                     {/* Launch Arguments */}
                     <div className="grid-half">
-                        <CollapsibleSection title={t("server_detail.headers.launch_args")} icon={Terminal}>
+                        <CollapsibleSection title={t("server_detail.headers.launch_args")} icon={Terminal} defaultOpen={true}>
                             <div className="form-column">
                                 <div className="form-group">
                                     <label>{t("server_detail.config.ip_address")}</label>
@@ -263,8 +280,28 @@ export default function ServerConfig({
 
                     {/* World Config */}
                     <div className="grid-half">
-                        <CollapsibleSection title={t("server_detail.headers.world_config")} icon={Globe}>
+                        <CollapsibleSection title={t("server_detail.headers.world_config")} icon={Globe} defaultOpen={true}>
                             <div className="form-column">
+                                <div className="form-group">
+                                    <label>World Name</label>
+                                    <input
+                                        type="text"
+                                        value={configFormData.world_name || "default"}
+                                        onChange={(e) => updateConfigValue("world_name", e.target.value)}
+                                        className="input font-mono"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Game Mode (Default)</label>
+                                    <Select
+                                        options={[
+                                            { label: "Adventure", value: "Adventure" },
+                                            { label: "Creative", value: "Creative" },
+                                        ]}
+                                        value={configFormData.game_mode || "Adventure"}
+                                        onChange={(v) => updateConfigValue("game_mode", v)}
+                                    />
+                                </div>
                                 <div className="form-group">
                                     <label>{t("server_detail.config.generation")}</label>
                                     <Select
@@ -313,7 +350,7 @@ export default function ServerConfig({
 
                     {/* Gameplay Toggles */}
                     <div className="grid-full">
-                        <CollapsibleSection title={t("server_detail.config.gameplay_title")} icon={Check}>
+                        <CollapsibleSection title={t("server_detail.config.gameplay_title")} icon={Check} defaultOpen={true}>
                             <div className="toggles-grid">
                                 <Checkbox checked={configFormData.is_pvp_enabled !== false} onChange={(v: boolean) => updateConfigValue("is_pvp_enabled", v)} label={t("server_detail.config.pvp")} />
                                 <Checkbox checked={configFormData.is_fall_damage_enabled !== false} onChange={(v: boolean) => updateConfigValue("is_fall_damage_enabled", v)} label={t("server_detail.config.fall_damage")} />
@@ -330,7 +367,7 @@ export default function ServerConfig({
                         <CollapsibleSection
                             title={t("server_detail.config.danger_zone")}
                             icon={AlertTriangle}
-                            defaultOpen={true}
+                            defaultOpen={false}
                             badge={t("server_detail.config.sensitive_zone")}
                             className="danger-section"
                         >
@@ -358,133 +395,8 @@ export default function ServerConfig({
                         </CollapsibleSection>
                     </div>
 
-                    {/* Advanced Configuration */}
-                    <div className="grid-full">
-                        <AdvancedConfigSection serverId={serverId} />
-                    </div>
-
                 </div>
             </form>
         </div>
-    );
-}
-
-function AdvancedConfigSection({ serverId }: { serverId?: string }) {
-    const { t } = useLanguage();
-    const { success, error: showError } = useToast();
-    const [activeFile, setActiveFile] = React.useState<"server" | "world">("server");
-    const [content, setContent] = React.useState("");
-    const [isLoading, setIsLoading] = React.useState(false);
-    const [isSaving, setIsSaving] = React.useState(false);
-
-    // File paths
-    const SERVER_CONFIG = "config.json";
-    const WORLD_CONFIG = "universe/worlds/default/config.json";
-
-    const fetchConfig = React.useCallback(async () => {
-        if (!serverId) return;
-        setIsLoading(true);
-        try {
-            const path = activeFile === "server" ? SERVER_CONFIG : WORLD_CONFIG;
-            const res = await fetch(`/api/v1/servers/${serverId}/files/read?path=${path}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setContent(data.content || "");
-            } else {
-                setContent(""); // Empty or error
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [serverId, activeFile]);
-
-    React.useEffect(() => {
-        fetchConfig();
-    }, [fetchConfig]);
-
-    const handleSave = async () => {
-        if (!serverId) return;
-
-        // Validate JSON
-        try {
-            JSON.parse(content);
-        } catch (e) {
-            showError(t("server_detail.config.invalid_json"));
-            return;
-        }
-
-        setIsSaving(true);
-        try {
-            const path = activeFile === "server" ? SERVER_CONFIG : WORLD_CONFIG;
-            const res = await fetch(`/api/v1/servers/${serverId}/files/write`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${localStorage.getItem("token")}`
-                },
-                body: JSON.stringify({ path, content })
-            });
-
-            if (res.ok) {
-                success(t("server_detail.messages.file_saved"));
-            } else {
-                showError(t("server_detail.messages.save_error"));
-            }
-        } catch (e) {
-            console.error(e);
-            showError(t("server_detail.messages.connection_error"));
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    if (!serverId) return null;
-
-    return (
-        <CollapsibleSection title={t("server_detail.config.advanced_title")} icon={Globe} badge={t("server_detail.config.expert_badge")}>
-            <div className="advanced-config">
-                <div className="file-selector mb-4 flex gap-2">
-                    <button
-                        type="button"
-                        className={`btn btn--sm ${activeFile === "server" ? "btn--primary" : "btn--secondary"}`}
-                        onClick={() => setActiveFile("server")}
-                    >
-                        {t("server_detail.config.file_server")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`btn btn--sm ${activeFile === "world" ? "btn--primary" : "btn--secondary"}`}
-                        onClick={() => setActiveFile("world")}
-                    >
-                        {t("server_detail.config.file_world")}
-                    </button>
-                </div>
-
-                <div className="editor-container relative">
-                    {isLoading && <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10"><div className="spinner"></div></div>}
-                    <textarea
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                        className="input font-mono text-xs w-full h-96"
-                        spellCheck={false}
-                    />
-                </div>
-
-                <div className="actions mt-4 flex justify-end">
-                    <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={isSaving || isLoading}
-                        className="btn btn--primary"
-                    >
-                        <Save size={16} /> {isSaving ? t("common.saving") : t("server_detail.config.save_file")}
-                    </button>
-                </div>
-            </div>
-        </CollapsibleSection>
     );
 }
