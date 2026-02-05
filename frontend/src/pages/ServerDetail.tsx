@@ -1129,7 +1129,7 @@ export default function ServerDetail() {
 
             <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
-            {(isInstalling || isAuthRequired) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => setIsInstalling(false)} onSendAuth={() => sendCommand("auth")} />}
+            {(isInstalling || isAuthRequired) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => { setIsInstalling(false); setIsAuthRequired(false); }} onSendAuth={() => sendCommand("auth")} />}
 
             <div className="tab-content">
                 {activeTab === "console" && (
