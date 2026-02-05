@@ -16,7 +16,7 @@ import {
     Globe,
     Package,
 } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { formatBytes, formatGB } from "../utils/formatters";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -749,7 +749,7 @@ export default function ServerDetail() {
     };
 
     // Merge real-time players (names) with static player data (op, etc.)
-    const onlinePlayers: Player[] = currentPlayersList.map(name => {
+    const onlinePlayers: Player[] = useMemo(() => currentPlayersList.map(name => {
         const existing = server?.players?.find(p => p.name === name);
         if (existing) return { ...existing, is_online: true };
         return {
@@ -760,20 +760,23 @@ export default function ServerDetail() {
             is_banned: false,
             is_whitelisted: false
         };
-    });
+    }), [currentPlayersList, server?.players]);
 
-    // Players Logic
-    const fetchPlayerData = useCallback(async () => {
+    // Effect for Online players tab (No API calls)
+    useEffect(() => {
+        if (activeTab === "players" && activePlayerTab === "online") {
+            setPlayerData(onlinePlayers);
+        }
+    }, [activeTab, activePlayerTab, onlinePlayers]);
+
+    // Effect for API-based players tabs (Whitelist, Bans, Ops, Database)
+    const fetchApiPlayers = useCallback(async () => {
         if (!server || !id) return;
-
+        
         try {
             let list: Player[] = [];
-
-            if (activePlayerTab === "online") {
-                // Real-time online players from websocket/pm
-                list = onlinePlayers;
-            } else if (activePlayerTab === "database") {
-                // All players ever seen from DB (included in server response)
+            
+            if (activePlayerTab === "database") {
                 list = server.players || [];
             } else if (activePlayerTab === "whitelist") {
                 const res = await fetch(`/api/v1/servers/${id}/whitelist`, {
@@ -823,11 +826,28 @@ export default function ServerDetail() {
                     }));
                 }
             }
-            setPlayerData(list);
+            
+            // Only update if we are not on "online" tab (handled by other effect)
+            if (activePlayerTab !== "online") {
+                setPlayerData(list);
+            }
         } catch (e) {
             console.error("Failed to fetch player data", e);
         }
-    }, [id, server, activePlayerTab, onlinePlayers]);
+    }, [id, activePlayerTab, server?.players]);
+
+    useEffect(() => {
+        if (activeTab === "players" && activePlayerTab !== "online") {
+            fetchApiPlayers();
+        }
+    }, [activeTab, activePlayerTab, fetchApiPlayers]);
+    
+    // Helper to refresh current view
+    const refreshPlayers = () => {
+        if (activePlayerTab !== "online") {
+            fetchApiPlayers();
+        }
+    };
 
     const handlePlayerAction = async (action: string, player: Player) => {
         if (!player.name) return;
@@ -844,7 +864,7 @@ export default function ServerDetail() {
 
             setTimeout(() => {
                 fetchServer();
-                fetchPlayerData();
+                refreshPlayers();
             }, 1000);
         } else {
             showError(t("server_detail.messages.server_offline_action"));
@@ -863,7 +883,7 @@ export default function ServerDetail() {
             if (activePlayerTab === "whitelist") sendCommand(`whitelist add ${name}`);
             else if (activePlayerTab === "ops") sendCommand(`op ${name}`);
             else if (activePlayerTab === "bans") sendCommand(`ban ${name}`);
-            setTimeout(fetchPlayerData, 1000);
+            setTimeout(refreshPlayers, 1000);
         } else {
             // Offline API usage
             try {
@@ -896,7 +916,7 @@ export default function ServerDetail() {
                     });
                 }
                 success(t("server_detail.messages.save_success"));
-                fetchPlayerData();
+                refreshPlayers();
             } catch (e) {
                 showError("Erreur lors de l'ajout via API");
             }
@@ -910,7 +930,7 @@ export default function ServerDetail() {
             if (activePlayerTab === "whitelist") sendCommand(`whitelist remove ${player.name}`);
             else if (activePlayerTab === "ops") sendCommand(`deop ${player.name}`);
             else if (activePlayerTab === "bans") sendCommand(`pardon ${player.name}`);
-            setTimeout(fetchPlayerData, 1000);
+            setTimeout(refreshPlayers, 1000);
         } else {
             try {
                 if (activePlayerTab === "whitelist") {
@@ -942,7 +962,7 @@ export default function ServerDetail() {
                     });
                 }
                 success(t("server_detail.messages.save_success"));
-                fetchPlayerData();
+                refreshPlayers();
             } catch (e) {
                 showError("Erreur lors de la suppression via API");
             }
@@ -957,10 +977,7 @@ export default function ServerDetail() {
             fetchLogFiles();
             if (selectedLogFile) readLogFile(selectedLogFile);
         }
-        else if (activeTab === "players") {
-            fetchPlayerData();
-        }
-    }, [activeTab, activePlayerTab, fetchBackups, fetchFiles, fetchPlayerData]);
+    }, [activeTab, fetchBackups, fetchFiles]);
 
     // Page Title
     useEffect(() => {
@@ -1123,11 +1140,10 @@ export default function ServerDetail() {
                         onAction={handlePlayerAction}
                         onAddPlayer={handleAddPlayer}
                         onRemovePlayer={handleRemovePlayer}
-                        onRefresh={() => {
-                            fetchServer();
-                            fetchPlayerData();
-                        }}
-                    />
+                                        onRefresh={() => {
+                                            fetchServer();
+                                            refreshPlayers();
+                                        }}                    />
                 )}
 
                 {activeTab === "metrics" && (
