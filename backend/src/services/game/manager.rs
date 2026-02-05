@@ -704,12 +704,25 @@ impl ProcessManager {
         config: Option<&serde_json::Value>,
         game_type: &str,
     ) -> Result<(), AppError> {
-        // Stop if running
+        // 1. Stop if running
         if self.is_running(server_id) {
+            info!("Restart: Stopping server {}...", server_id);
             self.stop(server_id).await?;
+            
+            // Give it some extra time to release ports and file handles
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         }
 
-        // Start again
+        // 2. Wait until it's really gone from the map (stop() removes it, but let's be sure)
+        let mut retry = 0;
+        while retry < 5 && self.is_running(server_id) {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            retry += 1;
+        }
+
+        info!("Restart: Starting server {}...", server_id);
+
+        // 3. Start again
         self.start(
             server_id,
             executable_path,

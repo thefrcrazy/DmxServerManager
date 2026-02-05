@@ -168,7 +168,7 @@ pub async fn restart_server(
     .await?
     .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
 
-    let process_working_dir = StdPath::new(&server.working_dir).join("server");
+    let process_working_dir = StdPath::new(&server.working_dir).to_path_buf();
     let process_working_dir_str = process_working_dir.to_str().unwrap_or(&server.working_dir);
 
     state.process_manager.restart(
