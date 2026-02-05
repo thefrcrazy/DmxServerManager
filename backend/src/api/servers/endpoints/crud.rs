@@ -312,16 +312,44 @@ pub async fn get_server(
 
     // Load meta from server files (whitelist, etc.)
     let meta = load_player_meta(&server.working_dir).await;
-    for (name, m) in &meta {
-        players_map.entry(name.clone())
-            .and_modify(|p| {
-                p.is_op = m.is_op;
-                p.is_banned = m.is_banned;
-                p.is_whitelisted = m.is_whitelisted;
-            })
-            .or_insert(Player {
-                name: name.clone(),
-                uuid: None,
+    for (key, m) in &meta {
+        // Try to find existing player by Name (key) OR UUID (key)
+        let mut target_name = None;
+        
+        if players_map.contains_key(key) {
+            target_name = Some(key.clone());
+        } else {
+            // Check if 'key' is an UUID that matches an existing player's UUID
+            for (p_name, p) in &players_map {
+                if let Some(uid) = &p.uuid {
+                    if uid == key {
+                        target_name = Some(p_name.clone());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(t_name) = target_name {
+            players_map.entry(t_name)
+                .and_modify(|p| {
+                    p.is_op = m.is_op;
+                    p.is_banned = m.is_banned;
+                    p.is_whitelisted = m.is_whitelisted;
+                    // If we matched by name but didn't have UUID, and key looks like UUID, save it
+                    if p.uuid.is_none() && (key.len() == 36 || key.len() == 32) {
+                         p.uuid = Some(key.clone());
+                    }
+                });
+        } else {
+            // New entry not found in DB or online
+            // If key looks like UUID, put it in uuid field. Name will be UUID for now (frontend can handle display)
+            let is_uuid = key.len() == 36 || (key.len() == 32 && !key.contains(' '));
+            let uuid = if is_uuid { Some(key.clone()) } else { None };
+            
+            players_map.insert(key.clone(), Player {
+                name: key.clone(),
+                uuid,
                 is_online: false,
                 last_seen: "Jamais".to_string(), 
                 player_ip: None,
@@ -329,6 +357,7 @@ pub async fn get_server(
                 is_banned: m.is_banned,
                 is_whitelisted: m.is_whitelisted,
             });
+        }
     }
 
     let mut final_players: Vec<Player> = players_map.into_values().collect();

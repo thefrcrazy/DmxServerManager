@@ -26,10 +26,19 @@ export default function ServerConsole({
     const { t } = useLanguage();
     const consoleContentRef = useRef<HTMLDivElement>(null);
     const [command, setCommand] = React.useState("");
+    const isAtBottomRef = useRef(true);
+
+    // Track scroll position
+    const handleScroll = () => {
+        if (!consoleContentRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = consoleContentRef.current;
+        // Check if user is near bottom (within 50px tolerance)
+        isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 50;
+    };
 
     // Auto-scroll logic
     useEffect(() => {
-        if (logs.length > 0) {
+        if (logs.length > 0 && isAtBottomRef.current) {
             setTimeout(() => {
                 if (consoleContentRef.current) {
                     consoleContentRef.current.scrollTop =
@@ -62,6 +71,7 @@ export default function ServerConsole({
                 <div
                     className="console-output"
                     ref={consoleContentRef}
+                    onScroll={handleScroll}
                 >
                     {isAuthRequired && (
                         <div className="auth-alert-banner">

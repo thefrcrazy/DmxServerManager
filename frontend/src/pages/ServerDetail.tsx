@@ -942,8 +942,8 @@ export default function ServerDetail() {
 
         // Online actions via commands
         if (server?.status === "running") {
-            if (action === "op") await sendCommand(`op ${player.name}`);
-            else if (action === "deop") await sendCommand(`deop ${player.name}`);
+            if (action === "op") await sendCommand(`op add ${player.name}`);
+            else if (action === "deop") await sendCommand(`op remove ${player.name}`);
             else if (action === "kick") await sendCommand(`kick ${player.name}`);
             else if (action === "ban") await sendCommand(`ban ${player.name}`);
             else if (action === "unban") {

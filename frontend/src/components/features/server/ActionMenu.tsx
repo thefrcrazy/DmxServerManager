@@ -17,19 +17,33 @@ export default function ActionMenu({ actions }: ActionMenuProps) {
     const { t } = useLanguage();
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const [position, setPosition] = useState({ top: 0, right: 0 });
 
-    // Close on click outside
+    // Calculate position on open
     useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
+        if (isOpen && menuRef.current) {
+            const rect = menuRef.current.getBoundingClientRect();
+            setPosition({
+                top: rect.bottom + 4, // 4px margin
+                right: window.innerWidth - rect.right
+            });
+        }
+    }, [isOpen]);
+
+    // Close on click outside or scroll
+    useEffect(() => {
+        function handleInteraction(event: Event) {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
         }
         if (isOpen) {
-            document.addEventListener("mousedown", handleClickOutside);
+            document.addEventListener("mousedown", handleInteraction);
+            document.addEventListener("scroll", () => setIsOpen(false), true); // Close on scroll
         }
         return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
+            document.removeEventListener("mousedown", handleInteraction);
+            document.removeEventListener("scroll", () => setIsOpen(false), true);
         };
     }, [isOpen]);
 
@@ -44,7 +58,10 @@ export default function ActionMenu({ actions }: ActionMenuProps) {
             </button>
 
             {isOpen && (
-                <div className="action-menu-dropdown">
+                <div 
+                    className="action-menu-dropdown" 
+                    style={{ top: position.top, right: position.right }}
+                >
                     {actions.map((action, index) => (
                         <button
                             key={index}
@@ -67,16 +84,13 @@ export default function ActionMenu({ actions }: ActionMenuProps) {
                     display: inline-block;
                 }
                 .action-menu-dropdown {
-                    position: absolute;
-                    right: 0;
-                    top: 100%;
-                    margin-top: 4px;
+                    position: fixed;
                     background: var(--bg-surface, #1e1e1e);
                     border: 1px solid var(--border-color, #333);
                     border-radius: 6px;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                     min-width: 160px;
-                    z-index: 50;
+                    z-index: 9999;
                     padding: 4px;
                 }
                 .action-menu-item {

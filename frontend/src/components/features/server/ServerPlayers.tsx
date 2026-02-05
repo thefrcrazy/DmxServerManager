@@ -146,9 +146,15 @@ export default function ServerPlayers({
                                                     {(player.name || "?").charAt(0).toUpperCase()}
                                                 </div>
                                                 <div className="player-info">
-                                                    <div className="player-name">{player.name || t("common.unknown")}</div>
+                                                    <div className="player-name">
+                                                        {player.name && player.name.length <= 16 ? player.name : t("common.unknown")}
+                                                    </div>
                                                     <div className="player-meta-row">
-                                                        {player.uuid && <span className="player-uuid" title={player.uuid}>{player.uuid.substring(0, 8)}...</span>}
+                                                        {(player.uuid || (player.name && player.name.length > 16)) && (
+                                                            <span className="player-uuid" title={player.uuid || player.name}>
+                                                                {(player.uuid || player.name).substring(0, 8)}...
+                                                            </span>
+                                                        )}
                                                         {player.player_ip && <span className="player-ip">{player.player_ip}</span>}
                                                     </div>
                                                 </div>
