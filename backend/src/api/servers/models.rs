@@ -217,7 +217,7 @@ pub struct ScheduleRow {
     pub id: String,
     pub server_id: String,
     pub name: String,
-    pub task_type: String,
+    pub task_type: String, // Keep as task_type in DB
     pub action: String,
     pub interval: Option<i32>,
     pub unit: Option<String>,
@@ -233,6 +233,7 @@ pub struct ScheduleResponse {
     pub id: String,
     pub server_id: String,
     pub name: String,
+    #[serde(rename = "type")]
     pub task_type: String,
     pub action: String,
     pub interval: Option<i32>,
@@ -247,6 +248,7 @@ pub struct ScheduleResponse {
 #[derive(Debug, Deserialize)]
 pub struct CreateScheduleRequest {
     pub name: String,
+    #[serde(rename = "type")]
     pub task_type: String,
     pub action: String,
     pub interval: Option<i32>,

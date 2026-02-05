@@ -16,6 +16,7 @@ use super::crud::get_server_by_id_internal;
 pub struct WhitelistEntry {
     pub name: String,
     pub uuid: Option<String>,
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -26,7 +27,6 @@ pub struct BanEntry {
     pub timestamp: i64,
     #[serde(rename = "type")]
     pub ban_type: String, // "infinite" etc
-    // Optional fields for display if we can resolve names
     pub username: Option<String>,
     #[serde(rename = "bannedBy")]
     pub banned_by: Option<String>, 
@@ -36,6 +36,7 @@ pub struct BanEntry {
 pub struct OpEntry {
     pub uuid: String,
     pub groups: Vec<String>,
+    pub username: Option<String>,
 }
 
 // Requests
@@ -66,6 +67,32 @@ pub struct AddOpRequest {
 }
 
 // ================= HANDLERS =================
+
+async fn resolve_usernames(pool: &crate::core::database::DbPool, server_id: &str, uuids: Vec<String>) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    if uuids.is_empty() { return map; }
+
+    // Query DB for known names for these UUIDs on this server
+    let query = format!(
+        "SELECT player_id, player_name FROM server_players WHERE server_id = ? AND player_id IN ({})",
+        uuids.iter().map(|_| "?").collect::<Vec<_>>().join(",")
+    );
+
+    let mut sql_query = sqlx::query(&query).bind(server_id);
+    for uuid in uuids {
+        sql_query = sql_query.bind(uuid);
+    }
+
+    if let Ok(rows) = sql_query.fetch_all(pool).await {
+        for row in rows {
+            use sqlx::Row;
+            if let (Ok(id), Ok(name)) = (row.try_get::<String, _>(0), row.try_get::<String, _>(1)) {
+                map.insert(id, name);
+            }
+        }
+    }
+    map
+}
 
 fn get_player_file_path(working_dir: &str, filename: &str) -> std::path::PathBuf {
     let base_path = StdPath::new(working_dir);
@@ -103,12 +130,12 @@ pub async fn get_whitelist_internal(pool: &crate::core::database::DbPool, id: &s
             // Flat array of names or objects?
             for item in arr {
                 if let Some(str_val) = item.as_str() {
-                     list.push(WhitelistEntry { name: str_val.to_string(), uuid: None });
+                     list.push(WhitelistEntry { name: str_val.to_string(), uuid: None, username: None });
                 } else if let Some(obj) = item.as_object() {
                     // Try to parse Hytale format if it matches or standard MC
                     let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
                     let uuid = obj.get("uuid").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    list.push(WhitelistEntry { name, uuid });
+                    list.push(WhitelistEntry { name, uuid, username: None });
                 }
             }
         } else if let Some(obj) = json.as_object() {
@@ -116,12 +143,21 @@ pub async fn get_whitelist_internal(pool: &crate::core::database::DbPool, id: &s
              if let Some(l) = obj.get("list").and_then(|v| v.as_array()) {
                  for item in l {
                     if let Some(str_val) = item.as_str() {
-                         list.push(WhitelistEntry { name: str_val.to_string(), uuid: Some(str_val.to_string()) });
+                         list.push(WhitelistEntry { name: str_val.to_string(), uuid: Some(str_val.to_string()), username: None });
                     }
                  }
              }
         }
     }
+
+    // Resolve usernames for whitelist
+    let uuids: Vec<String> = list.iter().filter_map(|e| e.uuid.clone().or_else(|| Some(e.name.clone()))).collect();
+    let name_map = resolve_usernames(pool, id, uuids).await;
+    for entry in &mut list {
+        if let Some(uid) = &entry.uuid { entry.username = name_map.get(uid).cloned(); }
+        else { entry.username = name_map.get(&entry.name).cloned(); }
+    }
+
     Ok(list)
 }
 
@@ -149,6 +185,7 @@ pub async fn add_whitelist(
     current_list.push(WhitelistEntry {
         name: payload.name.clone(),
         uuid: payload.uuid.clone().or_else(|| Some(payload.name.clone())), // Fallback UUID=Name for offline?
+        username: None,
     });
 
     // Write back. Which format? Let's use generic list object for Hytale if that's what it expects, 
@@ -253,8 +290,17 @@ pub async fn get_bans(
     if !path.exists() { return Ok(Json(Vec::<BanEntry>::new())); }
 
     let content = fs::read_to_string(&path).await.map_err(|e| ApiError::Internal(e.to_string()))?;
-    let bans: Vec<BanEntry> = serde_json::from_str(&content).unwrap_or_default();
+    let mut bans: Vec<BanEntry> = serde_json::from_str(&content).unwrap_or_default();
     
+    // Resolve usernames
+    let uuids: Vec<String> = bans.iter().map(|b| b.target.clone()).collect();
+    let name_map = resolve_usernames(&state.pool, &id, uuids).await;
+    for ban in &mut bans {
+        if ban.username.is_none() {
+            ban.username = name_map.get(&ban.target).cloned();
+        }
+    }
+
     Ok(Json(bans))
 }
 
@@ -320,9 +366,17 @@ pub async fn get_ops(
             
             list.push(OpEntry {
                 uuid: uuid.clone(),
-                groups
+                groups,
+                username: None
             });
         }
+    }
+
+    // Resolve usernames
+    let uuids: Vec<String> = list.iter().map(|o| o.uuid.clone()).collect();
+    let name_map = resolve_usernames(&state.pool, &id, uuids).await;
+    for op in &mut list {
+        op.username = name_map.get(&op.uuid).cloned();
     }
 
     Ok(Json(list))

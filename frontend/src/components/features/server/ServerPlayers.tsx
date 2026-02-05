@@ -143,11 +143,11 @@ export default function ServerPlayers({
                                         <td className="td-player">
                                             <div className="player-badge">
                                                 <div className="player-avatar">
-                                                    {(player.name || "?").charAt(0).toUpperCase()}
+                                                    {((player.username || player.name || "?").charAt(0).toUpperCase())}
                                                 </div>
                                                 <div className="player-info">
                                                     <div className="player-name">
-                                                        {player.name && player.name.length <= 16 ? player.name : t("common.unknown")}
+                                                        {player.username || (player.name && player.name.length <= 16 ? player.name : t("common.unknown"))}
                                                     </div>
                                                     <div className="player-meta-row">
                                                         {(player.uuid || (player.name && player.name.length > 16)) && (
