@@ -284,13 +284,10 @@ pub struct AuthUser {
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for AuthUser
-where
-    S: Send + Sync,
-{
+impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let auth_header = parts.headers
             .get("Authorization")
             .and_then(|h| h.to_str().ok())
@@ -302,12 +299,8 @@ where
             .ok_or_else(|| AppError::Unauthorized("auth.invalid_auth_header".into())
                 .with_code(ErrorCode::AuthInvalidHeader))?;
 
-        // Extract state from parts extensions
-        let state = parts.extensions.get::<AppState>();
-        let secret = match state {
-            Some(state) => get_jwt_secret(state).await?,
-            None => return Err(AppError::Internal("State not available".into()))
-        };
+        // Use state directly passed by Axum
+        let secret = get_jwt_secret(state).await?;
         
         let token_data = jsonwebtoken::decode::<Claims>(
             token,
