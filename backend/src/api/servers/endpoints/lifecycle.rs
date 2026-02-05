@@ -40,43 +40,49 @@ pub async fn start_server(
 
     let mut hytale_config_obj = if config_json_path.exists() {
         if let Ok(content) = fs::read_to_string(&config_json_path).await {
-             serde_json::from_str(&content).unwrap_or_else(|_| serde_json::to_value(templates::generate_config_json(
+             serde_json::from_str(&content).unwrap_or_else(|_| templates::generate_config_json(
                 &server.name,
                 max_players, 
                 auth_mode 
-            )).unwrap())
+            ))
         } else {
-             serde_json::to_value(templates::generate_config_json(
+             templates::generate_config_json(
                 &server.name,
                 max_players, 
                 auth_mode 
-            )).unwrap()
+            )
         }
     } else {
-        serde_json::to_value(templates::generate_config_json(
+        templates::generate_config_json(
             &server.name,
             max_players, 
             auth_mode 
-        )).unwrap()
+        )
     };
 
-    if let Some(obj) = hytale_config_obj.as_object_mut() {
-        obj.insert("Port".to_string(), serde_json::json!(port));
-        obj.insert("ServerName".to_string(), serde_json::json!(server.name));
-        obj.insert("MaxPlayers".to_string(), serde_json::json!(max_players));
-        
-        let auth_store = if auth_mode == "authenticated" {
-            serde_json::json!({ "Type": "Encrypted", "Path": "auth.enc" })
-        } else {
-            serde_json::json!({ "Type": "None" })
-        };
-        obj.insert("AuthCredentialStore".to_string(), auth_store);
-    }
+    // Prepare updates
+    let auth_store = if auth_mode == "authenticated" {
+        serde_json::json!({ "Type": "Encrypted", "Path": "auth.enc" })
+    } else {
+        serde_json::json!({ "Type": "None" })
+    };
+
+    let updates = serde_json::json!({
+        "Port": port,
+        "ServerName": server.name,
+        "MaxPlayers": max_players,
+        "AuthCredentialStore": auth_store
+    });
+
+    // Merge updates into existing config
+    templates::deep_merge(&mut hytale_config_obj, &updates);
     
+    // Save updated config
     if let Ok(mut config_file) = fs::File::create(&config_json_path).await {
          let _ = config_file.write_all(serde_json::to_string_pretty(&hytale_config_obj).unwrap().as_bytes()).await;
     }
 
+    // Process Manager config (internal use, lowercase keys are fine here)
     let mut pm_config = server.config.as_ref()
         .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
         .unwrap_or(serde_json::json!({}));
