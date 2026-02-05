@@ -50,39 +50,22 @@ pub fn generate_config_json(
 }
 
 /// Recursively merge two JSON values.
-
 /// `a` is the base value (will be modified), `b` is the new value to merge into `a`.
-
 pub fn deep_merge(a: &mut Value, b: &Value) {
-
     match (a, b) {
-
         (Value::Object(a), Value::Object(b)) => {
-
             for (k, v) in b {
-
                 deep_merge(a.entry(k.clone()).or_insert(Value::Null), v);
-
             }
-
         }
-
         (a, b) => *a = b.clone(),
-
     }
-
 }
 
-
-
 /// Map flat frontend config keys to structured Hytale config.json keys
-
 pub fn map_to_hytale_config(flat_config: &Value) -> Value {
-
     let mut hytale_config = json!({});
-
     
-
     if let Some(obj) = flat_config.as_object() {
 
         for (k, v) in obj {

@@ -8,8 +8,8 @@ pub fn ensure_self_signed_certs() -> anyhow::Result<(String, String)> {
     let is_docker = std::env::var("IS_DOCKER").unwrap_or_else(|_| "false".into()) == "true";
     let base_path = if is_docker { "/data" } else { "data" };
     
-    let cert_path = format!("{}/cert.pem", base_path);
-    let key_path = format!("{}/key.pem", base_path);
+    let cert_path = format!("{base_path}/cert.pem");
+    let key_path = format!("{base_path}/key.pem");
 
     if Path::new(&cert_path).exists() && Path::new(&key_path).exists() {
         info!("🔐 Existing TLS certificates found in {}", base_path);
