@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import Ansi from "ansi-to-react";
-import { Terminal, Send } from "lucide-react";
+import { Terminal, Send, AlertTriangle, ExternalLink } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { enhanceLogContent } from "@/utils/logUtils";
 
@@ -8,16 +8,20 @@ interface ServerConsoleProps {
     logs: string[];
     isConnected: boolean;
     isRunning: boolean;
+    isAuthRequired?: boolean;
     serverType?: string;
     onSendCommand: (command: string) => void;
+    onOpenAuth?: () => void;
 }
 
 export default function ServerConsole({
     logs,
     isConnected,
     isRunning,
+    isAuthRequired = false,
     serverType = "hytale",
     onSendCommand,
+    onOpenAuth,
 }: ServerConsoleProps) {
     const { t } = useLanguage();
     const consoleContentRef = useRef<HTMLDivElement>(null);
@@ -55,11 +59,21 @@ export default function ServerConsole({
                 </div>
 
                 {/* Console Viewport */}
-                {/* Console Viewport */}
                 <div
                     className="console-output"
                     ref={consoleContentRef}
                 >
+                    {isAuthRequired && (
+                        <div className="auth-alert-banner">
+                            <div className="auth-alert-banner__content">
+                                <AlertTriangle size={18} className="text-warning" />
+                                <span>{t("installation.auth_required")}</span>
+                            </div>
+                            <button onClick={onOpenAuth} className="btn btn--warning btn--sm">
+                                <ExternalLink size={14} /> {t("installation.action_required")}
+                            </button>
+                        </div>
+                    )}
                     {logs.length === 0 ? (
                         <div className="console-output__empty">
                             <Terminal size={48} />
@@ -137,6 +151,40 @@ export default function ServerConsole({
                     </button>
                 </form>
             </div>
+
+            <style>{`
+                .auth-alert-banner {
+                    background: rgba(255, 165, 0, 0.1);
+                    border: 1px solid rgba(255, 165, 0, 0.3);
+                    border-radius: 8px;
+                    padding: 12px 16px;
+                    margin-bottom: 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    animation: fadeIn 0.3s ease-out;
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
+                    backdrop-filter: blur(8px);
+                }
+                
+                .auth-alert-banner__content {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    font-weight: 500;
+                    color: var(--text-primary);
+                }
+                
+                .text-warning { color: #ff9800; }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
         </div>
     );
 }

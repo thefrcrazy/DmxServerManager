@@ -156,6 +156,14 @@ export default function ServerDetail() {
 
     const [server, setServer] = useState<Server | null>(null);
     const [searchParams, setSearchParams] = useSearchParams();
+
+    // Notify when auth is required
+    useEffect(() => {
+        if (isAuthRequired && isBooted) {
+            showError(t("installation.auth_required"), { duration: 10000 });
+        }
+    }, [isAuthRequired, isBooted, t]);
+
     const tabParam = searchParams.get("tab") as TabId | null;
     const [activeTab, setActiveTab] = useState<TabId>(tabParam || "console");
 
@@ -222,6 +230,9 @@ export default function ServerDetail() {
     // Schedules tab state
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [schedulesLoading, setSchedulesLoading] = useState(false);
+
+    // Auth Fallback state
+    const [showAuthModal, setShowAuthModal] = useState(false);
 
     // Files tab state
     const [files, setFiles] = useState<FileEntry[]>([]);
@@ -1130,7 +1141,7 @@ export default function ServerDetail() {
 
             <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
-            {(isInstalling || (isAuthRequired && isBooted)) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => { setIsInstalling(false); setIsAuthRequired(false); }} onSendAuth={() => sendCommand("auth login device")} />}
+            {(isInstalling || (isAuthRequired && isBooted) || showAuthModal) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => { setIsInstalling(false); setIsAuthRequired(false); setShowAuthModal(false); }} onSendAuth={() => sendCommand("auth login device")} />}
 
             <div className="tab-content">
                 {activeTab === "console" && (
@@ -1138,7 +1149,9 @@ export default function ServerDetail() {
                         logs={logs}
                         isConnected={isConnected}
                         isRunning={server.status === "running" || server.status === "starting" || server.status === "auth_required"}
+                        isAuthRequired={isAuthRequired && isBooted}
                         onSendCommand={sendCommand}
+                        onOpenAuth={() => setShowAuthModal(true)}
                     />
                 )}
 
