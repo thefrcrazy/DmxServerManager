@@ -146,6 +146,10 @@ build_project() {
     # Copier le frontend build vers le dossier static du backend
     mkdir -p ../backend/static
     cp -r dist/* ../backend/static/
+
+    # Nettoyage
+    echo -e "${BLUE}🧹 Nettoyage des fichiers de build...${NC}"
+    rm -rf node_modules
 }
 
 # Configuration des répertoires
@@ -161,6 +165,10 @@ setup_directories() {
 create_env_file() {
     echo -e "${BLUE}⚙️ Configuration...${NC}"
     
+    local IP=$(hostname -I | awk '{print $1}')
+    local PROTOCOL="https"
+    [[ "$USE_HTTPS" == "false" ]] && PROTOCOL="http"
+
     cat > "$DATA_DIR/.env" << EOF
 HOST=0.0.0.0
 PORT=5500
@@ -168,9 +176,13 @@ DATABASE_URL=sqlite:$DATA_DIR/data/database.db?mode=rwc
 JWT_SECRET=$(openssl rand -base64 32)
 SERVERS_DIR=$DATA_DIR/servers
 BACKUPS_DIR=$DATA_DIR/backups
+UPLOADS_DIR=$DATA_DIR/data/uploads
+FRONTEND_URL=$PROTOCOL://$IP:5500
 RUST_LOG=info
 EOF
 
+    mkdir -p "$DATA_DIR/data/uploads"
+    chown -R $USER:$USER "$DATA_DIR"
     chown $USER:$USER "$DATA_DIR/.env"
     chmod 600 "$DATA_DIR/.env"
 }

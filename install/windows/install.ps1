@@ -111,6 +111,10 @@ function Build-Project {
     # Copier le frontend
     New-Item -ItemType Directory -Force -Path ..\backend\static | Out-Null
     Copy-Item -Path dist\* -Destination ..\backend\static -Recurse -Force
+
+    # Nettoyage
+    Write-ColorOutput Cyan "🧹 Nettoyage des fichiers de build..."
+    Remove-Item -Path node_modules -Recurse -Force
 }
 
 # Configuration
@@ -119,9 +123,10 @@ function Setup-Config {
     
     New-Item -ItemType Directory -Force -Path "$DataDir\servers" | Out-Null
     New-Item -ItemType Directory -Force -Path "$DataDir\backups" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$DataDir\data" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$DataDir\data\uploads" | Out-Null
     
     $jwtSecret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+    $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"} | Select-Object -First 1).IPAddress
     
     @"
 HOST=0.0.0.0
@@ -130,6 +135,8 @@ DATABASE_URL=sqlite:$DataDir\data\database.db?mode=rwc
 JWT_SECRET=$jwtSecret
 SERVERS_DIR=$DataDir\servers
 BACKUPS_DIR=$DataDir\backups
+UPLOADS_DIR=$DataDir\data\uploads
+FRONTEND_URL=http://$ip:5500
 RUST_LOG=info
 "@ | Set-Content "$DataDir\.env"
 }

@@ -102,7 +102,7 @@ irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/wi
 - [x] Backend API REST
 - [x] Console WebSocket
 - [x] Interface Dashboard
-- [ ] Configuration Dashboard
+- [x] Configuration Dashboard
 - [ ] Support Hytale
     - [x] Gestion Installation / Edit / Delete
     - [x] Gestion Console
@@ -112,8 +112,8 @@ irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/wi
     - [x] Meilleur FTP interne
     - [ ] Configuration temps réel avec les fichiers server
     - [ ] Gestion des mods ([CurseForge](https://www.curseforge.com/hytale/search?class=mods))
-    - [ ] Meilleur affichage joueurs
-    - [ ] Ajout des métriques
+    - [x] Meilleur affichage joueurs
+    - [x] Ajout des métriques
     - [ ] Gestion webhook
 - [ ] Support Minecraft
 - [ ] Support Palworld
