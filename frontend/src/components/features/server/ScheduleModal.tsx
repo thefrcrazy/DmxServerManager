@@ -290,12 +290,6 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
                     color: white;
                 }
                 
-                .mt-4 { margin-top: 16px; }
-            `}</style>
-        </div>
-    );
-}
-                    
                     <div className="modal__footer">
                         <button type="button" className="btn btn--secondary" onClick={onClose}>
                             {t("common.cancel")}
@@ -313,12 +307,33 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
                 .full-width { grid-column: span 2; }
                 .flex-row { display: flex; gap: 32px; align-items: center; }
                 .flex-1 { flex: 1; }
+                .self-center { align-self: center; }
                 
                 .form-group { display: flex; flex-direction: column; gap: 8px; }
                 .form-label { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
                 .form-help { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
                 
                 .input-group { display: flex; gap: 12px; align-items: flex-start; }
+                
+                .bg-darker { background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--border-card); }
+                
+                .weekday-selector { display: flex; gap: 8px; flex-wrap: wrap; }
+                .weekday-btn {
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    border: 1px solid var(--border-card);
+                    background: var(--bg-secondary);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    font-size: 0.85rem;
+                    transition: all 0.2s;
+                }
+                .weekday-btn:hover { border-color: var(--primary-color); }
+                .weekday-btn.active {
+                    background: var(--primary-color);
+                    border-color: var(--primary-color);
+                    color: white;
+                }
                 
                 .mt-4 { margin-top: 16px; }
             `}</style>
