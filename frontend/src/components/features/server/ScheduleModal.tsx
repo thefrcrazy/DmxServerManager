@@ -76,7 +76,7 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
             <div className="modal modal--large" onClick={e => e.stopPropagation()}>
                 <div className="modal__header">
                     <h3>{schedule ? t("server_detail.schedule.edit_task") : t("server_detail.schedule.create_task")}</h3>
-                    <button className="modal-close" onClick={onClose}><X size={20} /></button>
+                    <button className="modal-close" onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}><X size={20} /></button>
                 </div>
                 
                 <form onSubmit={handleSubmit}>
@@ -157,7 +157,7 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
                                 </div>
                             )}
 
-                            <div className="form-group full-width flex-row mt-4">
+                            <div className="full-width flex-row mt-4">
                                 <Checkbox
                                     checked={!!formData.enabled}
                                     onChange={val => setFormData({ ...formData, enabled: val })}
