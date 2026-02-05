@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path as StdPath;
 use tokio::fs;
 use crate::{core::error::AppError as ApiError, core::AppState};
+use crate::api::auth::AuthUser;
 use super::crud::get_server_by_id_internal;
 
 // ================= MODELS =================
@@ -80,6 +81,7 @@ fn get_player_file_path(working_dir: &str, filename: &str) -> std::path::PathBuf
 
 pub async fn get_whitelist(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let list = get_whitelist_internal(&state.pool, &id).await?;
@@ -125,6 +127,7 @@ pub async fn get_whitelist_internal(pool: &crate::core::database::DbPool, id: &s
 
 pub async fn add_whitelist(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<AddWhitelistRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -187,6 +190,7 @@ pub async fn add_whitelist(
 
 pub async fn remove_whitelist(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<RemoveWhitelistRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -240,6 +244,7 @@ pub async fn remove_whitelist(
 
 pub async fn get_bans(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
@@ -255,6 +260,7 @@ pub async fn get_bans(
 
 pub async fn add_ban(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<AddBanRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -293,6 +299,7 @@ pub async fn add_ban(
 
 pub async fn get_ops(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let server = get_server_by_id_internal(&state.pool, &id).await?;
@@ -323,6 +330,7 @@ pub async fn get_ops(
 
 pub async fn add_op(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<AddOpRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -357,6 +365,7 @@ pub async fn add_op(
 
 pub async fn remove_op(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<AddOpRequest>, 
 ) -> Result<impl IntoResponse, ApiError> {
@@ -378,6 +387,7 @@ pub async fn remove_op(
 
 pub async fn remove_ban(
     State(state): State<AppState>,
+    _auth: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<AddBanRequest>, 
 ) -> Result<impl IntoResponse, ApiError> {

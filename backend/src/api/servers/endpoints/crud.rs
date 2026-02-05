@@ -329,7 +329,7 @@ pub async fn get_server(
             .then_with(|| b.last_seen.cmp(&a.last_seen))
     });
 
-    let players = if final_players.is_empty() { None } else { Some(final_players) };
+    let players = Some(final_players);
 
     let config_json = server.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
     let mut max_players = config_json.as_ref()
@@ -478,17 +478,48 @@ pub async fn update_server(
         let universe_dir = server_dir.join("universe");
         let nested_config_path = universe_dir.join("config.json");
         
-        if let Ok(json_str) = serde_json::to_string_pretty(config_json) {
-            if let Err(e) = tokio::fs::write(&root_config_path, &json_str).await {
-                error!("Failed to write root config.json for server {}: {}", id, e);
+        // Prepare mapped config
+        let mut mapped_vals = templates::map_to_hytale_config(config_json);
+        
+        // Also inject top-level body fields if they are present and might be newer
+        if let Some(port) = body.port {
+            mapped_vals["Port"] = serde_json::json!(port);
+        }
+        if let Some(auth_mode) = &body.auth_mode {
+            let auth_store = if auth_mode == "authenticated" {
+                serde_json::json!({ "Type": "Encrypted", "Path": "auth.enc" })
+            } else {
+                serde_json::json!({ "Type": "None" })
+            };
+            mapped_vals["AuthCredentialStore"] = auth_store;
+        }
+        mapped_vals["ServerName"] = serde_json::json!(body.name);
+
+        // Use helper to merge with existing file if it exists
+        async fn merge_and_write(path: &std::path::Path, new_vals: &serde_json::Value) -> Result<(), std::io::Error> {
+            let mut current_config = if path.exists() {
+                let content = tokio::fs::read_to_string(path).await?;
+                serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+            } else {
+                serde_json::json!({})
+            };
+
+            crate::utils::templates::deep_merge(&mut current_config, new_vals);
+            let json_str = serde_json::to_string_pretty(&current_config)?;
+            tokio::fs::write(path, json_str).await?;
+            Ok(())
+        }
+
+        if let Err(e) = merge_and_write(&root_config_path, &mapped_vals).await {
+            error!("Failed to merge/write root config.json for server {}: {}", id, e);
+        }
+
+        if server_dir.exists() {
+            if !universe_dir.exists() {
+                let _ = tokio::fs::create_dir_all(&universe_dir).await;
             }
-            if server_dir.exists() {
-                 if !universe_dir.exists() {
-                     let _ = tokio::fs::create_dir_all(&universe_dir).await;
-                 }
-                 if let Err(e) = tokio::fs::write(&nested_config_path, &json_str).await {
-                    error!("Failed to write nested server/universe/config.json for server {}: {}", id, e);
-                }
+            if let Err(e) = merge_and_write(&nested_config_path, &mapped_vals).await {
+                error!("Failed to merge/write nested config.json for server {}: {}", id, e);
             }
         }
     }

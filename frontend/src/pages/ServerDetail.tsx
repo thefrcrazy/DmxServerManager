@@ -748,9 +748,23 @@ export default function ServerDetail() {
         } catch (e) { console.error(e); }
     };
 
+    // Merge real-time players (names) with static player data (op, etc.)
+    const onlinePlayers: Player[] = currentPlayersList.map(name => {
+        const existing = server?.players?.find(p => p.name === name);
+        if (existing) return { ...existing, is_online: true };
+        return {
+            name,
+            is_online: true,
+            last_seen: new Date().toISOString(),
+            is_op: false,
+            is_banned: false,
+            is_whitelisted: false
+        };
+    });
+
     // Players Logic
-    const fetchPlayerData = async () => {
-        if (!server) return;
+    const fetchPlayerData = useCallback(async () => {
+        if (!server || !id) return;
 
         try {
             let list: Player[] = [];
@@ -762,7 +776,9 @@ export default function ServerDetail() {
                 // All players ever seen from DB (included in server response)
                 list = server.players || [];
             } else if (activePlayerTab === "whitelist") {
-                const res = await fetch(`/api/v1/servers/${id}/whitelist`);
+                const res = await fetch(`/api/v1/servers/${id}/whitelist`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                });
                 if (res.ok) {
                     const data = await res.json();
                     list = data.map((entry: any) => ({
@@ -774,7 +790,9 @@ export default function ServerDetail() {
                     }));
                 }
             } else if (activePlayerTab === "bans") {
-                const res = await fetch(`/api/v1/servers/${id}/bans`);
+                const res = await fetch(`/api/v1/servers/${id}/bans`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                });
                 if (res.ok) {
                     const data = await res.json();
                     list = data.map((b: any) => ({
@@ -790,7 +808,9 @@ export default function ServerDetail() {
                     }));
                 }
             } else if (activePlayerTab === "ops") {
-                const res = await fetch(`/api/v1/servers/${id}/ops`);
+                const res = await fetch(`/api/v1/servers/${id}/ops`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                });
                 if (res.ok) {
                     const data = await res.json();
                     list = data.map((op: any) => ({
@@ -807,7 +827,7 @@ export default function ServerDetail() {
         } catch (e) {
             console.error("Failed to fetch player data", e);
         }
-    };
+    }, [id, server, activePlayerTab, onlinePlayers]);
 
     const handlePlayerAction = async (action: string, player: Player) => {
         if (!player.name) return;
@@ -850,19 +870,28 @@ export default function ServerDetail() {
                 if (activePlayerTab === "whitelist") {
                     await fetch(`/api/v1/servers/${id}/whitelist`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { 
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem("token")}` 
+                        },
                         body: JSON.stringify({ name, uuid: name }) // Fallback uuid=name if unknown
                     });
                 } else if (activePlayerTab === "ops") {
                     await fetch(`/api/v1/servers/${id}/ops`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { 
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem("token")}` 
+                        },
                         body: JSON.stringify({ uuid: name }) // Prompt is name/uuid entry
                     });
                 } else if (activePlayerTab === "bans") {
                     await fetch(`/api/v1/servers/${id}/bans`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { 
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem("token")}` 
+                        },
                         body: JSON.stringify({ target: name, reason: "Banned via Panel" })
                     });
                 }
@@ -887,19 +916,28 @@ export default function ServerDetail() {
                 if (activePlayerTab === "whitelist") {
                     await fetch(`/api/v1/servers/${id}/whitelist`, {
                         method: "DELETE",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { 
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem("token")}`
+                        },
                         body: JSON.stringify({ name: player.name, uuid: player.uuid })
                     });
                 } else if (activePlayerTab === "ops") {
                     await fetch(`/api/v1/servers/${id}/ops`, {
                         method: "DELETE",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { 
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem("token")}` 
+                        },
                         body: JSON.stringify({ uuid: player.uuid })
                     });
                 } else if (activePlayerTab === "bans") {
                     await fetch(`/api/v1/servers/${id}/bans`, {
                         method: "DELETE",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { 
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem("token")}` 
+                        },
                         body: JSON.stringify({ target: player.uuid })
                     });
                 }
@@ -919,8 +957,10 @@ export default function ServerDetail() {
             fetchLogFiles();
             if (selectedLogFile) readLogFile(selectedLogFile);
         }
-        else if (activeTab === "players") { /* fetch players list */ }
-    }, [activeTab, fetchBackups, fetchFiles]);
+        else if (activeTab === "players") {
+            fetchPlayerData();
+        }
+    }, [activeTab, activePlayerTab, fetchBackups, fetchFiles, fetchPlayerData]);
 
     // Page Title
     useEffect(() => {
@@ -978,20 +1018,6 @@ export default function ServerDetail() {
         }
         return false;
     })();
-
-    // Merge real-time players (names) with static player data (op, etc.)
-    const onlinePlayers: Player[] = currentPlayersList.map(name => {
-        const existing = server?.players?.find(p => p.name === name);
-        if (existing) return { ...existing, is_online: true };
-        return {
-            name,
-            is_online: true,
-            last_seen: new Date().toISOString(),
-            is_op: false,
-            is_banned: false,
-            is_whitelisted: false
-        };
-    });
 
     if (!server) return <div className="loading-screen"><div className="spinner"></div></div>;
 
