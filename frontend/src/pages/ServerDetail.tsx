@@ -253,6 +253,7 @@ export default function ServerDetail() {
     const tabs: Tab[] = [
         { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
         { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
+        { id: "schedule", label: t("server_detail.tabs.schedule"), icon: <Clock size={18} /> },
         { id: "backups", label: t("server_detail.tabs.backups"), icon: <History size={18} /> },
         { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
         { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
