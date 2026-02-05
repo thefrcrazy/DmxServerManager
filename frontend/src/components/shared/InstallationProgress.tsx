@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Terminal, Download, Folder, Check, AlertTriangle, ExternalLink } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import Ansi from "ansi-to-react";
 
 interface InstallationProgressProps {
     logs: string[];
@@ -9,6 +10,8 @@ interface InstallationProgressProps {
     isAuthRequired?: boolean;
     onSendAuth?: () => void;
 }
+
+const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
 
 const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClose, isInstalling, isAuthRequired, onSendAuth }) => {
     const { t } = useLanguage();
@@ -39,19 +42,16 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         // Determine max step from ALL logs
         let maxStep = 0;
         for (const log of logs) {
-            if (log.includes("Initialization de l'installation") || log.includes("Starting Hytale Server Installation")) maxStep = Math.max(maxStep, 0);
-            if (log.includes("Téléchargement")) maxStep = Math.max(maxStep, 1);
-            if (log.includes("Extraction") || log.includes("Décompression")) maxStep = Math.max(maxStep, 2);
-            if (log.includes("Installation terminée") || log.includes("Installation finished")) maxStep = Math.max(maxStep, 3);
+            const clean = stripAnsi(log);
+            if (clean.includes("Initialization de l'installation") || clean.includes("Starting Hytale Server Installation")) maxStep = Math.max(maxStep, 0);
+            if (clean.includes("Téléchargement")) maxStep = Math.max(maxStep, 1);
+            if (clean.includes("Extraction") || clean.includes("Décompression")) maxStep = Math.max(maxStep, 2);
+            if (clean.includes("Installation terminée") || clean.includes("Installation finished")) maxStep = Math.max(maxStep, 3);
         }
         setCurrentStep(maxStep);
 
-        // Helper to strip ANSI codes
-        const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
-
         // Check for Auth URL in ALL logs
         // We join them but also strip ANSI to ensure clean matching
-        // Note: Joining with newline is good, but we should process line by line or strip globally
         const fullLogClean = stripAnsi(logs.join("\n"));
 
         // Pattern: https://oauth.accounts.hytale.com/...
@@ -61,7 +61,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         // We want to prioritize the second one if it exists.
 
         // Find ALL matches
-        const allLinkMatches = fullLogClean.match(/(https:\/\/oauth\.accounts\.hytale\.com\/[^\s\u001b]+)/g);
+        const allLinkMatches = fullLogClean.match(/(https:\/\/(?:oauth\.)?accounts\.hytale\.com\/[^\s\u001b]+)/g);
 
         let bestUrl: string | null = null;
         if (allLinkMatches && allLinkMatches.length > 0) {
@@ -74,8 +74,6 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         }
 
         // Check for progress bar in recent logs (look at last few lines)
-        // Format: [==========] 27.0% (385.0 MB / 1.4 GB)
-        // Regex: \[\=*\s*\]\s*([\d\.]+)%\s*\(([^)]+)\)
         let foundProgress = false;
         // Search from end to find most recent progress
         for (let i = logs.length - 1; i >= Math.max(0, logs.length - 10); i--) {
@@ -92,7 +90,6 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         }
 
         // If we found progress, it implies Auth is passed.
-        // If NO progress found yet, check/keep auth.
         if (foundProgress) {
             setAuthUrl(null);
             setAuthCode(null);
@@ -106,13 +103,14 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
             } else {
                 // Fallback: Check for "Enter code: XXXXXX" or "Authorization code: XXXXXX"
                 // Log example: "Enter code: RJNt7CLJ"
-                const manualCodeMatch = fullLogClean.match(/(?:Authorization|Enter) code:\s*([^\s]+)/i);
+                const manualCodeMatch = fullLogClean.match(/(?:Authorization|Enter) (?:the )?code:\s*([^\s\.]+)/i);
                 if (manualCodeMatch) {
-                    const code = manualCodeMatch[1];
+                    const code = manualCodeMatch[1].trim();
                     setAuthCode(code);
                     // Construct full URL if missing
-                    if (!bestUrl.includes("?")) {
-                        setAuthUrl(`${bestUrl}?user_code=${code}`);
+                    if (!bestUrl.includes("user_code=")) {
+                        const separator = bestUrl.includes("?") ? "&" : "?";
+                        setAuthUrl(`${bestUrl}${separator}user_code=${code}`);
                     }
                 }
             }
@@ -125,7 +123,6 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
     }, [logs]);
 
     // If not installing and no logs, don't show (sanity check)
-    // But if auth is required, we should show it regardless of logs length effectively (though logs might contain the url)
     if (!isInstalling && !isAuthRequired && logs.length === 0) return null;
 
     const isRuntimeAuth = !isInstalling && isAuthRequired;
@@ -253,7 +250,8 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                             // Get last non-empty log, ignoring simple newlines
                             const lastLines = logs.filter(l => l.trim().length > 0);
                             const lastLine = lastLines[lastLines.length - 1] || "...";
-                            return lastLine.replace(/^\[ERR\]\s*/, "").substring(0, 80) + (lastLine.length > 80 ? "..." : "");
+                            const clean = stripAnsi(lastLine).replace(/^\[ERR\]\s*/, "");
+                            return clean.substring(0, 80) + (clean.length > 80 ? "..." : "");
                         })()}
                     </div>
                 )}
@@ -268,7 +266,9 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
                             <div className="text-muted italic opacity-50">{t("installation.waiting_logs")}</div>
                         ) : (
                             logs.map((log, i) => (
-                                <div key={i} className="log-line">{log}</div>
+                                <div key={i} className="log-line">
+                                    <Ansi>{log}</Ansi>
+                                </div>
                             ))
                         )}
                     </div>
