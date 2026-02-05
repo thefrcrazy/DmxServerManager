@@ -214,7 +214,7 @@
             align-items: flex-end;
 
             .main-val {
-                color: var(--color-info);
+                color: var(--color-accent);
                 font-size: 0.875rem;
             }
 
@@ -250,9 +250,9 @@
         &--danger  { background: #ef4444; }
 
         &--info {
-            background: #3b82f6;
+            background: var(--color-accent);
             z-index: 2;
-            box-shadow: 2px 0 8px rgba(59, 130, 246, 0.5);
+            box-shadow: 2px 0 8px rgba(var(--color-accent-rgb), 0.5);
         }
     }
 
@@ -275,7 +275,7 @@
 }
 
 .text-info {
-    color: #3b82f6;
+    color: var(--color-accent);
 }
 
 .mt-2 {
