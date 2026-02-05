@@ -26,6 +26,8 @@ interface UseServerWebSocketReturn {
     setIsInstalling: React.Dispatch<React.SetStateAction<boolean>>;
     isAuthRequired: boolean;
     setIsAuthRequired: React.Dispatch<React.SetStateAction<boolean>>;
+    isBooted: boolean;
+    setIsBooted: React.Dispatch<React.SetStateAction<boolean>>;
     sendCommand: (command: string) => void;
     clearLogs: () => void;
     wsRef: React.RefObject<WebSocket | null>;
@@ -56,6 +58,7 @@ export function useServerWebSocket({
     const [currentPlayersList, setCurrentPlayersList] = useState<string[]>([]);
     const [isInstalling, setIsInstalling] = useState(false);
     const [isAuthRequired, setIsAuthRequired] = useState(false);
+    const [isBooted, setIsBooted] = useState(false);
 
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -133,19 +136,21 @@ export function useServerWebSocket({
                     setStartTime(new Date());
                     setIsInstalling(false);
                     setIsAuthRequired(false);
+                } else if (status === "booted") {
+                    setIsBooted(true);
+                } else if (status === "auth_success") {
+                    setIsAuthRequired(false);
+                    setIsInstalling(false);
                 } else if (status === "installing") {
                     setIsInstalling(true);
                     setIsAuthRequired(false);
                 } else if (status === "auth_required") {
                     setIsAuthRequired(true);
-                    // Don't change isInstalling here as it might be part of install flow? 
-                    // Actually, if auth is required, we are usually waiting, so not strictly "installing" actively
-                    // but let's keep isInstalling true or false based on prior state? 
-                    // Better: auth_required usually halts installation.
                 } else if (status === "stopped" || status === "offline") {
                     setStartTime(null);
                     setIsInstalling(false);
                     setIsAuthRequired(false);
+                    setIsBooted(false);
                 }
 
                 onStatusChange?.(status);
@@ -268,6 +273,8 @@ export function useServerWebSocket({
         setIsInstalling,
         isAuthRequired,
         setIsAuthRequired,
+        isBooted,
+        setIsBooted,
         sendCommand,
         clearLogs,
         wsRef,

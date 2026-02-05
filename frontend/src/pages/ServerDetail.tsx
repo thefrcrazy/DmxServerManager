@@ -196,6 +196,7 @@ export default function ServerDetail() {
         setIsInstalling,
         isAuthRequired,
         setIsAuthRequired,
+        isBooted,
         sendCommand,
         currentPlayers,
         currentPlayersList,
@@ -1129,7 +1130,7 @@ export default function ServerDetail() {
 
             <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
-            {(isInstalling || isAuthRequired) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => { setIsInstalling(false); setIsAuthRequired(false); }} onSendAuth={() => sendCommand("auth login device")} />}
+            {(isInstalling || (isAuthRequired && isBooted)) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => { setIsInstalling(false); setIsAuthRequired(false); }} onSendAuth={() => sendCommand("auth login device")} />}
 
             <div className="tab-content">
                 {activeTab === "console" && (

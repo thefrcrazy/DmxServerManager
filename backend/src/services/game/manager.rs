@@ -549,6 +549,17 @@ impl ProcessManager {
                          }
                     }
 
+                    if line.contains("Hytale Server Booted!") {
+                        let _ = tx.send("[STATUS]: booted".to_string());
+                    }
+
+                    if line.contains("Authentication successful!") {
+                        if let Ok(mut auth) = auth_required_clone.write() {
+                            *auth = false;
+                            let _ = tx.send("[STATUS]: auth_success".to_string());
+                        }
+                    }
+
                     let _ = tx.send(line);
                 }
                 
