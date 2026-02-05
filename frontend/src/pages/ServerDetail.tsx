@@ -157,13 +157,6 @@ export default function ServerDetail() {
     const [server, setServer] = useState<Server | null>(null);
     const [searchParams, setSearchParams] = useSearchParams();
 
-    // Notify when auth is required
-    useEffect(() => {
-        if (isAuthRequired && isBooted) {
-            showError(t("installation.auth_required"), { duration: 10000 });
-        }
-    }, [isAuthRequired, isBooted, t]);
-
     const tabParam = searchParams.get("tab") as TabId | null;
     const [activeTab, setActiveTab] = useState<TabId>(tabParam || "console");
 
@@ -214,6 +207,13 @@ export default function ServerDetail() {
         onServerUpdate: fetchServer,
         onStatusChange: useCallback((status: string) => setServer((prev) => (prev ? { ...prev, status } : null)), []),
     });
+
+    // Notify when auth is required
+    useEffect(() => {
+        if (isAuthRequired && isBooted) {
+            showError(t("installation.auth_required"), 10000);
+        }
+    }, [isAuthRequired, isBooted, t, showError]);
 
     // Initial server fetch on mount
     useEffect(() => {
