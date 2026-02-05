@@ -202,9 +202,12 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
     }
 
     let mut managed_disk = 0;
-    if let Ok(server_rows) = sqlx::query!("SELECT working_dir FROM servers").fetch_all(&state.pool).await {
+    if let Ok(server_rows) = sqlx::query("SELECT working_dir FROM servers").fetch_all(&state.pool).await {
+        use sqlx::Row;
         for row in server_rows {
-            managed_disk += get_dir_size(&row.working_dir).await;
+            if let Ok(working_dir) = row.try_get::<String, _>("working_dir") {
+                managed_disk += get_dir_size(&working_dir).await;
+            }
         }
     }
 
