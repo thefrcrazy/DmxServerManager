@@ -4,7 +4,7 @@ use axum::{
     http::HeaderMap,
 };
 use serde::Deserialize;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use futures::{sink::SinkExt, stream::StreamExt};
 
 use crate::core::AppState;
@@ -23,13 +23,19 @@ pub async fn ws_handler(
     Query(query): Query<WsQuery>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
+    // Debug log for token reception
+    // warn!("WS Connect attempt. Query token present: {}, Headers: {:?}", query.token.is_some(), headers);
+
     // Try to get token from query string or Sec-WebSocket-Protocol header
     let token = query.token.or_else(|| {
         headers.get("sec-websocket-protocol")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.split(',').next())
             .map(|s| s.trim().to_string())
-    }).ok_or_else(|| AppError::Unauthorized("Missing token".into()))?;
+    }).ok_or_else(|| {
+        warn!("WebSocket connection rejected: Missing token. Server: {}", server_id);
+        AppError::Unauthorized("Missing token".into())
+    })?;
     
     // Manual token verification
     let secret = crate::core::database::get_or_create_jwt_secret(&state.pool).await
@@ -39,7 +45,10 @@ pub async fn ws_handler(
         &token,
         &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
         &jsonwebtoken::Validation::default(),
-    ).map_err(|_| AppError::Unauthorized("Invalid token".into()))?;
+    ).map_err(|e| {
+        warn!("WebSocket connection rejected: Invalid token: {}", e);
+        AppError::Unauthorized("Invalid token".into())
+    })?;
 
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, server_id, state)))
 }

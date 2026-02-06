@@ -121,8 +121,8 @@ export function useServerWebSocket({
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/console/${serverId}?token=${encodeURIComponent(token)}`;
         
-        // Pass token also via protocols for better compatibility with some proxies
-        const ws = new WebSocket(wsUrl, [token]);
+        // Only use URL param, avoid protocol abuse which can cause issues
+        const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
             setIsConnected(true);
