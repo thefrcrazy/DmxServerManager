@@ -205,27 +205,41 @@ export function useServerWebSocket({
 
     // Update server status ref and handle connection
     useEffect(() => {
+        const prevStatus = serverStatusRef.current;
         serverStatusRef.current = serverStatus;
 
         setIsInstalling(serverStatus === "installing");
         setIsAuthRequired(serverStatus === "auth_required");
 
-        if ((serverStatus === "running" ||
+        const isActivating = (serverStatus === "running" ||
             serverStatus === "installing" ||
-            serverStatus === "auth_required") && !wsRef.current) {
+            serverStatus === "auth_required" ||
+            serverStatus === "starting");
+
+        if (isActivating) {
             shouldReconnectRef.current = true;
-            connectWebSocket();
+            // If status changed to something active, force a new connection if none exists or if it's closed
+            if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED || wsRef.current.readyState === WebSocket.CLOSING) {
+                connectWebSocket();
+            }
         }
 
-        if (serverStatus === "stopped" || serverStatus === "offline") {
+        if (serverStatus === "stopped" || serverStatus === "offline" || serverStatus === "missing") {
             setIsAuthRequired(false);
             setIsInstalling(false);
+            shouldReconnectRef.current = false;
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
         }
     }, [serverStatus, connectWebSocket]);
 
-    // Refetch logs when status changes (without reconnecting WS)
+    // Refetch logs when status changes (without reconnecting WS if already active)
     useEffect(() => {
-        fetchConsoleLog();
+        if (serverStatus === "running" || serverStatus === "installing") {
+            fetchConsoleLog();
+        }
     }, [serverStatus, fetchConsoleLog]);
 
     // Initial connection and cleanup
