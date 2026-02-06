@@ -210,7 +210,6 @@ export function useServerWebSocket({
 
     // Update server status ref and handle connection
     useEffect(() => {
-        const prevStatus = serverStatusRef.current;
         serverStatusRef.current = serverStatus;
 
         setIsInstalling(serverStatus === "installing");
