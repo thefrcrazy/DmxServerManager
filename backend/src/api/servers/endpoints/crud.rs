@@ -80,12 +80,14 @@ pub async fn list_servers(
         }
 
         let started_at = pm.get_server_started_at(&s.id).await;
-        let (cpu, cpu_norm, mem, mut disk) = pm.get_metrics_data(&s.id).await;
+        let (cpu, cpu_norm, mem, last_disk) = pm.get_metrics_data(&s.id).await;
 
-        if disk == 0 {
-            // Use native size calculation if possible
-            disk = crate::utils::files::calculate_dir_size(StdPath::new(&s.working_dir)).await;
-        }
+        // Use cached disk size if available, otherwise calculate it
+        let disk = if last_disk > 0 {
+            last_disk
+        } else {
+            crate::utils::files::calculate_dir_size(StdPath::new(&s.working_dir)).await
+        };
 
         let heap_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
         let total_bytes = calculate_total_memory(heap_bytes);

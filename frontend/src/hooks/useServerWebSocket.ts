@@ -116,7 +116,8 @@ export function useServerWebSocket({
         }
 
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/console/${serverId}`);
+        const token = localStorage.getItem("token");
+        const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/console/${serverId}?token=${encodeURIComponent(token || "")}`);
 
         ws.onopen = () => {
             setIsConnected(true);

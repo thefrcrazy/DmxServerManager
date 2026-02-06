@@ -328,8 +328,7 @@ impl ProcessManager {
         cmd.arg(format!("-Xms{xms}"))
             .arg(format!("-Xmx{xmx}"))
             .arg("-Dterminal.jline=true")
-            .arg("-Dterminal.ansi=true")
-            .arg("-XX:AOTCache=HytaleServer.aot");
+            .arg("-Dterminal.ansi=true");
 
         if let Some(args) = extra_args {
             for arg in args.split_whitespace() {
