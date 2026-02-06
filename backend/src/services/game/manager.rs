@@ -77,7 +77,7 @@ impl ProcessManager {
 
                                     // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
                                     let mut disk_size: u64 = 0;
-                                    if tick_count % 15 == 0 {
+                                    if tick_count.is_multiple_of(15) {
                                         let server_path = std::path::PathBuf::from(&server_proc.working_dir);
                                         // Use optimized calculation if available via shared utils, but here we are in service layer
                                         // We can use the util we just updated.
@@ -112,7 +112,7 @@ impl ProcessManager {
                                     }
 
                                     // Save metrics to DB every 30 seconds (15 ticks)
-                                    if tick_count % 15 == 0 {
+                                    if tick_count.is_multiple_of(15) {
                                         if let Some(pool) = &pool_clone {
                                             let pool = pool.clone();
                                             let server_id = server_id.clone();
@@ -141,7 +141,7 @@ impl ProcessManager {
                 }
 
                 // Cleanup old metrics every hour (1800 ticks at 2s interval)
-                if tick_count > 0 && tick_count % 1800 == 0 {
+                if tick_count > 0 && tick_count.is_multiple_of(1800) {
                     if let Some(pool) = &pool_clone {
                         let pool = pool.clone();
                         tokio::spawn(async move {
