@@ -69,24 +69,18 @@ export function useServerWebSocket({
     // Fetch console log history
     const fetchConsoleLog = useCallback(async () => {
         if (!serverId) return;
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
         try {
             // Try install log first
             const installRes = await fetch(`/api/v1/servers/${serverId}/files/read?path=logs/install.log`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                headers: { Authorization: `Bearer ${token}` },
             });
-
-            if (installRes.ok) {
-                const data = await installRes.json();
-                // Just check for content, don't parse for status
-                if (data.content && serverStatusRef.current === "installing") {
-                    // If server status is installing, show install logs
-                    // But we might want to append? For now let's just respect the current logic priority
-                }
-            }
 
             // Try console log
             const res = await fetch(`/api/v1/servers/${serverId}/files/read?path=logs/console.log`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                headers: { Authorization: `Bearer ${token}` },
             });
 
             if (res.ok) {
@@ -95,14 +89,13 @@ export function useServerWebSocket({
                     setLogs(data.content.split("\n"));
                 }
             } else if (installRes.ok) {
-                // If no console log but install log exists, use that
                 const data = await installRes.json();
                 if (data.content) setLogs(data.content.split("\n"));
             }
         } catch (error) {
             console.error("Failed to fetch console log:", error);
         }
-    }, [serverId]); // Removed serverStatus dependence
+    }, [serverId]);
 
     // WebSocket connection
     const connectWebSocket = useCallback(() => {

@@ -1093,16 +1093,20 @@ export default function ServerDetail() {
 
     if (!server) return <div className="loading-screen"><div className="spinner"></div></div>;
 
+    const displayCpu = cpuUsage > 0 ? cpuUsage : (server.cpu_usage || 0);
+    const displayRam = ramUsage > 0 ? ramUsage : (server.memory_usage_bytes || 0);
+    const displayDisk = diskUsage !== null ? diskUsage : (server.disk_usage_bytes || 0);
+
     return (
         <div className="server-detail-page">
             <div className="server-header-stats">
-                {/* ... Stats Pills (Keep as is, they were fine) ... */}
+                {/* ... Stats Pills ... */}
                 <div className="stat-pill"><div className="stat-pill__icon"><Clock size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">UPTIME</div><div className="stat-pill__value">{uptime}</div></div></div>
                 <div className="stat-pill"><div className="stat-pill__icon"><Users size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">PLAYERS</div><div className="stat-pill__value">{currentPlayersList.length} / {server.max_players || 100}</div></div></div>
                 <div className="stat-pill"><div className="stat-pill__icon"><Globe size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">ADDRESS</div><div className="stat-pill__value">{server.bind_address}:{server.port}</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><Cpu size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">CPU</div><div className="stat-pill__value">{Math.round(cpuUsage)}%</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">RAM</div><div className="stat-pill__value">{formatGB(ramUsage)}</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">DISK</div><div className="stat-pill__value">{diskUsage !== null ? formatBytes(diskUsage) : "0 B"}</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><Cpu size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">CPU</div><div className="stat-pill__value">{Math.round(displayCpu)}%</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">RAM</div><div className="stat-pill__value">{formatGB(displayRam)}</div></div></div>
+                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">DISK</div><div className="stat-pill__value">{formatBytes(displayDisk)}</div></div></div>
             </div>
 
             <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
