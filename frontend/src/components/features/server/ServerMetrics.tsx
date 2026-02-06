@@ -41,7 +41,7 @@ export default function ServerMetrics({
     const { t } = useLanguage();
     const [history, setHistory] = useState<MetricsDataPoint[]>([]);
     const [period, setPeriod] = useState<Period>("1d");
-    const [_isLoading, setIsLoading] = useState(true);
+    const [, setIsLoading] = useState(true);
     const lastUpdateRef = useRef<number>(0);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 

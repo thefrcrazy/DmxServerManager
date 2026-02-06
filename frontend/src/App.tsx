@@ -48,7 +48,7 @@ function SetupCheck({ children }: { children: React.ReactNode }) {
         };
 
         checkSetup();
-    }, []);
+    }, [location.pathname, navigate]);
 
     if (isChecking) {
         return (

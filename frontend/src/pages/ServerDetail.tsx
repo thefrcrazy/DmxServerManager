@@ -46,10 +46,6 @@ interface FileEntry {
     size?: number;
 }
 
-// Don't define local Player interface, import or redefine compatible one if needed.
-// Actually, to avoid conflicts, let's just make the local one compatible or remove it if I import.
-// For now, I will align the local interface with ServerPlayers requirement.
-
 interface Player {
     name: string;
     uuid?: string;
@@ -88,6 +84,7 @@ interface Server {
     port?: number;
     motd?: string;
     password?: string;
+    nice_level: number;
     auth_mode?: "authenticated" | "offline";
     allow_op?: boolean;
     backup_enabled?: boolean;
@@ -150,13 +147,25 @@ export default function ServerDetail() {
     const tabParam = searchParams.get("tab") as TabId | null;
     const [activeTab, setActiveTab] = useState<TabId>(tabParam || "console");
 
+    const tabs = useMemo<Tab[]>(() => [
+        { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
+        { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
+        { id: "schedule", label: t("server_detail.tabs.schedule"), icon: <Clock size={18} /> },
+        { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
+        { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
+        { id: "mods", label: t("server_detail.tabs.mods"), icon: <Package size={18} /> },
+        { id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> },
+        { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
+        { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
+    ], [t]);
+
     // Sync activeTab from URL changes (activeTab follows URL)
     useEffect(() => {
         const tab = searchParams.get("tab") as TabId | null;
         if (tab && tabs.some(t => t.id === tab)) {
             setActiveTab(tab);
         }
-    }, [searchParams]);
+    }, [searchParams, tabs]);
 
     const handleTabChange = (tabId: TabId) => {
         setActiveTab(tabId);
@@ -171,6 +180,8 @@ export default function ServerDetail() {
         const data = await response.json();
         setServer(data);
     }, [id]);
+
+    const onStatusChange = useCallback((status: string) => setServer((prev) => (prev ? { ...prev, status } : null)), []);
 
     // Use WebSocket hook for console, metrics and installation state
     const {
@@ -192,10 +203,10 @@ export default function ServerDetail() {
         currentPlayers,
         currentPlayersList,
     } = useServerWebSocket({
-        serverId: id,
+        serverId: id!,
         serverStatus: server?.status,
         onServerUpdate: fetchServer,
-        onStatusChange: useCallback((status: string) => setServer((prev) => (prev ? { ...prev, status } : null)), []),
+        onStatusChange,
     });
 
     // Notify when auth is required
@@ -232,6 +243,44 @@ export default function ServerDetail() {
     const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
     const [logContent, setLogContent] = useState("");
 
+    const readLogFile = useCallback(async (path: string) => {
+        if (!id) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/files/read?path=${encodeURIComponent(path)}`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            const data = await response.json();
+            setLogContent(data.content || "");
+            setSelectedLogFile(path);
+        } catch (error) { console.error(error); }
+    }, [id]);
+
+    const fetchLogFiles = useCallback(async () => {
+        if (!id) return;
+        try {
+            const response = await fetch(`/api/v1/servers/${id}/files?path=logs`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            const data = await response.json();
+            let logs = (data.entries || []).filter((f: FileEntry) => !f.is_dir);
+            logs.sort((a: FileEntry, b: FileEntry) => b.name.localeCompare(a.name));
+
+            const bottomLogs = ["console.log", "install.log"];
+            const specialLogs: FileEntry[] = [];
+            logs = logs.filter((l: FileEntry) => {
+                if (l.name.endsWith(".lck")) return false;
+                if (bottomLogs.includes(l.name)) { specialLogs.push(l); return false; }
+                return true;
+            });
+            if (!specialLogs.some((l) => l.name === "console.log")) {
+                specialLogs.push({ name: "console.log", path: "logs/console.log", is_dir: false });
+            }
+            logs.push(...specialLogs);
+            setLogFiles(logs);
+            if (logs.length > 0 && !selectedLogFile) readLogFile(logs[0].path);
+        } catch (error) { console.error(error); }
+    }, [id, selectedLogFile, readLogFile]);
+
     // Config tab state
     const [configFormData, setConfigFormData] = useState<Partial<Server>>({});
     const [initialConfigFormData, setInitialConfigFormData] = useState<Partial<Server>>({});
@@ -245,19 +294,6 @@ export default function ServerDetail() {
     const [activePlayerTab, setActivePlayerTab] = useState<"online" | "whitelist" | "bans" | "ops" | "database">("online");
     const [playerData, setPlayerData] = useState<Player[]>([]);
     const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
-
-
-    const tabs: Tab[] = [
-        { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
-        { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
-        { id: "schedule", label: t("server_detail.tabs.schedule"), icon: <Clock size={18} /> },
-        { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
-        { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
-        { id: "mods", label: t("server_detail.tabs.mods"), icon: <Package size={18} /> },
-        { id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> },
-        { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
-        { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
-    ];
 
     // Uptime
     useEffect(() => {
@@ -309,7 +345,7 @@ export default function ServerDetail() {
             console.error(e);
             showError(t("server_detail.messages.connection_error"));
         }
-    }, [id, server, t, fetchServer]);
+    }, [id, server?.status, t, fetchServer, setLogs, setIsAuthRequired, setStartTime, showError]);
 
     const fetchSchedules = useCallback(async () => {
         if (!id) return;
@@ -564,45 +600,6 @@ export default function ServerDetail() {
         } catch (error) { console.error(error); }
     };
 
-
-    const fetchLogFiles = async () => {
-        if (!id) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files?path=logs`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            const data = await response.json();
-            let logs = (data.entries || []).filter((f: FileEntry) => !f.is_dir);
-            logs.sort((a: FileEntry, b: FileEntry) => b.name.localeCompare(a.name));
-
-            const bottomLogs = ["console.log", "install.log"];
-            const specialLogs: FileEntry[] = [];
-            logs = logs.filter((l: FileEntry) => {
-                if (l.name.endsWith(".lck")) return false;
-                if (bottomLogs.includes(l.name)) { specialLogs.push(l); return false; }
-                return true;
-            });
-            if (!specialLogs.some((l) => l.name === "console.log")) {
-                specialLogs.push({ name: "console.log", path: "logs/console.log", is_dir: false });
-            }
-            logs.push(...specialLogs);
-            setLogFiles(logs);
-            if (logs.length > 0 && !selectedLogFile) readLogFile(logs[0].path);
-        } catch (error) { console.error(error); }
-    };
-
-    const readLogFile = async (path: string) => {
-        if (!id) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files/read?path=${encodeURIComponent(path)}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            const data = await response.json();
-            setLogContent(data.content || "");
-            setSelectedLogFile(path);
-        } catch (error) { console.error(error); }
-    };
-
     // Config Logic
     useEffect(() => {
         if (activeTab === "config") {
@@ -612,7 +609,7 @@ export default function ServerDetail() {
                         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
                     });
                     if (response.ok) setJavaVersions(await response.json());
-                } catch (error) { }
+                } catch (error) { console.error(error); }
             };
             fetchJavaVersions();
             if (server) {
@@ -886,7 +883,7 @@ export default function ServerDetail() {
         } catch (e) {
             console.error("Failed to fetch player data", e);
         }
-    }, [id, activePlayerTab, server?.players]);
+    }, [id, activePlayerTab, server]);
 
     useEffect(() => {
         if (activeTab === "players" && activePlayerTab !== "online") {
@@ -895,11 +892,11 @@ export default function ServerDetail() {
     }, [activeTab, activePlayerTab, fetchApiPlayers]);
     
     // Helper to refresh current view
-    const refreshPlayers = () => {
+    const refreshPlayers = useCallback(() => {
         if (activePlayerTab !== "online") {
             fetchApiPlayers();
         }
-    };
+    }, [activePlayerTab, fetchApiPlayers]);
 
     const handlePlayerAction = async (action: string, player: Player) => {
         if (!player.name) return;
@@ -1029,7 +1026,7 @@ export default function ServerDetail() {
             fetchLogFiles();
             if (selectedLogFile) readLogFile(selectedLogFile);
         }
-    }, [activeTab, fetchFiles]);
+    }, [activeTab, fetchFiles, fetchSchedules, fetchLogFiles, readLogFile, selectedLogFile]);
 
     // Page Title
     useEffect(() => {
@@ -1056,7 +1053,7 @@ export default function ServerDetail() {
         }
     }, [server, setPageTitle, handleAction, t]);
 
-    const configHasChanges = (() => {
+    const configHasChanges = useMemo(() => {
         if (!configFormData.id || !initialConfigFormData.id) return false;
 
         const keys = Array.from(new Set([...Object.keys(configFormData), ...Object.keys(initialConfigFormData)]));
@@ -1092,7 +1089,7 @@ export default function ServerDetail() {
             }
         }
         return false;
-    })();
+    }, [configFormData, initialConfigFormData]);
 
     if (!server) return <div className="loading-screen"><div className="spinner"></div></div>;
 

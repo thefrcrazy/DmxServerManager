@@ -78,7 +78,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
         // Search from end to find most recent progress
         for (let i = logs.length - 1; i >= Math.max(0, logs.length - 10); i--) {
             const line = stripAnsi(logs[i]);
-            const progressMatch = line.match(/\[=*[\s=]*\]\s*([\d\.]+)%\s*\(([^)]+)\)/);
+            const progressMatch = line.match(/\[=*[\s=]*\]\s*([\d.]+)%\s*\(([^)]+)\)/);
             if (progressMatch) {
                 setDownloadProgress({
                     percent: parseFloat(progressMatch[1]),
@@ -103,7 +103,7 @@ const InstallationProgress: React.FC<InstallationProgressProps> = ({ logs, onClo
             } else {
                 // Fallback: Check for "Enter code: XXXXXX" or "Authorization code: XXXXXX"
                 // Log example: "Enter code: RJNt7CLJ"
-                const manualCodeMatch = fullLogClean.match(/(?:Authorization|Enter) (?:the )?code:\s*([^\s\.]+)/i);
+                const manualCodeMatch = fullLogClean.match(/(?:Authorization|Enter) (?:the )?code:\s*([^\s.]+)/i);
                 if (manualCodeMatch) {
                     const code = manualCodeMatch[1].trim();
                     setAuthCode(code);

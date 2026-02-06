@@ -53,7 +53,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const g = parseInt(accentColor.slice(3, 5), 16);
         const b = parseInt(accentColor.slice(5, 7), 16);
         root.style.setProperty("--color-accent-rgb", `${r}, ${g}, ${b}`);
-    }, []);
+    }, [accentColor]);
 
     // Sync with localStorage changes (from other components like AuthContext.updateUser)
     useEffect(() => {

@@ -73,7 +73,7 @@ export default function ScheduleModal({ isOpen, onClose, onSave, schedule }: Sch
                  }
              }
         }
-    }, [cronDays, cronHour, formData.type, isOpen]);
+    }, [cronDays, cronHour, formData.type, formData.cron_expression, isOpen]);
 
     useEffect(() => {
         if (formData.cron_expression) {

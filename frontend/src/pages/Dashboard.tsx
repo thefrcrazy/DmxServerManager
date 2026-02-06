@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Server as ServerIcon, Activity, HardDrive, Users, Plus, Cpu, MemoryStick, Square } from "lucide-react";
 import { formatBytes } from "../utils/formatters";
@@ -51,32 +51,7 @@ export default function Dashboard() {
     const [gameType, setGameType] = useState("all");
     const [viewMode, setViewMode] = useState<"grid" | "list">("list");
 
-    useEffect(() => {
-        fetchData();
-        // Refresh system stats every 3 seconds
-        const statsInterval = setInterval(fetchSystemStats, 3000);
-        // Refresh servers every 15 seconds
-        const serversInterval = setInterval(fetchServers, 15000);
-        return () => {
-            clearInterval(statsInterval);
-            clearInterval(serversInterval);
-        };
-    }, []);
-
-    const { setPageTitle } = usePageTitle();
-    useEffect(() => {
-        setPageTitle(t("sidebar.dashboard"), t("dashboard.welcome"));
-    }, [setPageTitle, t]);
-
-    const fetchData = async () => {
-        try {
-            await Promise.all([fetchServers(), fetchSystemStats()]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const fetchServers = async () => {
+    const fetchServers = useCallback(async () => {
         try {
             const response = await fetch("/api/v1/servers", {
                 headers: {
@@ -96,9 +71,9 @@ export default function Dashboard() {
         } catch (error) {
             console.error("Erreur lors du chargement des serveurs:", error);
         }
-    };
+    }, []);
 
-    const fetchSystemStats = async () => {
+    const fetchSystemStats = useCallback(async () => {
         try {
             const response = await fetch("/api/v1/system/stats", {
                 headers: {
@@ -130,7 +105,32 @@ export default function Dashboard() {
         } catch (error) {
             console.error("Erreur lors du chargement des stats système:", error);
         }
-    };
+    }, []);
+
+    const fetchData = useCallback(async () => {
+        try {
+            await Promise.all([fetchServers(), fetchSystemStats()]);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [fetchServers, fetchSystemStats]);
+
+    useEffect(() => {
+        fetchData();
+        // Refresh system stats every 3 seconds
+        const statsInterval = setInterval(fetchSystemStats, 3000);
+        // Refresh servers every 15 seconds
+        const serversInterval = setInterval(fetchServers, 15000);
+        return () => {
+            clearInterval(statsInterval);
+            clearInterval(serversInterval);
+        };
+    }, [fetchData, fetchServers, fetchSystemStats]);
+
+    const { setPageTitle } = usePageTitle();
+    useEffect(() => {
+        setPageTitle(t("sidebar.dashboard"), t("dashboard.welcome"));
+    }, [setPageTitle, t]);
 
     const handleServerAction = async (id: string, action: "start" | "stop" | "restart" | "kill") => {
         try {
@@ -169,10 +169,6 @@ export default function Dashboard() {
     if (isLoading) {
         return <LoadingScreen />;
     }
-
-    // Filter mainly active servers or just show all but using the new component?
-    // User asked for "identical display". So I will just show the ServerList.
-    // Dashboard usually shows all servers or maybe favorites? I will show all for now.
 
     return (
         <div className="dashboard-page">

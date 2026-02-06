@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
     User as UserIcon,
@@ -65,18 +65,11 @@ export default function EditUser() {
         must_change_password: false
     });
 
-    useEffect(() => {
-        fetchData();
-    }, [id]);
+    const updateFormData = useCallback(<K extends keyof typeof formData>(key: K, value: typeof formData[K]) => {
+        setFormData(prev => ({ ...prev, [key]: value }));
+    }, []);
 
-    const { setPageTitle } = usePageTitle();
-    useEffect(() => {
-        const title = isCreating ? t("users.create_user_title") : t("users.edit_user_title");
-        const subtitle = isCreating ? t("users.create_user_subtitle") : t("users.edit_user_subtitle").replace("{{username}}", user?.username || "");
-        setPageTitle(title, subtitle, { to: "/panel-settings?tab=users" });
-    }, [setPageTitle, t, isCreating, user]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const serversRes = await fetch("/api/v1/servers", {
                 headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -111,7 +104,18 @@ export default function EditUser() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [id, isCreating, navigate]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const { setPageTitle } = usePageTitle();
+    useEffect(() => {
+        const title = isCreating ? t("users.create_user_title") : t("users.edit_user_title");
+        const subtitle = isCreating ? t("users.create_user_subtitle") : t("users.edit_user_subtitle").replace("{{username}}", user?.username || "");
+        setPageTitle(title, subtitle, { to: "/panel-settings?tab=users" });
+    }, [setPageTitle, t, isCreating, user]);
 
     const generatePassword = () => {
         const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
@@ -123,7 +127,7 @@ export default function EditUser() {
             password += chars[array[i] % chars.length];
         }
         
-        setFormData({ ...formData, password, must_change_password: true });
+        setFormData(prev => ({ ...prev, password, must_change_password: true }));
         setPasswordVisible(true);
     };
 
@@ -221,7 +225,7 @@ export default function EditUser() {
                                 <input
                                     type="text"
                                     value={formData.username}
-                                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                                    onChange={(e) => updateFormData("username", e.target.value)}
                                     placeholder="nom_utilisateur"
                                     required
                                     className="input"
@@ -238,7 +242,7 @@ export default function EditUser() {
                                     <input
                                         type={passwordVisible ? "text" : "password"}
                                         value={formData.password}
-                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                        onChange={(e) => updateFormData("password", e.target.value)}
                                         placeholder={isCreating ? "" : t("users.password_placeholder")}
                                         required={isCreating && !formData.password}
                                         className="input"
@@ -275,7 +279,7 @@ export default function EditUser() {
                             {/* Force Password Change */}
                             <Checkbox
                                 checked={formData.must_change_password}
-                                onChange={(v) => setFormData({ ...formData, must_change_password: v })}
+                                onChange={(v) => updateFormData("must_change_password", v)}
                                 label={t("users.must_change_password") || "Forcer le changement de mot de passe"}
                                 description={t("users.must_change_password_desc") || "L'utilisateur devra changer son mot de passe à la prochaine connexion"}
                                 className="full-width-checkbox"
@@ -294,7 +298,7 @@ export default function EditUser() {
                                             { label: t("user_settings.role_admin"), value: "admin", icon: <Shield size={14} /> }
                                         ]}
                                         value={formData.role}
-                                        onChange={(value) => setFormData({ ...formData, role: value as "admin" | "user" })}
+                                        onChange={(value) => updateFormData("role", value as "admin" | "user")}
                                     />
                                 </div>
                                 <div className="form-group">
@@ -308,7 +312,7 @@ export default function EditUser() {
                                             value: lang.code
                                         }))}
                                         value={formData.language}
-                                        onChange={(value) => setFormData({ ...formData, language: value })}
+                                        onChange={(value) => updateFormData("language", value)}
                                     />
                                 </div>
                             </div>
@@ -316,7 +320,7 @@ export default function EditUser() {
                             {/* Active Status */}
                             <Checkbox
                                 checked={formData.is_active}
-                                onChange={(v) => setFormData({ ...formData, is_active: v })}
+                                onChange={(v) => updateFormData("is_active", v)}
                                 label={t("users.active_account")}
                                 description={t("users.active_desc")}
                                 className="full-width-checkbox"
@@ -340,7 +344,7 @@ export default function EditUser() {
                                         <button
                                             key={color}
                                             type="button"
-                                            onClick={() => setFormData({ ...formData, accent_color: color })}
+                                            onClick={() => updateFormData("accent_color", color)}
                                             className={`color-picker__swatch ${formData.accent_color.toLowerCase() === color.toLowerCase() ? "color-picker__swatch--active" : ""}`}
                                             style={{
                                                 background: color,
@@ -358,7 +362,7 @@ export default function EditUser() {
                                         <input
                                             type="color"
                                             value={formData.accent_color}
-                                            onChange={(e) => setFormData({ ...formData, accent_color: e.target.value })}
+                                            onChange={(e) => updateFormData("accent_color", e.target.value)}
                                         />
                                     </div>
                                 </div>
