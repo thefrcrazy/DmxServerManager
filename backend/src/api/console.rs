@@ -1,6 +1,7 @@
 use axum::{
     extract::{Path, State, ws::{Message, WebSocket, WebSocketUpgrade}, Query},
     response::IntoResponse,
+    http::HeaderMap,
 };
 use serde::Deserialize;
 use tracing::{error, info};
@@ -20,16 +21,22 @@ pub async fn ws_handler(
     Path(server_id): Path<String>,
     State(state): State<AppState>,
     Query(query): Query<WsQuery>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    // Validate token
-    let token = query.token.as_ref().ok_or_else(|| AppError::Unauthorized("Missing token".into()))?;
+    // Try to get token from query string or Sec-WebSocket-Protocol header
+    let token = query.token.or_else(|| {
+        headers.get("sec-websocket-protocol")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .map(|s| s.trim().to_string())
+    }).ok_or_else(|| AppError::Unauthorized("Missing token".into()))?;
     
-    // Manual token verification since FromRequestParts doesn't work easily with WebSocketUpgrade
+    // Manual token verification
     let secret = crate::core::database::get_or_create_jwt_secret(&state.pool).await
         .map_err(|_| AppError::Internal("Failed to get secret".into()))?;
     
     let _token_data = jsonwebtoken::decode::<Claims>(
-        token,
+        &token,
         &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
         &jsonwebtoken::Validation::default(),
     ).map_err(|_| AppError::Unauthorized("Invalid token".into()))?;
@@ -59,7 +66,6 @@ async fn handle_socket(socket: WebSocket, server_id: String, state: AppState) {
             while let Some(Ok(msg)) = receiver.next().await {
                 match msg {
                     Message::Text(text) => {
-                         // Client sending command to server
                          if let Err(e) = pm.send_command(&server_id, &text).await {
                              error!("Failed to send command: {}", e);
                          }
@@ -75,24 +81,22 @@ async fn handle_socket(socket: WebSocket, server_id: String, state: AppState) {
     let server_id_clone = server_id.clone();
     let mut send_task = tokio::spawn(async move {
         loop {
-            // Check for log messages
             match log_rx.recv().await {
                 Ok(log_line) => {
                     if sender.send(Message::Text(log_line)).await.is_err() {
-                        return; // Client disconnected
+                        return;
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     error!("WebSocket lagged, skipped {} messages for server {}", n, server_id_clone);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    return; // Channel closed
+                    return;
                 }
             }
         }
     });
 
-    // Wait for either task to finish
     tokio::select! {
         _ = (&mut recv_task) => send_task.abort(),
         _ = (&mut send_task) => recv_task.abort(),

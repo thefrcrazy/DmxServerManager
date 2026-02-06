@@ -108,6 +108,9 @@ export function useServerWebSocket({
     const connectWebSocket = useCallback(() => {
         if (!serverId) return;
 
+        const token = localStorage.getItem("token");
+        if (!token) return; // Don't even try without token
+
         if (wsRef.current) {
             if (wsRef.current.readyState === WebSocket.OPEN ||
                 wsRef.current.readyState === WebSocket.CONNECTING) return;
@@ -116,8 +119,10 @@ export function useServerWebSocket({
         }
 
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const token = localStorage.getItem("token");
-        const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/console/${serverId}?token=${encodeURIComponent(token || "")}`);
+        const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/console/${serverId}?token=${encodeURIComponent(token)}`;
+        
+        // Pass token also via protocols for better compatibility with some proxies
+        const ws = new WebSocket(wsUrl, [token]);
 
         ws.onopen = () => {
             setIsConnected(true);
