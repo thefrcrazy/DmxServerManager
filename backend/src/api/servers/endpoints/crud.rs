@@ -82,11 +82,14 @@ pub async fn list_servers(
         let started_at = pm.get_server_started_at(&s.id).await;
         let (cpu, cpu_norm, mem, last_disk) = pm.get_metrics_data(&s.id).await;
 
-        // Use cached disk size if available, otherwise calculate it
+        // Force native calculation if last_disk is 0 AND directory exists
+        // This fixes the "0 B" display when server is stopped or just started
         let disk = if last_disk > 0 {
             last_disk
-        } else {
+        } else if dir_exists {
             crate::utils::files::calculate_dir_size(StdPath::new(&s.working_dir)).await
+        } else {
+            0
         };
 
         let heap_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
@@ -390,11 +393,16 @@ pub async fn get_server(
     let bind_address = Some(server.bind_address.clone());
 
     let started_at = pm.get_server_started_at(&server.id).await;
-    let (cpu, cpu_norm, mem, mut disk) = pm.get_metrics_data(&server.id).await;
+    let (cpu, cpu_norm, mem, last_disk) = pm.get_metrics_data(&server.id).await;
 
-    if disk == 0 {
-        disk = crate::utils::files::calculate_dir_size(StdPath::new(&server.working_dir)).await;
-    }
+    // Same fix for get_server as well
+    let disk = if last_disk > 0 {
+        last_disk
+    } else if dir_exists {
+        crate::utils::files::calculate_dir_size(StdPath::new(&server.working_dir)).await
+    } else {
+        0
+    };
 
     let heap_bytes = parse_memory_to_bytes(server.max_memory.as_deref().unwrap_or("4G"));
     let total_bytes = calculate_total_memory(heap_bytes);
