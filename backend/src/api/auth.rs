@@ -63,17 +63,18 @@ async fn clear_login_attempts(ip: &str) {
 // ============= Password Validation =============
 
 fn validate_password_strength(password: &str) -> Result<(), AppError> {
-    if password.len() < 8 {
-        return Err(AppError::BadRequest("auth.password_too_short".into())
+    if password.len() < 12 {
+        return Err(AppError::BadRequest("auth.password_too_short_12".into())
             .with_code(ErrorCode::AuthPasswordTooWeak));
     }
     
     let has_uppercase = password.chars().any(|c| c.is_uppercase());
     let has_lowercase = password.chars().any(|c| c.is_lowercase());
     let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_special = password.chars().any(|c| !c.is_alphanumeric());
     
-    if !has_uppercase || !has_lowercase || !has_digit {
-        return Err(AppError::BadRequest("auth.password_weak".into())
+    if !has_uppercase || !has_lowercase || !has_digit || !has_special {
+        return Err(AppError::BadRequest("auth.password_weak_complexity".into())
             .with_code(ErrorCode::AuthPasswordTooWeak));
     }
     
@@ -113,6 +114,7 @@ pub struct UserInfo {
     pub username: String,
     pub role: String,
     pub accent_color: Option<String>,
+    pub must_change_password: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -173,8 +175,9 @@ async fn login(
     // Record this attempt
     record_login_attempt(&ip).await;
     
+    // Fetch user including must_change_password
     let user: UserRow = sqlx::query_as(
-        "SELECT id, username, password_hash, role, accent_color FROM users WHERE username = ?",
+        "SELECT id, username, password_hash, role, accent_color, COALESCE(must_change_password, 0) as must_change_password FROM users WHERE username = ?",
     )
     .bind(&body.username)
     .fetch_optional(&state.pool)
@@ -192,6 +195,15 @@ async fn login(
     // Clear rate limit on successful login
     clear_login_attempts(&ip).await;
 
+    // Update last login info in DB
+    let now = Utc::now().to_rfc3339();
+    let _ = sqlx::query("UPDATE users SET last_login = ?, last_ip = ? WHERE id = ?")
+        .bind(&now)
+        .bind(&ip)
+        .bind(&user.id)
+        .execute(&state.pool)
+        .await;
+
     let token = create_token(&user, &state).await?;
 
     Ok(Json(AuthResponse {
@@ -201,6 +213,7 @@ async fn login(
             username: user.username,
             role: user.role,
             accent_color: user.accent_color,
+            must_change_password: user.must_change_password != 0,
         },
     }))
 }
@@ -234,7 +247,7 @@ async fn register(
     let now = Utc::now().to_rfc3339();
 
     sqlx::query(
-        "INSERT INTO users (id, username, password_hash, role, accent_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, username, password_hash, role, accent_color, created_at, updated_at, must_change_password) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
     )
     .bind(&id)
     .bind(&body.username)
@@ -252,6 +265,7 @@ async fn register(
         password_hash,
         role: role.to_string(),
         accent_color: Some(accent_color.clone()),
+        must_change_password: 0,
     };
 
     let token = create_token(&user, &state).await?;
@@ -263,16 +277,24 @@ async fn register(
             username: user.username,
             role: user.role,
             accent_color: Some(accent_color),
+            must_change_password: false,
         },
     })))
 }
 
 async fn me(auth: AuthUser) -> Result<Json<UserInfo>, AppError> {
+    // We should probably check the DB here to ensure the user still exists or if roles changed
+    // For now, we trust the token but could be improved.
     Ok(Json(UserInfo {
         id: auth.id,
         username: auth.username,
         role: auth.role,
         accent_color: auth.accent_color,
+        // Since this comes from JWT which doesn't have the flag (unless we add it), 
+        // we might want to default false or fetch from DB if needed. 
+        // For simplicity, let's say false as this endpoint is usually for session check.
+        // If we want to force logout/modal on session resume, we should fetch DB.
+        must_change_password: false, 
     }))
 }
 
@@ -327,6 +349,8 @@ struct UserRow {
     password_hash: String,
     role: String,
     accent_color: Option<String>,
+    #[sqlx(default)]
+    must_change_password: i32,
 }
 
 async fn create_token(user: &UserRow, state: &AppState) -> Result<String, AppError> {
@@ -337,7 +361,7 @@ async fn create_token(user: &UserRow, state: &AppState) -> Result<String, AppErr
         username: user.username.clone(),
         role: user.role.clone(),
         accent_color: user.accent_color.clone(),
-        exp: (Utc::now() + chrono::Duration::days(7)).timestamp(),
+        exp: (Utc::now() + chrono::Duration::hours(24)).timestamp(),
     };
 
     jsonwebtoken::encode(
@@ -390,8 +414,8 @@ async fn change_password(
 
     let now = Utc::now().to_rfc3339();
 
-    // Update password
-    let result = sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+    // Update password AND reset must_change_password
+    let result = sqlx::query("UPDATE users SET password_hash = ?, updated_at = ?, must_change_password = 0 WHERE id = ?")
         .bind(&new_hash)
         .bind(&now)
         .bind(&user_id)

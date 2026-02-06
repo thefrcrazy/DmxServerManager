@@ -598,9 +598,24 @@ export default function ServerFiles({
 
                 {/* Drag overlay */}
                 {isDragging && (
-                    <div className="file-dropzone">
-                        <Upload size={48} />
-                        <span>Déposer les fichiers ici</span>
+                    <div className="file-dropzone" style={{ 
+                        position: 'absolute', 
+                        top: 0, 
+                        left: 0, 
+                        right: 0, 
+                        bottom: 0, 
+                        background: 'rgba(var(--bg-primary-rgb), 0.9)', 
+                        zIndex: 100, 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        border: '2px dashed var(--primary-color)',
+                        borderRadius: 'var(--radius-lg)'
+                    }}>
+                        <Upload size={64} className="text-primary mb-4 animate-bounce" />
+                        <span className="text-xl font-bold text-primary">Déposer les fichiers ici</span>
+                        <span className="text-secondary mt-2">Upload immédiat comme un client FTP</span>
                     </div>
                 )}
 

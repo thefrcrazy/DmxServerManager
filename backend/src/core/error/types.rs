@@ -3,53 +3,39 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use std::fmt;
 use tracing::error;
+use thiserror::Error;
 
 use crate::core::error::codes::ErrorCode;
 
 /// Context information for debugging
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct ErrorContext {
     pub server_id: Option<String>,
     pub user_id: Option<String>,
     pub file_path: Option<String>,
-    pub request_id: Option<String>,
+    // pub request_id: Option<String>,
 }
 
-#[allow(dead_code)]
-impl ErrorContext {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    
-    pub fn with_server(mut self, id: &str) -> Self {
-        self.server_id = Some(id.to_string());
-        self
-    }
-    
-    pub fn with_user(mut self, id: &str) -> Self {
-        self.user_id = Some(id.to_string());
-        self
-    }
-    
-    pub fn with_file(mut self, path: &str) -> Self {
-        self.file_path = Some(path.to_string());
-        self
-    }
-}
-
-/// Main error type - maintains backward compatibility with enum-style usage
-#[derive(Debug)]
+/// Main error type for the application
+#[derive(Error, Debug)]
 pub enum AppError {
+    #[error("Not found: {0}")]
     NotFound(String),
+    
+    #[error("Bad request: {0}")]
     BadRequest(String),
+    
+    #[error("Unauthorized: {0}")]
     Unauthorized(String),
+    
+    #[error("Internal error: {0}")]
     Internal(String),
+    
+    #[error("Database error: {0}")]
     Database(String),
     
-    // New: Rich error with full context
+    #[error("{message}")]
     Rich {
         kind: AppErrorKind,
         message: String,
@@ -58,64 +44,21 @@ pub enum AppError {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Error)]
 pub enum AppErrorKind {
+    #[error("Not found")]
     NotFound,
+    #[error("Bad request")]
     BadRequest,
+    #[error("Unauthorized")]
     Unauthorized,
+    #[error("Internal error")]
     Internal,
+    #[error("Database error")]
     Database,
 }
 
-#[allow(dead_code)]
 impl AppError {
-    // Builder methods for rich errors
-    pub fn not_found_rich(msg: impl Into<String>) -> Self {
-        Self::Rich {
-            kind: AppErrorKind::NotFound,
-            message: msg.into(),
-            code: None,
-            context: ErrorContext::default(),
-        }
-    }
-    
-    pub fn bad_request_rich(msg: impl Into<String>) -> Self {
-        Self::Rich {
-            kind: AppErrorKind::BadRequest,
-            message: msg.into(),
-            code: None,
-            context: ErrorContext::default(),
-        }
-    }
-    
-    pub fn unauthorized_rich(msg: impl Into<String>) -> Self {
-        Self::Rich {
-            kind: AppErrorKind::Unauthorized,
-            message: msg.into(),
-            code: None,
-            context: ErrorContext::default(),
-        }
-    }
-    
-    pub fn internal_rich(msg: impl Into<String>) -> Self {
-        Self::Rich {
-            kind: AppErrorKind::Internal,
-            message: msg.into(),
-            code: None,
-            context: ErrorContext::default(),
-        }
-    }
-    
-    pub fn database_rich(msg: impl Into<String>) -> Self {
-        Self::Rich {
-            kind: AppErrorKind::Database,
-            message: msg.into(),
-            code: None,
-            context: ErrorContext::default(),
-        }
-    }
-    
-    // Add code to any error
     pub fn with_code(self, code: ErrorCode) -> Self {
         match self {
             Self::Rich { kind, message, context, .. } => Self::Rich {
@@ -124,84 +67,17 @@ impl AppError {
                 code: Some(code),
                 context,
             },
-            // Convert legacy errors to rich errors with code
-            Self::NotFound(msg) => Self::Rich {
-                kind: AppErrorKind::NotFound,
-                message: msg,
-                code: Some(code),
-                context: ErrorContext::default(),
-            },
-            Self::BadRequest(msg) => Self::Rich {
-                kind: AppErrorKind::BadRequest,
-                message: msg,
-                code: Some(code),
-                context: ErrorContext::default(),
-            },
-            Self::Unauthorized(msg) => Self::Rich {
-                kind: AppErrorKind::Unauthorized,
-                message: msg,
-                code: Some(code),
-                context: ErrorContext::default(),
-            },
-            Self::Internal(msg) => Self::Rich {
-                kind: AppErrorKind::Internal,
-                message: msg,
-                code: Some(code),
-                context: ErrorContext::default(),
-            },
-            Self::Database(msg) => Self::Rich {
-                kind: AppErrorKind::Database,
-                message: msg,
-                code: Some(code),
-                context: ErrorContext::default(),
-            },
+            _ => {
+                let kind = self.get_kind();
+                let message = self.get_message().to_string();
+                Self::Rich {
+                    kind,
+                    message,
+                    code: Some(code),
+                    context: ErrorContext::default(),
+                }
+            }
         }
-    }
-    
-    pub fn with_context(self, context: ErrorContext) -> Self {
-        match self {
-            Self::Rich { kind, message, code, .. } => Self::Rich {
-                kind,
-                message,
-                code,
-                context,
-            },
-            Self::NotFound(msg) => Self::Rich {
-                kind: AppErrorKind::NotFound,
-                message: msg,
-                code: None,
-                context,
-            },
-            Self::BadRequest(msg) => Self::Rich {
-                kind: AppErrorKind::BadRequest,
-                message: msg,
-                code: None,
-                context,
-            },
-            Self::Unauthorized(msg) => Self::Rich {
-                kind: AppErrorKind::Unauthorized,
-                message: msg,
-                code: None,
-                context,
-            },
-            Self::Internal(msg) => Self::Rich {
-                kind: AppErrorKind::Internal,
-                message: msg,
-                code: None,
-                context,
-            },
-            Self::Database(msg) => Self::Rich {
-                kind: AppErrorKind::Database,
-                message: msg,
-                code: None,
-                context,
-            },
-        }
-    }
-    
-    pub fn with_server(self, id: &str) -> Self {
-        let ctx = ErrorContext::new().with_server(id);
-        self.with_context(ctx)
     }
     
     fn get_kind(&self) -> AppErrorKind {
@@ -238,18 +114,6 @@ impl AppError {
     }
 }
 
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.get_kind() {
-            AppErrorKind::NotFound => write!(f, "Not found: {}", self.get_message()),
-            AppErrorKind::BadRequest => write!(f, "Bad request: {}", self.get_message()),
-            AppErrorKind::Unauthorized => write!(f, "Unauthorized: {}", self.get_message()),
-            AppErrorKind::Internal => write!(f, "Internal error: {}", self.get_message()),
-            AppErrorKind::Database => write!(f, "Database error: {}", self.get_message()),
-        }
-    }
-}
-
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let kind = self.get_kind();
@@ -271,7 +135,7 @@ impl IntoResponse for AppError {
             _ => message.clone(),
         };
 
-        // Log with tracing (structured logging)
+        // Log with tracing
         let code_str = code.map(|c| c.as_str()).unwrap_or("UNKNOWN");
         
         match kind {
@@ -304,7 +168,6 @@ impl IntoResponse for AppError {
             body["code"] = serde_json::json!(c.as_str());
         }
         
-        // Add debug info in development mode
         #[cfg(debug_assertions)]
         {
             let mut debug = serde_json::Map::new();
@@ -332,5 +195,17 @@ impl From<sqlx::Error> for AppError {
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
         AppError::Unauthorized(err.to_string()).with_code(ErrorCode::AuthInvalidToken)
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        AppError::Internal(err.to_string()).with_code(ErrorCode::InternalError)
+    }
+}
+
+impl From<axum::extract::multipart::MultipartError> for AppError {
+    fn from(err: axum::extract::multipart::MultipartError) -> Self {
+        AppError::BadRequest(err.to_string())
     }
 }

@@ -1,11 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { apiService } from "@/services";
 
-interface User {
+export interface User {
     id: string;
     username: string;
     role: string;
     accent_color?: string;
+    must_change_password?: boolean;
 }
 
 interface AuthContextType {
@@ -115,4 +116,3 @@ export function useAuth() {
     }
     return context;
 }
-

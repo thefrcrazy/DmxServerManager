@@ -31,6 +31,8 @@ pub struct UserResponse {
     pub last_login: Option<String>,
     pub last_ip: Option<String>,
     pub allocated_servers: Option<String>,
+    #[sqlx(default)]
+    pub must_change_password: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +44,7 @@ pub struct CreateUserRequest {
     pub language: Option<String>,
     pub accent_color: Option<String>,
     pub allocated_servers: Option<Vec<String>>,
+    pub must_change_password: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +56,7 @@ pub struct UpdateUserRequest {
     pub language: Option<String>,
     pub accent_color: Option<String>,
     pub allocated_servers: Option<Vec<String>>,
+    pub must_change_password: Option<bool>,
 }
 
 async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<serde_json::Value>>, AppError> {
@@ -61,7 +65,8 @@ async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<serde_json
            COALESCE(is_active, 1) as is_active,
            COALESCE(language, 'fr') as language,
            COALESCE(accent_color, '#3A82F6') as accent_color,
-           created_at, updated_at, last_login, last_ip, allocated_servers
+           created_at, updated_at, last_login, last_ip, allocated_servers,
+           COALESCE(must_change_password, 0) != 0 as must_change_password
            FROM users ORDER BY created_at DESC"#,
     )
     .fetch_all(&state.pool)
@@ -88,7 +93,8 @@ async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<serde_json
                 "updated_at": user.updated_at,
                 "last_login": user.last_login,
                 "last_ip": user.last_ip,
-                "allocated_servers": servers
+                "allocated_servers": servers,
+                "must_change_password": user.must_change_password
             })
         })
         .collect();
@@ -105,7 +111,8 @@ async fn get_user(
            COALESCE(is_active, 1) as is_active,
            COALESCE(language, 'fr') as language,
            COALESCE(accent_color, '#3A82F6') as accent_color,
-           created_at, updated_at, last_login, last_ip, allocated_servers
+           created_at, updated_at, last_login, last_ip, allocated_servers,
+           COALESCE(must_change_password, 0) != 0 as must_change_password
            FROM users WHERE id = ?"#,
     )
     .bind(&user_id)
@@ -130,14 +137,27 @@ async fn get_user(
         "updated_at": user.updated_at,
         "last_login": user.last_login,
         "last_ip": user.last_ip,
-        "allocated_servers": servers
+        "allocated_servers": servers,
+        "must_change_password": user.must_change_password
     })))
+}
+
+use regex::Regex;
+
+fn validate_username(username: &str) -> Result<(), AppError> {
+    let re = Regex::new(r"^[a-zA-Z0-9_-]{3,32}$").unwrap();
+    if !re.is_match(username) {
+        return Err(AppError::BadRequest("Invalid username format (3-32 chars, alphanumeric, _ -)".into()));
+    }
+    Ok(())
 }
 
 async fn create_user(
     State(state): State<AppState>,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    validate_username(&body.username)?;
+
     // Check if username already exists
     let exists: Option<(i32,)> =
         sqlx::query_as("SELECT 1 FROM users WHERE username = ?")
@@ -157,6 +177,7 @@ async fn create_user(
     let role = body.role.clone().unwrap_or_else(|| "user".to_string());
     let is_active = body.is_active.unwrap_or(true);
     let language = body.language.clone().unwrap_or_else(|| "fr".to_string());
+    let must_change_password = body.must_change_password.unwrap_or(false);
     
     // Get default color from settings if not provided
     let accent_color = if let Some(ref color) = body.accent_color {
@@ -177,8 +198,8 @@ async fn create_user(
         .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
 
     sqlx::query(
-        r#"INSERT INTO users (id, username, password_hash, role, is_active, language, accent_color, allocated_servers, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        r#"INSERT INTO users (id, username, password_hash, role, is_active, language, accent_color, allocated_servers, created_at, updated_at, must_change_password)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     )
     .bind(&id)
     .bind(&body.username)
@@ -190,6 +211,7 @@ async fn create_user(
     .bind(&allocated_servers)
     .bind(&now)
     .bind(&now)
+    .bind(must_change_password)
     .execute(&state.pool)
     .await?;
 
@@ -219,6 +241,22 @@ async fn update_user(
         return Err(AppError::NotFound("users.not_found".into()));
     }
 
+    // Validate username if provided
+    if let Some(ref username) = body.username {
+        validate_username(username)?;
+        
+        // Check duplication (exclude self)
+        let dup: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE username = ? AND id != ?")
+            .bind(username)
+            .bind(&user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+            
+        if dup.is_some() {
+            return Err(AppError::BadRequest("Username already taken".into()));
+        }
+    }
+
     // Build dynamic update query
     let mut updates = vec!["updated_at = ?"];
     let mut has_password = false;
@@ -244,6 +282,9 @@ async fn update_user(
     }
     if body.allocated_servers.is_some() {
         updates.push("allocated_servers = ?");
+    }
+    if body.must_change_password.is_some() {
+        updates.push("must_change_password = ?");
     }
 
     let query = format!("UPDATE users SET {} WHERE id = ?", updates.join(", "));
@@ -276,6 +317,9 @@ async fn update_user(
     if let Some(ref servers) = body.allocated_servers {
         let servers_json = serde_json::to_string(servers).unwrap_or_else(|_| "[]".to_string());
         sql_query = sql_query.bind(servers_json);
+    }
+    if let Some(must_change) = body.must_change_password {
+        sql_query = sql_query.bind(must_change);
     }
 
     // Bind user_id last

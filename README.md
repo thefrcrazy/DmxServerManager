@@ -97,28 +97,37 @@ irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/wi
 
 ## 🎯 Roadmap
 
-- [x] Structure du projet
-- [x] Docker Compose
-- [x] Backend API REST
-- [x] Console WebSocket
-- [x] Interface Dashboard
-- [x] Configuration Dashboard
-- [ ] Support Hytale
-    - [x] Gestion Installation / Edit / Delete
-    - [x] Gestion Console
-    - [x] Gestion Log
-    - [ ] Intégrations backups
-    - [ ] Planification Tâches
-    - [x] Meilleur FTP interne
-    - [ ] Configuration temps réel avec les fichiers server
-    - [ ] Gestion des mods ([CurseForge](https://www.curseforge.com/hytale/search?class=mods))
-    - [x] Meilleur affichage joueurs
-    - [x] Ajout des métriques
-    - [ ] Gestion webhook
-- [ ] Support Minecraft
-- [ ] Support Palworld
-- [ ] Support Valheim
-- [ ] Support Custom Steam Server
+### Core & V1
+- [x] **Project Architecture** : Initialisation de la structure modulaire et socle technique
+- [x] **Containerization** : Orchestration via Docker Compose pour un déploiement simplifié
+- [x] **RESTful API** : Développement de l'API backend robuste (Rust & Axum)
+- [x] **Real-time Console** : Flux de logs et commandes via WebSockets bidirectionnels
+- [x] **Premium UI/UX** : Dashboard réactif et interface utilisateur moderne
+- [x] **Centralized Configuration** : Système de gestion des paramètres du panel et des serveurs
+- [ ] **Audit Logs** : Journalisation complète des actions utilisateurs
+- [ ] **Lifecycle Management** : Système de mises à jour automatisées et manuelles
+- [ ] **RBAC & Permissions** : Gestion granulaire des accès serveurs et limitations d'interface
+- [ ] **Collaboration Hub** : Messagerie interne partagée et prise de notes d'équipe
+- [ ] **Extensibility Engine** : Injection de scripts/CSS personnalisés et documentation SDK
+- [ ] **Community Marketplace** : Plateforme de thèmes, plugins et annuaire de serveurs
+
+### Intégration Jeux
+- [ ] **Hytale (v1)**
+    - [x] **Lifecycle Management** : Installation, modification et suppression automatisées
+    - [x] **Live Console** : Interaction directe et exécution de commandes
+    - [x] **Log Streaming** : Analyse et affichage des journaux en temps réel
+    - [ ] **Disaster Recovery** : Système de sauvegardes et restaurations intégrées
+    - [ ] **Automated Tasks** : Planification avancée d'actions serveur
+    - [x] **Advanced File Manager** : Explorateur de fichiers haute performance (FTP-like)
+    - [ ] **Dynamic Configuration** : Édition temps réel des fichiers de configuration
+    - [ ] **Mod Management** : Gestion des mods via l'intégration [CurseForge](https://www.curseforge.com/hytale/search?class=mods)
+    - [x] **Player Insights** : Affichage détaillé et monitoring des joueurs connectés
+    - [x] **Performance Metrics** : Suivi des ressources (CPU, RAM, Disque)
+    - [ ] **Webhook Integration** : Alertes et notifications d'événements
+- [ ] **Minecraft** (Vanilla, Forge, Fabric, Spigot)
+- [ ] **Palworld**
+- [ ] **Valheim**
+- [ ] **Generic Steam Server** (Intégration SteamCMD)
 
 ---
 

@@ -33,21 +33,25 @@ export default function ServerConsole({
     const handleScroll = () => {
         if (!consoleContentRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = consoleContentRef.current;
-        // Check if user is near bottom (within 50px tolerance)
-        isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 50;
+        // Check if user is near bottom (within 100px tolerance)
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+        isAtBottomRef.current = isAtBottom;
     };
 
     // Auto-scroll logic
     useEffect(() => {
         if (logs.length > 0 && isAtBottomRef.current) {
-            setTimeout(() => {
+            // Use requestAnimationFrame for smoother behavior during rapid log income
+            requestAnimationFrame(() => {
                 if (consoleContentRef.current) {
-                    consoleContentRef.current.scrollTop =
-                        consoleContentRef.current.scrollHeight;
+                    consoleContentRef.current.scrollTo({
+                        top: consoleContentRef.current.scrollHeight,
+                        behavior: "smooth" // Smooth scroll for better UX
+                    });
                 }
-            }, 50);
+            });
         }
-    }, [logs.length]);
+    }, [logs]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

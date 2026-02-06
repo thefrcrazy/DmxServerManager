@@ -1,17 +1,15 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
+use tokio::process::{Command, Child};
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use tracing::info;
 
 use super::detection::PlayerDetectionPatterns;
 
 use crate::core::error::AppError;
-use walkdir::WalkDir;
-
-
 
 /// Manages game server processes
 use crate::core::database::DbPool;
@@ -56,88 +54,85 @@ impl ProcessManager {
                     let procs = processes_clone.read().await;
                     for (server_id, server_proc) in procs.iter() {
                         if let Some(child) = &server_proc.child {
-                            let pid = sysinfo::Pid::from_u32(child.id());
-                            if let Some(process) = system.process(pid) {
-                                let cpu = process.cpu_usage();
-                                let cores = system.cpus().len() as f32;
-                                let cpu_normalized = if cores > 0.0 { cpu / cores } else { 0.0 };
-                                let memory = process.memory(); // in bytes
-                                let players_list: Vec<String> = server_proc.players.read()
-                                    .map(|p| p.iter().cloned().collect())
-                                    .unwrap_or_default();
-                                let player_count = players_list.len();
-                                
-                                let mut metrics_json = serde_json::json!({
-                                    "cpu": cpu,
-                                    "cpu_normalized": cpu_normalized,
-                                    "memory": memory,
-                                    "memory_limit": server_proc.max_memory_allocated,
-                                    "players": player_count,
-                                    "players_list": players_list
-                                });
-
-                                // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
-                                let mut disk_size: u64 = 0;
-                                if tick_count.is_multiple_of(15) {
-                                    let server_path = &server_proc.working_dir;
-                                    let size: u64 = WalkDir::new(server_path)
-                                        .into_iter()
-                                        .filter_map(|entry| entry.ok())
-                                        .filter_map(|entry| entry.metadata().ok())
-                                        .filter(|metadata| metadata.is_file())
-                                        .map(|metadata| metadata.len())
-                                        .sum();
+                            if let Some(child_id) = child.id() {
+                                let pid = sysinfo::Pid::from_u32(child_id);
+                                if let Some(process) = system.process(pid) {
+                                    let cpu = process.cpu_usage();
+                                    let cores = system.cpus().len() as f32;
+                                    let cpu_normalized = if cores > 0.0 { cpu / cores } else { 0.0 };
+                                    let memory = process.memory(); // in bytes
+                                    let players_list: Vec<String> = server_proc.players.read()
+                                        .map(|p| p.iter().cloned().collect())
+                                        .unwrap_or_default();
+                                    let player_count = players_list.len();
                                     
-                                    if let Some(obj) = metrics_json.as_object_mut() {
-                                        obj.insert("disk_bytes".to_string(), serde_json::Value::Number(serde_json::Number::from(size)));
-                                    }
-                                    if let Ok(mut disk_cache) = server_proc.last_disk.write() {
-                                        *disk_cache = size;
-                                    }
-                                    disk_size = size;
-                                } else {
-                                    // Use cached disk value
-                                    if let Ok(disk_cache) = server_proc.last_disk.read() {
-                                        disk_size = *disk_cache;
-                                    }
-                                }
+                                    let mut metrics_json = serde_json::json!({
+                                        "cpu": cpu,
+                                        "cpu_normalized": cpu_normalized,
+                                        "memory": memory,
+                                        "memory_limit": server_proc.max_memory_allocated,
+                                        "players": player_count,
+                                        "players_list": players_list
+                                    });
 
-                                let metrics_msg = format!("[METRICS]: {metrics_json}");
-                                let _ = server_proc.log_tx.send(metrics_msg.clone());
-                                if let Ok(mut cache) = server_proc.last_metrics.write() {
-                                    *cache = Some(metrics_msg);
-                                }
-                                if let Ok(mut cpu_cache) = server_proc.last_cpu.write() {
-                                    *cpu_cache = cpu;
-                                }
-                                if let Ok(mut cpu_norm_cache) = server_proc.last_cpu_normalized.write() {
-                                    *cpu_norm_cache = cpu_normalized;
-                                }
-                                if let Ok(mut mem_cache) = server_proc.last_memory.write() {
-                                    *mem_cache = memory;
-                                }
-
-                                // Save metrics to DB every 30 seconds (15 ticks)
-                                if tick_count.is_multiple_of(15) {
-                                    if let Some(pool) = &pool_clone {
-                                        let pool = pool.clone();
-                                        let server_id = server_id.clone();
-                                        let player_count = if let Ok(players) = server_proc.players.read() {
-                                            players.len() as i32
-                                        } else {
-                                            0
-                                        };
+                                    // Calculate disk size every ~30 seconds (15 ticks) OR at tick 0
+                                    let mut disk_size: u64 = 0;
+                                    if tick_count % 15 == 0 {
+                                        let server_path = std::path::PathBuf::from(&server_proc.working_dir);
+                                        // Use optimized calculation if available via shared utils, but here we are in service layer
+                                        // We can use the util we just updated.
+                                        disk_size = crate::utils::files::calculate_dir_size(&server_path).await;
                                         
-                                        tokio::spawn(async move {
-                                            let _ = crate::api::metrics::insert_metric(
-                                                &pool,
-                                                &server_id,
-                                                cpu_normalized as f64,
-                                                memory as i64,
-                                                disk_size as i64,
-                                                player_count,
-                                            ).await;
-                                        });
+                                        if let Some(obj) = metrics_json.as_object_mut() {
+                                            obj.insert("disk_bytes".to_string(), serde_json::Value::Number(serde_json::Number::from(disk_size)));
+                                        }
+                                        if let Ok(mut disk_cache) = server_proc.last_disk.write() {
+                                            *disk_cache = disk_size;
+                                        }
+                                    } else {
+                                        // Use cached disk value
+                                        if let Ok(disk_cache) = server_proc.last_disk.read() {
+                                            disk_size = *disk_cache;
+                                        }
+                                    }
+
+                                    let metrics_msg = format!("[METRICS]: {metrics_json}");
+                                    let _ = server_proc.log_tx.send(metrics_msg.clone());
+                                    if let Ok(mut cache) = server_proc.last_metrics.write() {
+                                        *cache = Some(metrics_msg);
+                                    }
+                                    if let Ok(mut cpu_cache) = server_proc.last_cpu.write() {
+                                        *cpu_cache = cpu;
+                                    }
+                                    if let Ok(mut cpu_norm_cache) = server_proc.last_cpu_normalized.write() {
+                                        *cpu_norm_cache = cpu_normalized;
+                                    }
+                                    if let Ok(mut mem_cache) = server_proc.last_memory.write() {
+                                        *mem_cache = memory;
+                                    }
+
+                                    // Save metrics to DB every 30 seconds (15 ticks)
+                                    if tick_count % 15 == 0 {
+                                        if let Some(pool) = &pool_clone {
+                                            let pool = pool.clone();
+                                            let server_id = server_id.clone();
+                                            let player_count = if let Ok(players) = server_proc.players.read() {
+                                                players.len() as i32
+                                            } else {
+                                                0
+                                            };
+                                            
+                                            tokio::spawn(async move {
+                                                let _ = crate::api::metrics::insert_metric(
+                                                    &pool,
+                                                    &server_id,
+                                                    cpu_normalized as f64,
+                                                    memory as i64,
+                                                    disk_size as i64,
+                                                    player_count,
+                                                ).await;
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -146,7 +141,7 @@ impl ProcessManager {
                 }
 
                 // Cleanup old metrics every hour (1800 ticks at 2s interval)
-                if tick_count.is_multiple_of(1800) && tick_count > 0 {
+                if tick_count > 0 && tick_count % 1800 == 0 {
                     if let Some(pool) = &pool_clone {
                         let pool = pool.clone();
                         tokio::spawn(async move {
@@ -161,7 +156,7 @@ impl ProcessManager {
                 }
 
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                tick_count += 1;
+                tick_count = tick_count.wrapping_add(1);
             }
         });
 
@@ -171,33 +166,20 @@ impl ProcessManager {
         }
     }
 
+    // ... (is_running, is_installing, is_auth_required, set_auth_required, subscribe_logs, register_installing, broadcast_log, remove - unchanged)
     pub fn is_running(&self, server_id: &str) -> bool {
-        // We need to check if the process is actually alive, not just in the map
         if let Ok(mut processes) = self.processes.try_write() {
             if let Some(proc) = processes.get_mut(server_id) {
-                // If child is None, it means it's a virtual process (installing/updating)
-                // So it is technically "running" if install_task is active
-                if proc.child.is_none() {
-                    return true;
-                }
-                
+                if proc.child.is_none() { return true; }
                 if let Some(child) = &mut proc.child {
-                    // Check if process is still running
                     match child.try_wait() {
-                        Ok(None) => {
-                            // Process is still running
-                            return true;
-                        }
-                        Ok(Some(_status)) => {
-                            // Process has exited, remove from map
+                        Ok(None) => return true,
+                        Ok(Some(_)) => {
                             info!("Server {} process has exited, cleaning up", server_id);
                             processes.remove(server_id);
                             return false;
                         }
-                        Err(_) => {
-                            // Error checking status, assume not running
-                            return false;
-                        }
+                        Err(_) => return false,
                     }
                 }
             }
@@ -219,11 +201,8 @@ impl ProcessManager {
             if let Some(proc) = processes.get(server_id) {
                 if let Ok(mut auth) = proc.auth_required.write() {
                     if *auth {
-                        // Check if auth.enc exists in working dir
-                        // If it exists, it means we are authenticated
                         let auth_file = std::path::Path::new(&proc.working_dir).join("auth.enc");
                         if auth_file.exists() {
-                             // Update state to false since we found the file
                             *auth = false;
                             return false;
                         }
@@ -262,9 +241,7 @@ impl ProcessManager {
          }
 
          let (log_tx, _) = broadcast::channel::<String>(10000);
-         // Broadcast initial installing status
          let _ = log_tx.send("[STATUS]: installing".to_string());
-
          let players = Arc::new(std::sync::RwLock::new(HashSet::new()));
 
          processes.insert(
@@ -295,7 +272,6 @@ impl ProcessManager {
         }
     }
 
-    /// Remove a process from manager (used when installation finishes)
     pub async fn remove(&self, server_id: &str) {
         let mut processes = self.processes.write().await;
         processes.remove(server_id);
@@ -313,6 +289,7 @@ impl ProcessManager {
         extra_args: Option<&str>,
         config: Option<&serde_json::Value>,
         game_type: &str,
+        nice_level: i32, // New argument
     ) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
 
@@ -320,22 +297,31 @@ impl ProcessManager {
             return Err(AppError::BadRequest("Server already running".into()));
         }
 
-        // Build command based on game type (Hytale uses Java)
         let java = java_path.unwrap_or("java");
         let max_mem = max_memory.unwrap_or("8G");
-
-        // Config is generated by servers.rs (Hytale config.json)
-        // Legacy server.properties/world-config.json generation removed.
-
-
         let final_working_dir = std::path::PathBuf::from(working_dir);
         let assets_path = "Assets.zip".to_string();
 
-        let mut cmd = Command::new(java);
+        let mut cmd;
+        #[cfg(unix)]
+        {
+            if nice_level != 0 {
+                cmd = Command::new("nice");
+                cmd.arg("-n").arg(nice_level.to_string());
+                cmd.arg(java);
+            } else {
+                cmd = Command::new(java);
+            }
+        }
+        #[cfg(windows)]
+        {
+            // Windows priority handling is more complex via start command or API
+            // For simplicity, we just run java
+            cmd = Command::new(java);
+        }
+
         cmd.current_dir(&final_working_dir);
 
-        // Smart Memory Adjustment: User provided max_mem is now the HEAP SIZE (-Xmx)
-        // We calculate Xms based on this.
         let heap_target_bytes = parse_memory_to_bytes(max_mem);
         let (xms, xmx) = calculate_jvm_tokens(heap_target_bytes);
 
@@ -345,12 +331,6 @@ impl ProcessManager {
             .arg("-Dterminal.ansi=true")
             .arg("-XX:AOTCache=HytaleServer.aot");
 
-        // Pass port and bind address via --bind
-        // Note: These are program arguments, but we'll put them before -jar as well 
-        // to keep logic clean, Or better: move them after.
-        // Actually, JVM flags MUST be before -jar. Program args MUST be after.
-        // Hytale's --bind and --assets are program args.
-        
         if let Some(args) = extra_args {
             for arg in args.split_whitespace() {
                 cmd.arg(arg);
@@ -375,7 +355,6 @@ impl ProcessManager {
             cmd.arg("--bind");
             cmd.arg(format!("{bind_ip}:{port}"));
         } else {
-            // Default to standard port if no config
             cmd.arg("--bind");
             cmd.arg("0.0.0.0:5520");
         }
@@ -396,60 +375,46 @@ impl ProcessManager {
              let _ = std::fs::create_dir_all(&logs_dir);
         }
         let log_path = logs_dir.join("console.log");
-        let log_file = std::fs::OpenOptions::new()
+        
+        let mut log_file = tokio::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(log_path)
-            .ok()
-            .map(|f| Arc::new(std::sync::Mutex::new(f)));
+            .await
+            .ok();
 
-        // Create log broadcaster
         let (log_tx, _) = broadcast::channel::<String>(10000);
         let _ = log_tx.send("[STATUS]: running".to_string());
 
-        // Create players tracker
         let players = Arc::new(std::sync::RwLock::new(HashSet::new()));
-
         let auth_required = Arc::new(std::sync::RwLock::new(false));
 
-        // Spawn task to read stdout
+        // Spawn task to read stdout (SAME LOGIC AS BEFORE)
         if let Some(stdout) = child.stdout.take() {
             let tx = log_tx.clone();
             let players_clone = players.clone();
             let server_id_clone = server_id.to_string();
-            let log_file_clone = log_file.clone();
             let pool_clone_opt = self.pool.clone();
             let auth_required_clone = auth_required.clone();
-            
             let game_type_clone = game_type.to_string();
-            let runtime_handle = tokio::runtime::Handle::current();
-            std::thread::spawn(move || {
-                let reader = BufReader::new(stdout);
-                // Use game-specific detection patterns
+            
+            tokio::spawn(async move {
+                let mut reader = BufReader::new(stdout).lines();
                 let patterns = PlayerDetectionPatterns::for_game_type(&game_type_clone);
                 let join_re = patterns.join_regex;
                 let leave_re = patterns.leave_regex;
                 let server_started_re = patterns.server_ready_regex;
                 let ip_re = patterns.ip_regex;
 
-                let pool_clone = pool_clone_opt; // Capture optional pool
-
-                for line in reader.lines().map_while(Result::ok) {
-                    // tracing::debug!("Server {} log line: {}", server_id_clone, line);
-                    
-                    // Write to file
-                    if let Some(f) = &log_file_clone {
-                        if let Ok(mut guard) = f.lock() {
-                            let _ = writeln!(guard, "{line}");
-                        }
+                while let Ok(Some(line)) = reader.next_line().await {
+                    if let Some(f) = log_file.as_mut() {
+                        let _ = f.write_all(format!("{line}\n").as_bytes()).await;
                     }
 
-                    // Try to match player events
                     if let Some(caps) = join_re.captures(&line) {
                         if let Some(name) = caps.get(1) {
                             let player_name = name.as_str().trim().to_string();
-                            // Safely get UUID if it exists (index 2)
                             let player_id = caps.get(2).map(|m| m.as_str().to_string());
                             
                             info!("Player joined server {}: {} (UUID: {:?})", server_id_clone, player_name, player_id);
@@ -457,13 +422,12 @@ impl ProcessManager {
                                 p.insert(player_name.clone());
                             }
                             
-                            // DB Update: Connect
-                            if let Some(pool) = &pool_clone {
+                            if let Some(pool) = &pool_clone_opt {
                                 let pool = pool.clone();
                                 let s_id = server_id_clone.clone();
                                 let p_name = player_name.clone();
                                 let p_id = player_id.clone();
-                                runtime_handle.spawn(async move {
+                                tokio::spawn(async move {
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let _ = sqlx::query(
                                         "INSERT INTO server_players (server_id, player_name, player_id, first_seen, last_seen, is_online) 
@@ -476,8 +440,8 @@ impl ProcessManager {
                                     .bind(s_id)
                                     .bind(p_name)
                                     .bind(p_id)
-                                    .bind(&now) // first_seen
-                                    .bind(&now) // last_seen
+                                    .bind(&now)
+                                    .bind(&now)
                                     .execute(&pool)
                                     .await;
                                 });
@@ -486,17 +450,15 @@ impl ProcessManager {
                     } else if let Some(caps) = leave_re.captures(&line) {
                         if let Some(name) = caps.get(1) {
                             let player_name = name.as_str().trim().to_string();
-                             // We might capture ID here too but usually just name is enough for remove
                             if let Ok(mut p) = players_clone.write() {
                                 p.remove(&player_name);
                             }
 
-                            // DB Update: Disconnect
-                            if let Some(pool) = &pool_clone {
+                            if let Some(pool) = &pool_clone_opt {
                                 let pool = pool.clone();
                                 let s_id = server_id_clone.clone();
                                 let p_name = player_name.clone();
-                                runtime_handle.spawn(async move {
+                                tokio::spawn(async move {
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let _ = sqlx::query(
                                         "UPDATE server_players SET is_online = 0, last_seen = ? WHERE server_id = ? AND player_name = ?"
@@ -510,19 +472,15 @@ impl ProcessManager {
                             }
                         }
                     } else if let Some(caps) = ip_re.as_ref().and_then(|re| re.captures(&line)) {
-                        // IP Detection
                         if let (Some(ip), Some(uuid), Some(name)) = (caps.get(1), caps.get(2), caps.get(3)) {
                             let player_ip = ip.as_str().to_string();
                             let player_id = uuid.as_str().to_string();
                             let player_name = name.as_str().trim().to_string();
                             
-                            // info!("Detected IP for {}: {}", player_name, player_ip);
-
-                            // DB Update: IP
-                            if let Some(pool) = &pool_clone {
+                            if let Some(pool) = &pool_clone_opt {
                                 let pool = pool.clone();
                                 let s_id = server_id_clone.clone();
-                                runtime_handle.spawn(async move {
+                                tokio::spawn(async move {
                                     let _ = sqlx::query(
                                         "UPDATE server_players SET player_ip = ?, player_id = ? WHERE server_id = ? AND player_name = ?"
                                     )
@@ -539,7 +497,6 @@ impl ProcessManager {
                          let _ = tx.send("[STATUS]: running".to_string());
                     }
 
-                     // Runtime Auth Detection
                     if (line.contains("IMPORTANT") && (line.contains("authentifier") || line.contains("authenticate"))) ||
                        (line.contains("[HytaleServer] No server tokens configured")) ||
                        (line.contains("/auth login to authenticate")) {
@@ -566,11 +523,9 @@ impl ProcessManager {
                 info!("Server {} stdout stream ended", server_id_clone);
                 let _ = tx.send("[STATUS]: stopped".to_string());
                 
-                 // Write stop marker to file
-                if let Some(f) = &log_file_clone {
-                    if let Ok(mut guard) = f.lock() {
-                        let _ = writeln!(guard, "[Server Stopped]");
-                    }
+                if let Some(f) = log_file.as_mut() {
+                    let _ = f.write_all(b"[Server Stopped]\n").await;
+                    let _ = f.flush().await;
                 }
             });
         }
@@ -579,22 +534,13 @@ impl ProcessManager {
         if let Some(stderr) = child.stderr.take() {
             let tx = log_tx.clone();
             let server_id_clone = server_id.to_string();
-            let log_file_clone = log_file.clone();
             let auth_required_clone = auth_required.clone();
 
-            std::thread::spawn(move || {
-                let reader = BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    let log_line = line.clone();
-                     // Write to file
-                    if let Some(f) = &log_file_clone {
-                        if let Ok(mut guard) = f.lock() {
-                            let _ = writeln!(guard, "{log_line}");
-                        }
-                    }
-                    let _ = tx.send(log_line);
+            tokio::spawn(async move {
+                let mut reader = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = reader.next_line().await {
+                    let _ = tx.send(line.clone());
                     
-                    // Runtime Auth Detection (stderr)
                      if (line.contains("IMPORTANT") && (line.contains("authentifier") || line.contains("authenticate"))) ||
                        (line.contains("[HytaleServer] No server tokens configured")) ||
                        (line.contains("/auth login to authenticate")) {
@@ -640,17 +586,16 @@ impl ProcessManager {
             .get_mut(server_id)
             .ok_or_else(|| AppError::NotFound("Server not running".into()))?;
 
-        // If it's an installation task, abort it
         if let Some(task) = &proc.install_task {
             task.abort();
             info!("Aborted installation task for server {}", server_id);
-            // We can return early or continue to cleanup
         }
 
         if let Some(child) = &mut proc.child {
-             // Try graceful shutdown first (send quit command)
+            // Try graceful shutdown first
             if let Some(stdin) = child.stdin.as_mut() {
-                let _ = writeln!(stdin, "/shutdown");
+                let _ = stdin.write_all(b"/shutdown\n").await;
+                let _ = stdin.flush().await;
             }
 
             // Wait a bit for graceful shutdown
@@ -660,6 +605,7 @@ impl ProcessManager {
             if child.try_wait().map_err(|e| AppError::Internal(e.to_string()))?.is_none() {
                 child
                     .kill()
+                    .await
                     .map_err(|e| AppError::Internal(format!("Failed to kill server: {e}")))?;
             }
         }
@@ -670,7 +616,6 @@ impl ProcessManager {
         Ok(())
     }
 
-    /// Force kill a server immediately without graceful shutdown
     pub async fn kill(&self, server_id: &str) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
 
@@ -679,9 +624,9 @@ impl ProcessManager {
             .ok_or_else(|| AppError::NotFound("Server not running".into()))?;
 
         if let Some(child) = &mut proc.child {
-            // Force kill immediately
             child
                 .kill()
+                .await
                 .map_err(|e| AppError::Internal(format!("Failed to kill server: {e}")))?;
         }
 
@@ -703,17 +648,14 @@ impl ProcessManager {
         extra_args: Option<&str>,
         config: Option<&serde_json::Value>,
         game_type: &str,
+        nice_level: i32,
     ) -> Result<(), AppError> {
-        // 1. Stop if running
         if self.is_running(server_id) {
             info!("Restart: Stopping server {}...", server_id);
             self.stop(server_id).await?;
-            
-            // Give it some extra time to release ports and file handles
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         }
 
-        // 2. Wait until it's really gone from the map (stop() removes it, but let's be sure)
         let mut retry = 0;
         while retry < 5 && self.is_running(server_id) {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -722,7 +664,6 @@ impl ProcessManager {
 
         info!("Restart: Starting server {}...", server_id);
 
-        // 3. Start again
         self.start(
             server_id,
             executable_path,
@@ -733,10 +674,12 @@ impl ProcessManager {
             extra_args,
             config,
             game_type,
+            nice_level,
         )
         .await
     }
 
+    // ... (rest of methods like send_command, getters - unchanged)
     pub async fn send_command(&self, server_id: &str, command: &str) -> Result<(), AppError> {
         let mut processes = self.processes.write().await;
 
@@ -746,17 +689,15 @@ impl ProcessManager {
 
         if let Some(child) = &mut proc.child {
             if let Some(stdin) = child.stdin.as_mut() {
-                writeln!(stdin, "{command}")
+                stdin.write_all(format!("{command}\n").as_bytes())
+                    .await
                     .map_err(|e| AppError::Internal(format!("Failed to send command: {e}")))?;
+                stdin.flush().await.map_err(|e| AppError::Internal(format!("Failed to flush stdin: {e}")))?;
             }
         }
 
         Ok(())
     }
-
-
-
-
 
     pub async fn get_online_players(&self, server_id: &str) -> Option<Vec<String>> {
         let processes = self.processes.read().await;
@@ -792,7 +733,7 @@ impl ProcessManager {
         if let Ok(processes) = self.processes.try_read() {
             if let Some(proc) = processes.get(server_id) {
                 if let Some(child) = &proc.child {
-                    return Some(child.id());
+                    return child.id();
                 }
             }
         }
@@ -832,6 +773,4 @@ impl Default for ProcessManager {
     }
 }
 
-
 use crate::utils::memory::{parse_memory_to_bytes, calculate_jvm_tokens};
-

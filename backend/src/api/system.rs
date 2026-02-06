@@ -206,7 +206,7 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<SystemSt
         use sqlx::Row;
         for row in server_rows {
             if let Ok(working_dir) = row.try_get::<String, _>("working_dir") {
-                managed_disk += get_dir_size(&working_dir).await;
+                managed_disk += crate::utils::files::calculate_dir_size(std::path::Path::new(&working_dir)).await;
             }
         }
     }
@@ -264,23 +264,4 @@ async fn get_cached_system_stats() -> (f32, f32, u64, u64, usize) {
     }
 
     (cpu_usage, ram_percent, ram_used, ram_total, cpu_cores)
-}
-
-/// Recursively calculates the size of a directory in bytes
-async fn get_dir_size(path: &str) -> u64 {
-    let path_buf = std::path::PathBuf::from(path);
-    if !path_buf.exists() || !path_buf.is_dir() {
-        return 0;
-    }
-
-    tokio::task::spawn_blocking(move || {
-        WalkDir::new(path_buf)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
-            .sum()
-    })
-    .await
-    .unwrap_or(0)
 }

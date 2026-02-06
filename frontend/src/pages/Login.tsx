@@ -90,10 +90,16 @@ export default function Login() {
 
     try {
       if (needsSetup) {
-        const response = await fetch("/api/v1/auth/register", {
+        const response = await fetch("/api/v1/setup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ 
+            username, 
+            password,
+            servers_dir: "data/servers",
+            backups_dir: "backups",
+            theme_color: "#3A82F6"
+          }),
         });
 
         if (!response.ok) {
@@ -104,6 +110,7 @@ export default function Login() {
         const data = await response.json();
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
+        // Force a page reload or update state to ensure context is aware
         window.location.href = "/dashboard";
       } else {
         await login(username, password);
@@ -169,11 +176,14 @@ export default function Login() {
             <label className="form-label">{t("auth.username")}</label>
             <input
               type="text"
+              name="username"
+              id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder={needsSetup ? t("auth.username") : t("auth.username")}
               required
               className="form-input"
+              autoComplete="username"
             />
           </div>
 
@@ -181,11 +191,14 @@ export default function Login() {
             <label className="form-label">{t("auth.password")}</label>
             <input
               type="password"
+              name="password"
+              id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={needsSetup ? t("auth.password") : t("auth.password")}
               required
               className="form-input"
+              autoComplete="current-password"
             />
           </div>
 
@@ -194,11 +207,14 @@ export default function Login() {
               <label className="form-label">{t("auth.confirm_password")}</label>
               <input
                 type="password"
+                name="confirm_password"
+                id="confirm_password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder={t("auth.confirm_password")}
                 required
                 className="form-input"
+                autoComplete="new-password"
               />
             </div>
           )}

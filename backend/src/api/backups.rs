@@ -8,9 +8,11 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+use tokio::fs;
 
 use crate::core::AppState;
 use crate::core::error::AppError;
+use crate::core::error::codes::ErrorCode;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -84,15 +86,11 @@ async fn create_backup(
     State(state): State<AppState>,
     Json(body): Json<CreateBackupRequest>,
 ) -> Result<(StatusCode, Json<BackupResponse>), AppError> {
-    // Check server exists
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String, String) = sqlx::query_as("SELECT name, working_dir FROM servers WHERE id = ?")
         .bind(&body.server_id)
         .fetch_optional(&state.pool)
-        .await?;
-
-    if server.is_none() {
-        return Err(AppError::NotFound("Server not found".into()));
-    }
+        .await?
+        .ok_or_else(|| AppError::NotFound("Server not found".into()).with_code(ErrorCode::ServerNotFound))?;
 
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
@@ -102,20 +100,27 @@ async fn create_backup(
         now.format("%Y%m%d_%H%M%S")
     );
 
-    // Create backups directory if not exists
     let backups_dir = std::path::Path::new("backups");
     if !backups_dir.exists() {
-        std::fs::create_dir_all(backups_dir).map_err(|e| AppError::Internal(format!("Failed to create backups dir: {e}")))?;
+        fs::create_dir_all(backups_dir).await?;
     }
 
     let backup_path = backups_dir.join(&filename);
-    
-    // Create actual backup
-    let working_dir = &server.unwrap().0;
+    let working_dir = server.1;
+    let server_name = server.0;
+
+    // If server is running, try to send a save command if supported (for Hytale, we can send /save-all if it exists)
+    if state.process_manager.is_running(&body.server_id) {
+        let _ = state.process_manager.send_command(&body.server_id, "/save-all").await;
+        // Give it a moment to save
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
     
     // Call service
-    let size_bytes = crate::services::system::backup::create_archive(working_dir, backup_path.to_str().unwrap())
-        .map_err(|e| AppError::Internal(format!("Backup failed: {e:?}")))?;
+    let size_bytes = crate::services::system::backup::create_archive(working_dir, backup_path.to_string_lossy().to_string())
+        .await
+        .map_err(|e| AppError::Internal(format!("Backup failed: {e}"))
+            .with_code(ErrorCode::BackupCreateFailed))?;
 
     let created_at = now.to_rfc3339();
 
@@ -129,6 +134,19 @@ async fn create_backup(
     .bind(&created_at)
     .execute(&state.pool)
     .await?;
+
+    // Discord notification
+    let pool_clone = state.pool.clone();
+    tokio::spawn(async move {
+        let _ = crate::services::system::discord::send_notification(
+            &pool_clone,
+            "💾 Sauvegarde Créée",
+            &format!("Une nouvelle sauvegarde a été créée pour le serveur **{server_name}**."),
+            crate::services::system::discord::COLOR_SUCCESS,
+            Some(&server_name),
+            None,
+        ).await;
+    });
 
     Ok((StatusCode::CREATED, Json(BackupResponse {
         id,
@@ -149,7 +167,7 @@ async fn get_backup(
     .bind(&id)
     .fetch_optional(&state.pool)
     .await?
-    .ok_or_else(|| AppError::NotFound("Backup not found".into()))?;
+    .ok_or_else(|| AppError::NotFound("Backup not found".into()).with_code(ErrorCode::BackupNotFound))?;
 
     Ok(Json(BackupResponse {
         id: backup.id,
@@ -164,7 +182,6 @@ async fn delete_backup(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // Get filename first to delete file
     let backup: Option<(String,)> = sqlx::query_as("SELECT filename FROM backups WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.pool)
@@ -174,7 +191,7 @@ async fn delete_backup(
          let backups_dir = std::path::Path::new("backups");
          let file_path = backups_dir.join(filename);
          if file_path.exists() {
-             std::fs::remove_file(file_path).map_err(|e| AppError::Internal(format!("Failed to delete backup file: {e}")))?;
+             fs::remove_file(file_path).await?;
          }
     }
 
@@ -184,7 +201,7 @@ async fn delete_backup(
         .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Backup not found".into()));
+        return Err(AppError::NotFound("Backup not found".into()).with_code(ErrorCode::BackupNotFound));
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -200,21 +217,27 @@ async fn restore_backup(
     .bind(&id)
     .fetch_optional(&state.pool)
     .await?
-    .ok_or_else(|| AppError::NotFound("Backup not found".into()))?;
+    .ok_or_else(|| AppError::NotFound("Backup not found".into()).with_code(ErrorCode::BackupNotFound))?;
 
-    // Get server working dir
     let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&backup.server_id)
         .fetch_optional(&state.pool)
         .await?
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Server not found".into()).with_code(ErrorCode::ServerNotFound))?;
 
     let backups_dir = std::path::Path::new("backups");
     let file_path = backups_dir.join(&backup.filename);
     
-    // Restore
-    crate::services::system::backup::extract_archive(file_path.to_str().unwrap(), &server.0)
-        .map_err(|e| AppError::Internal(format!("Restore failed: {e:?}")))?;
+    // If server is running, stop it first
+    if state.process_manager.is_running(&backup.server_id) {
+        state.process_manager.stop(&backup.server_id).await?;
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    }
+
+    crate::services::system::backup::extract_archive(file_path.to_string_lossy().to_string(), server.0)
+        .await
+        .map_err(|e| AppError::Internal(format!("Restore failed: {e}"))
+            .with_code(ErrorCode::BackupRestoreFailed))?;
 
     Ok(Json(serde_json::json!({
         "success": true,

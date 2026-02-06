@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 import { useState, useEffect } from "react";
 import { ToastProvider } from "./contexts/ToastContext";
 import { DialogProvider } from "./contexts/DialogContext";
-import { ToastContainer, DialogContainer } from "@/components/shared";
+import { ToastContainer, DialogContainer, ChangePasswordModal } from "@/components/shared";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
@@ -70,6 +70,7 @@ function App() {
                         <ToastContainer />
                         <DialogContainer />
                         <AuthProvider>
+                            <ChangePasswordModal />
                             <PageTitleProvider>
                                 <SetupCheck>
                                     <Routes>

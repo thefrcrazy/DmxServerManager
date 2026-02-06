@@ -6,7 +6,6 @@ use axum::{
 use tracing::{info, error};
 use std::path::{Path as StdPath};
 use chrono::Utc;
-use walkdir::WalkDir;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
@@ -84,13 +83,8 @@ pub async fn list_servers(
         let (cpu, cpu_norm, mem, mut disk) = pm.get_metrics_data(&s.id).await;
 
         if disk == 0 {
-            disk = WalkDir::new(&s.working_dir)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter_map(|e| e.metadata().ok())
-                .filter(|m| m.is_file())
-                .map(|m| m.len())
-                .sum();
+            // Use native size calculation if possible
+            disk = crate::utils::files::calculate_dir_size(StdPath::new(&s.working_dir)).await;
         }
 
         let heap_bytes = parse_memory_to_bytes(s.max_memory.as_deref().unwrap_or("4G"));
@@ -119,6 +113,7 @@ pub async fn list_servers(
             max_players,
             port: Some(s.port as u16),
             bind_address: Some(s.bind_address),
+            nice_level: s.nice_level,
             
             backup_enabled: s.backup_enabled != 0,
             backup_frequency: s.backup_frequency as u32,
@@ -153,8 +148,20 @@ pub async fn create_server(
     let now = Utc::now().to_rfc3339();
     let auto_start = body.auto_start.unwrap_or(false) as i32;
 
-    let server_base_path = StdPath::new(&body.working_dir).join(&id);
+    // Validate working_dir is within allowed base (security)
+    let base_data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data/servers".to_string());
+    let base_path = std::path::PathBuf::from(&base_data_dir);
+    
+    if !base_path.exists() {
+        fs::create_dir_all(&base_path).await?;
+    }
+
+    let server_base_path = base_path.join(&id);
     let directories = [&server_base_path];
+
+    if !server_base_path.starts_with(&base_path) {
+        return Err(AppError::BadRequest("Invalid server path".into()));
+    }
 
     for dir in directories {
         if let Err(e) = fs::create_dir_all(dir).await {
@@ -209,13 +216,13 @@ pub async fn create_server(
             backup_enabled, backup_frequency, backup_max_backups, backup_prefix,
             discord_username, discord_avatar, discord_webhook_url, discord_notifications,
             logs_retention_days, watchdog_enabled,
-            auth_mode, bind_address, port
+            auth_mode, bind_address, port, nice_level
         ) VALUES (
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
             1, 30, 7, 'hytale_backup',
             'Hytale Bot', '', '', '{}',
             7, 1,
-            ?, ?, ?
+            ?, ?, ?, ?
         )",
     )
     .bind(&id)
@@ -234,6 +241,7 @@ pub async fn create_server(
     .bind(auth_mode)
     .bind(bind_address)
     .bind(port)
+    .bind(body.nice_level.unwrap_or(0))
     .execute(&state.pool)
     .await?;
 
@@ -289,7 +297,6 @@ pub async fn get_server(
         is_whitelisted: false,
     })).collect();
 
-    // Merge with real-time online players
     if let Some(online_names) = pm.get_online_players(&id).await {
         for name in online_names {
             players_map.entry(name.clone())
@@ -299,7 +306,7 @@ pub async fn get_server(
                 })
                 .or_insert(Player {
                     name: name.clone(),
-                    uuid: None, // We don't have UUID from pm.get_online_players (only names)
+                    uuid: None, 
                     is_online: true,
                     last_seen: chrono::Utc::now().to_rfc3339(),
                     player_ip: None,
@@ -310,16 +317,13 @@ pub async fn get_server(
         }
     }
 
-    // Load meta from server files (whitelist, etc.)
     let meta = load_player_meta(&server.working_dir).await;
     for (key, m) in &meta {
-        // Try to find existing player by Name (key) OR UUID (key)
         let mut target_name = None;
         
         if players_map.contains_key(key) {
             target_name = Some(key.clone());
         } else {
-            // Check if 'key' is an UUID that matches an existing player's UUID
             for (p_name, p) in &players_map {
                 if let Some(uid) = &p.uuid {
                     if uid == key {
@@ -336,14 +340,11 @@ pub async fn get_server(
                     p.is_op = m.is_op;
                     p.is_banned = m.is_banned;
                     p.is_whitelisted = m.is_whitelisted;
-                    // If we matched by name but didn't have UUID, and key looks like UUID, save it
                     if p.uuid.is_none() && (key.len() == 36 || key.len() == 32) {
                          p.uuid = Some(key.clone());
                     }
                 });
         } else {
-            // New entry not found in DB or online
-            // If key looks like UUID, put it in uuid field. Name will be UUID for now (frontend can handle display)
             let is_uuid = key.len() == 36 || (key.len() == 32 && !key.contains(' '));
             let uuid = if is_uuid { Some(key.clone()) } else { None };
             
@@ -390,13 +391,7 @@ pub async fn get_server(
     let (cpu, cpu_norm, mem, mut disk) = pm.get_metrics_data(&server.id).await;
 
     if disk == 0 {
-        disk = WalkDir::new(&server.working_dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter_map(|e| e.metadata().ok())
-            .filter(|m| m.is_file())
-            .map(|m| m.len())
-            .sum();
+        disk = crate::utils::files::calculate_dir_size(StdPath::new(&server.working_dir)).await;
     }
 
     let heap_bytes = parse_memory_to_bytes(server.max_memory.as_deref().unwrap_or("4G"));
@@ -425,6 +420,7 @@ pub async fn get_server(
         max_players,
         port,
         bind_address,
+        nice_level: server.nice_level,
         
         backup_enabled: server.backup_enabled != 0,
         backup_frequency: server.backup_frequency as u32,
@@ -474,7 +470,8 @@ pub async fn update_server(
         watchdog_enabled = COALESCE(?, watchdog_enabled),
         auth_mode = COALESCE(?, auth_mode),
         bind_address = COALESCE(?, bind_address),
-        port = COALESCE(?, port)
+        port = COALESCE(?, port),
+        nice_level = COALESCE(?, nice_level)
         WHERE id = ?",
     )
     .bind(&body.name)
@@ -501,6 +498,7 @@ pub async fn update_server(
     .bind(&body.auth_mode)
     .bind(&body.bind_address)
     .bind(body.port)
+    .bind(body.nice_level)
     .bind(&id)
     .execute(&state.pool)
     .await?;
@@ -518,7 +516,6 @@ pub async fn update_server(
         // Prepare mapped config
         let mut mapped_vals = templates::map_to_hytale_config(config_json);
         
-        // Also inject top-level body fields if they are present and might be newer
         if let Some(port) = body.port {
             mapped_vals["Port"] = serde_json::json!(port);
         }
@@ -532,7 +529,6 @@ pub async fn update_server(
         }
         mapped_vals["ServerName"] = serde_json::json!(body.name);
 
-        // Use helper to merge with existing file if it exists
         async fn merge_and_write(path: &std::path::Path, new_vals: &serde_json::Value) -> Result<(), std::io::Error> {
             let mut current_config = if path.exists() {
                 let content = tokio::fs::read_to_string(path).await?;
@@ -620,7 +616,6 @@ async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String
     let base_path = StdPath::new(working_dir);
     let server_path = base_path.join("server");
 
-    // Helper to try multiple paths
     let try_paths = |filename: &str| {
         let p1 = server_path.join(filename);
         let p2 = base_path.join(filename);
@@ -629,7 +624,6 @@ async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String
         else { None }
     };
 
-    // OPs (permissions.json)
     if let Some(path) = try_paths("permissions.json") {
         if let Ok(c) = fs::read_to_string(&path).await {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
@@ -642,11 +636,9 @@ async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String
         }
     }
     
-    // Whitelist
     if let Some(path) = try_paths("whitelist.json") {
         if let Ok(c) = fs::read_to_string(&path).await {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
-                 // Try array format
                  if let Some(arr) = json.as_array() {
                      for item in arr {
                          if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
@@ -654,7 +646,6 @@ async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String
                          }
                      }
                  } 
-                 // Try Hytale object format { "list": [...] }
                  else if let Some(list) = json.get("list").and_then(|l| l.as_array()) {
                      for item in list {
                          if let Some(s) = item.as_str() {
@@ -666,7 +657,6 @@ async fn load_player_meta(working_dir: &str) -> std::collections::HashMap<String
         }
     }
 
-    // Bans
     if let Some(path) = try_paths("bans.json") {
         if let Ok(c) = fs::read_to_string(&path).await {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {

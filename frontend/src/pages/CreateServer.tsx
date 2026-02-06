@@ -2,14 +2,13 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Plus, Server, FolderOpen, Upload, FolderArchive,
-    Rocket, Play
+    Rocket, Play, Search, Cpu
 } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePageTitle } from "../contexts/PageTitleContext";
+import { Tooltip } from "@/components/ui";
 
 type CreationMode = "normal" | "existing" | "zip";
-
-
 
 interface ServerFormData {
     name: string;
@@ -27,7 +26,7 @@ interface ServerFormData {
     min_memory: string;
     java_path: string;
     extra_args: string;
-
+    nice_level: number;
 
     accept_early_plugins: boolean;
 
@@ -84,8 +83,8 @@ export default function CreateServer() {
         max_memory: "4G",
         min_memory: "4G",
         java_path: "",
-        // AOT is hardcoded in backend
         extra_args: "",
+        nice_level: 0,
 
         accept_early_plugins: false,
         backup_enabled: false,
@@ -117,6 +116,7 @@ export default function CreateServer() {
     const [error, setError] = useState("");
     const [isDocker, setIsDocker] = useState(false);
     const [defaultServersDir, setDefaultServersDir] = useState("");
+    const [isDetectingJava, setIsDetectingJava] = useState(false);
 
     const { setPageTitle } = usePageTitle();
     useEffect(() => {
@@ -155,6 +155,26 @@ export default function CreateServer() {
         { id: "zip" as CreationMode, label: t("servers.import_zip"), icon: FolderArchive, description: t("servers.create_mode_zip_desc") },
     ];
 
+    const detectJava = async () => {
+        setIsDetectingJava(true);
+        try {
+            const res = await fetch("/api/v1/system/java-versions", {
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+            });
+            if (res.ok) {
+                const versions = await res.json();
+                if (versions.length > 0) {
+                    // Pick the first one or logic to pick best
+                    updateFormData("java_path", versions[0].path);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to detect java", e);
+        } finally {
+            setIsDetectingJava(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -170,6 +190,7 @@ export default function CreateServer() {
                 formDataUpload.append("auto_start", String(formData.auto_start));
                 if (formData.java_path) formDataUpload.append("java_path", formData.java_path);
                 if (formData.extra_args) formDataUpload.append("extra_args", formData.extra_args);
+                formDataUpload.append("nice_level", String(formData.nice_level));
 
                 const response = await fetch("/api/v1/servers/import-zip", {
                     method: "POST",
@@ -378,6 +399,60 @@ export default function CreateServer() {
                             </div>
                         </div>
 
+                        {/* Java Path with Auto-Detect */}
+                        <div className="form-group">
+                            <label className="form-label-icon">
+                                <Search size={14} />
+                                {t("servers.java_path") || "Chemin Java"}
+                            </label>
+                            <div className="input-group">
+                                <input
+                                    type="text"
+                                    value={formData.java_path}
+                                    onChange={(e) => updateFormData("java_path", e.target.value)}
+                                    placeholder="java (ou chemin complet)"
+                                    className="input"
+                                />
+                                <Tooltip content="Détecter Java" position="top">
+                                    <button 
+                                        type="button" 
+                                        className="btn btn--secondary btn--icon"
+                                        onClick={detectJava}
+                                        disabled={isDetectingJava}
+                                    >
+                                        <Search size={16} className={isDetectingJava ? "spin" : ""} />
+                                    </button>
+                                </Tooltip>
+                            </div>
+                        </div>
+
+                        {/* CPU / Nice */}
+                        <div className="form-group">
+                            <label className="form-label-icon">
+                                <Cpu size={14} />
+                                {t("servers.cpu_priority") || "Priorité CPU (Nice)"}
+                            </label>
+                            <div className="range-wrapper">
+                                <input
+                                    type="range"
+                                    min="-20"
+                                    max="19"
+                                    step="1"
+                                    value={formData.nice_level}
+                                    onChange={(e) => updateFormData("nice_level", parseInt(e.target.value))}
+                                    className="range-input"
+                                />
+                                <div className="range-value">
+                                    <span>Haute (-20)</span>
+                                    <span className="font-mono font-bold text-primary">{formData.nice_level}</span>
+                                    <span>Basse (19)</span>
+                                </div>
+                            </div>
+                            <p className="helper-text">
+                                {t("servers.cpu_priority_hint") || "Valeur négative = priorité plus haute (Linux/Mac). 0 = Défaut."}
+                            </p>
+                        </div>
+
                         {/* Port UDP */}
                         <div className="form-group">
                             <label>{t("servers.udp_port")}</label>
@@ -436,6 +511,30 @@ export default function CreateServer() {
                     </div>
                 </div>
             </form>
+            <style>{`
+                .input-group {
+                    display: flex;
+                    gap: 8px;
+                }
+                .input-group .input {
+                    flex: 1;
+                }
+                .range-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                .range-input {
+                    width: 100%;
+                    cursor: pointer;
+                }
+                .range-value {
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 0.8rem;
+                    color: var(--text-secondary);
+                }
+            `}</style>
         </div>
     );
 }

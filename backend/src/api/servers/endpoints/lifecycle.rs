@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 use crate::core::AppState;
 use crate::core::error::AppError;
 use crate::utils::templates;
-use crate::api::servers::models::ServerRow;
+use crate::api::servers::models::{ServerRow};
 
 pub async fn start_server(
     State(state): State<AppState>,
@@ -82,7 +82,7 @@ pub async fn start_server(
          let _ = config_file.write_all(serde_json::to_string_pretty(&hytale_config_obj).unwrap().as_bytes()).await;
     }
 
-    // Process Manager config (internal use, lowercase keys are fine here)
+    // Process Manager config
     let mut pm_config = server.config.as_ref()
         .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
         .unwrap_or(serde_json::json!({}));
@@ -101,6 +101,7 @@ pub async fn start_server(
         server.extra_args.as_deref(),
         Some(&pm_config),
         &server.game_type,
+        server.nice_level,
     )
     .await?;
 
@@ -181,12 +182,14 @@ pub async fn restart_server(
         server.extra_args.as_deref(),
         server.config.as_ref().and_then(|c| serde_json::from_str(c).ok()).as_ref(),
         &server.game_type,
+        server.nice_level,
     )
     .await?;
 
     Ok(Json(serde_json::json!({ "status": "restarting" })))
 }
 
+// ... kill_server, reinstall_server, spawn_hytale_installation, run_with_logs - UNCHANGED from previous versions but need to be included
 pub async fn kill_server(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -274,7 +277,6 @@ pub async fn reinstall_server(
     })))
 }
 
-// Helpers
 pub fn spawn_hytale_installation(pool: crate::core::database::DbPool, pm: crate::services::game::ProcessManager, id: String, server_path: PathBuf) {
     tokio::spawn(async move {
         let (tx_start, rx_start) = tokio::sync::oneshot::channel::<()>();

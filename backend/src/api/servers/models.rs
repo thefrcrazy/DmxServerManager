@@ -30,6 +30,7 @@ pub struct CreateServerRequest {
     pub auth_mode: Option<String>,
     pub bind_address: Option<String>,
     pub port: Option<u16>,
+    pub nice_level: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,6 +66,7 @@ pub struct ServerResponse {
     pub max_players: Option<u32>,
     pub port: Option<u16>,
     pub bind_address: Option<String>,
+    pub nice_level: i32,
     
     // New fields
     pub backup_enabled: bool,
@@ -145,6 +147,8 @@ pub struct ServerRow {
     pub bind_address: String,
     #[sqlx(default)]
     pub port: i32,
+    #[sqlx(default)]
+    pub nice_level: i32,
 }
 
 // ============= Server Files API Models =============

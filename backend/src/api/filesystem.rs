@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tokio::fs;
 
 use crate::core::{AppState, AppError};
 
@@ -26,11 +27,11 @@ pub struct ListQuery {
 }
 
 async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_json::Value>, AppError> {
-    let base_path = query.path.clone().unwrap_or_else(|| "/".to_string());
-    let path = PathBuf::from(&base_path);
+    let base_path_str = query.path.clone().unwrap_or_else(|| "/".to_string());
+    let path = PathBuf::from(&base_path_str);
 
     if !path.exists() {
-        return Err(AppError::NotFound(format!("Path not found: {base_path}")));
+        return Err(AppError::NotFound(format!("Path not found: {base_path_str}")));
     }
 
     if !path.is_dir() {
@@ -40,7 +41,10 @@ async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_jso
     let mut entries: Vec<DirectoryEntry> = Vec::new();
 
     // Add parent directory if not at root
-    if base_path != "/" {
+    // For Unix, root is "/", for Windows it could be "C:\"
+    let is_root = path.parent().is_none() || base_path_str == "/";
+    
+    if !is_root {
         if let Some(parent) = path.parent() {
             entries.push(DirectoryEntry {
                 name: "..".to_string(),
@@ -51,12 +55,12 @@ async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_jso
     }
 
     // Read directory entries
-    let read_dir = std::fs::read_dir(&path)
+    let mut read_dir = fs::read_dir(&path).await
         .map_err(|e| AppError::Internal(format!("Failed to read directory: {e}")))?;
 
-    for entry in read_dir.flatten() {
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
         let entry_path = entry.path();
-        let is_dir = entry_path.is_dir();
+        let is_dir = entry.file_type().await.map(|ft| ft.is_dir()).unwrap_or(false);
         
         // Only show directories for the picker
         if is_dir {
@@ -86,7 +90,7 @@ async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_jso
     });
 
     Ok(Json(serde_json::json!({
-        "current_path": base_path,
+        "current_path": base_path_str,
         "entries": entries
     })))
 }

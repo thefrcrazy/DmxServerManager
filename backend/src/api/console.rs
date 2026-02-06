@@ -1,18 +1,40 @@
 use axum::{
-    extract::{Path, State, ws::{Message, WebSocket, WebSocketUpgrade}},
+    extract::{Path, State, ws::{Message, WebSocket, WebSocketUpgrade}, Query},
     response::IntoResponse,
 };
+use serde::Deserialize;
 use tracing::{error, info};
 use futures::{sink::SinkExt, stream::StreamExt};
 
 use crate::core::AppState;
+use crate::api::auth::Claims;
+use crate::core::error::AppError;
+
+#[derive(Debug, Deserialize)]
+pub struct WsQuery {
+    pub token: Option<String>,
+}
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Path(server_id): Path<String>,
     State(state): State<AppState>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, server_id, state))
+    Query(query): Query<WsQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    // Validate token
+    let token = query.token.as_ref().ok_or_else(|| AppError::Unauthorized("Missing token".into()))?;
+    
+    // Manual token verification since FromRequestParts doesn't work easily with WebSocketUpgrade
+    let secret = crate::core::database::get_or_create_jwt_secret(&state.pool).await
+        .map_err(|_| AppError::Internal("Failed to get secret".into()))?;
+    
+    let _token_data = jsonwebtoken::decode::<Claims>(
+        token,
+        &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
+        &jsonwebtoken::Validation::default(),
+    ).map_err(|_| AppError::Unauthorized("Invalid token".into()))?;
+
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, server_id, state)))
 }
 
 async fn handle_socket(socket: WebSocket, server_id: String, state: AppState) {

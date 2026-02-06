@@ -9,13 +9,16 @@ import {
     Server,
     Clock,
     Check,
-    Save
+    Save,
+    RefreshCw,
+    Copy
 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import Checkbox from "@/components/ui/Checkbox";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePageTitle } from "../contexts/PageTitleContext";
 import { PRESET_COLORS, LANGUAGES } from "@/constants/theme";
+import { Tooltip } from "@/components/ui";
 
 interface User {
     id: string;
@@ -29,6 +32,7 @@ interface User {
     last_login: string | null;
     last_ip: string | null;
     allocated_servers: string[];
+    must_change_password: boolean;
 }
 
 interface ServerInfo {
@@ -48,6 +52,7 @@ export default function EditUser() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState("");
+    const [passwordVisible, setPasswordVisible] = useState(false);
 
     const [formData, setFormData] = useState({
         username: "",
@@ -56,7 +61,8 @@ export default function EditUser() {
         is_active: true,
         language: "fr",
         accent_color: "#3A82F6",
-        allocated_servers: [] as string[]
+        allocated_servers: [] as string[],
+        must_change_password: false
     });
 
     useEffect(() => {
@@ -93,7 +99,8 @@ export default function EditUser() {
                         is_active: userData.is_active,
                         language: userData.language,
                         accent_color: userData.accent_color,
-                        allocated_servers: userData.allocated_servers || []
+                        allocated_servers: userData.allocated_servers || [],
+                        must_change_password: userData.must_change_password
                     });
                 } else {
                     navigate("/panel-settings?tab=users");
@@ -103,6 +110,26 @@ export default function EditUser() {
             console.error("Erreur:", error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const generatePassword = () => {
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
+        const length = 16;
+        let password = "";
+        const array = new Uint32Array(length);
+        window.crypto.getRandomValues(array);
+        for (let i = 0; i < length; i++) {
+            password += chars[array[i] % chars.length];
+        }
+        
+        setFormData({ ...formData, password, must_change_password: true });
+        setPasswordVisible(true);
+    };
+
+    const copyPassword = () => {
+        if (formData.password) {
+            navigator.clipboard.writeText(formData.password);
         }
     };
 
@@ -121,7 +148,8 @@ export default function EditUser() {
                 is_active: formData.is_active,
                 language: formData.language,
                 accent_color: formData.accent_color,
-                allocated_servers: formData.allocated_servers
+                allocated_servers: formData.allocated_servers,
+                must_change_password: formData.must_change_password
             };
 
             if (formData.password) {
@@ -206,20 +234,52 @@ export default function EditUser() {
                                     <Key size={14} className="text-accent" />
                                     {isCreating ? t("auth.password") : t("user_settings.new_password")}
                                 </label>
-                                <input
-                                    type="password"
-                                    value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder={isCreating ? "" : t("users.password_placeholder")}
-                                    required={isCreating}
-                                    className="input"
-                                />
+                                <div className="password-input-group">
+                                    <input
+                                        type={passwordVisible ? "text" : "password"}
+                                        value={formData.password}
+                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                        placeholder={isCreating ? "" : t("users.password_placeholder")}
+                                        required={isCreating && !formData.password}
+                                        className="input"
+                                        autoComplete="new-password"
+                                    />
+                                    <Tooltip content="Générer un mot de passe" position="top">
+                                        <button 
+                                            type="button" 
+                                            className="btn-icon-secondary"
+                                            onClick={generatePassword}
+                                        >
+                                            <RefreshCw size={16} />
+                                        </button>
+                                    </Tooltip>
+                                    {formData.password && (
+                                        <Tooltip content="Copier le mot de passe" position="top">
+                                            <button 
+                                                type="button" 
+                                                className="btn-icon-secondary"
+                                                onClick={copyPassword}
+                                            >
+                                                <Copy size={16} />
+                                            </button>
+                                        </Tooltip>
+                                    )}
+                                </div>
                                 {!isCreating && (
                                     <p className="helper-text">
                                         {t("users.password_leave_empty")}
                                     </p>
                                 )}
                             </div>
+
+                            {/* Force Password Change */}
+                            <Checkbox
+                                checked={formData.must_change_password}
+                                onChange={(v) => setFormData({ ...formData, must_change_password: v })}
+                                label={t("users.must_change_password") || "Forcer le changement de mot de passe"}
+                                description={t("users.must_change_password_desc") || "L'utilisateur devra changer son mot de passe à la prochaine connexion"}
+                                className="full-width-checkbox"
+                            />
 
                             {/* Role & Language */}
                             <div className="form-grid-2">
@@ -409,6 +469,34 @@ export default function EditUser() {
                     </button>
                 </div>
             </form>
+            <style>{`
+                .password-input-group {
+                    display: flex;
+                    gap: 8px;
+                    align-items: center;
+                }
+                .password-input-group .input {
+                    flex: 1;
+                }
+                .btn-icon-secondary {
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-sm);
+                    width: 38px;
+                    height: 38px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .btn-icon-secondary:hover {
+                    border-color: var(--primary-color);
+                    color: var(--primary-color);
+                    background: var(--bg-tertiary);
+                }
+            `}</style>
         </div>
     );
 }

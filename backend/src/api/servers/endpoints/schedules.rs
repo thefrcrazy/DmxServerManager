@@ -157,13 +157,11 @@ pub async fn run_schedule(
     State(state): State<AppState>,
     Path((_server_id, schedule_id)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // 1. Fetch schedule
     let s: ScheduleRow = sqlx::query_as("SELECT * FROM schedules WHERE id = ?")
         .bind(&schedule_id)
         .fetch_one(&state.pool)
         .await?;
 
-    // 2. Fetch server
     let srv: crate::api::servers::models::ServerRow = sqlx::query_as("SELECT * FROM servers WHERE id = ?")
         .bind(&s.server_id)
         .fetch_one(&state.pool)
@@ -172,7 +170,6 @@ pub async fn run_schedule(
     let config_json = srv.config.as_ref().and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok());
     let pm = &state.process_manager;
 
-    // 3. Run action
     match s.action.as_str() {
         "start" => { 
             let _ = pm.start(
@@ -184,7 +181,8 @@ pub async fn run_schedule(
                 srv.max_memory.as_deref(),
                 srv.extra_args.as_deref(),
                 config_json.as_ref(),
-                &srv.game_type
+                &srv.game_type,
+                srv.nice_level
             ).await; 
         },
         "stop" => { let _ = pm.stop(&s.server_id).await; },
@@ -198,13 +196,16 @@ pub async fn run_schedule(
                 srv.max_memory.as_deref(),
                 srv.extra_args.as_deref(),
                 config_json.as_ref(),
-                &srv.game_type
+                &srv.game_type,
+                srv.nice_level
             ).await; 
         },
         "backup" => {
             let filename = format!("backup_{}_{}.tar.gz", s.server_id, Utc::now().format("%Y%m%d_%H%M%S"));
             let backup_path = format!("backups/{filename}");
-            if let Ok(size) = crate::services::system::backup::create_archive(&srv.working_dir, &backup_path) {
+            
+            // Fix: correctly call async create_archive
+            if let Ok(size) = crate::services::system::backup::create_archive(srv.working_dir.clone(), backup_path.clone()).await {
                     let _ = sqlx::query("INSERT INTO backups (id, server_id, filename, size_bytes, created_at) VALUES (?, ?, ?, ?, ?)")
                     .bind(uuid::Uuid::new_v4().to_string())
                     .bind(&s.server_id)
@@ -218,7 +219,6 @@ pub async fn run_schedule(
         _ => {}
     }
 
-    // 4. Handle delete_after
     if s.delete_after != 0 {
         sqlx::query("DELETE FROM schedules WHERE id = ?").bind(&s.id).execute(&state.pool).await?;
     }

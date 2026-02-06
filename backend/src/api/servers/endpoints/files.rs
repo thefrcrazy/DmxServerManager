@@ -5,26 +5,17 @@ use axum::{
     http::header,
     response::Response,
 };
-use std::path::Path as StdPath;
+use std::path::{Path as StdPath, PathBuf};
 use tracing::info;
+use tokio::fs;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::core::{AppState, error::AppError};
-use crate::api::servers::models::{FileEntry, FilesQuery, ReadFileQuery, WriteFileRequest, DeleteFileRequest, CreateFolderRequest, CreateFileRequest, RenameFileRequest, CopyFileRequest, MoveFileRequest};
-
-fn calculate_dir_size(path: &StdPath) -> u64 {
-    let mut total = 0;
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let entry_path = entry.path();
-            if entry_path.is_dir() {
-                total += calculate_dir_size(&entry_path);
-            } else if let Ok(metadata) = entry_path.metadata() {
-                total += metadata.len();
-            }
-        }
-    }
-    total
-}
+use crate::api::servers::models::{
+    FileEntry, FilesQuery, ReadFileQuery, WriteFileRequest, DeleteFileRequest, 
+    CreateFolderRequest, CreateFileRequest, RenameFileRequest, CopyFileRequest, MoveFileRequest
+};
+use crate::utils::files::{calculate_dir_size, ensure_within_base, copy_dir_recursive};
 
 pub async fn list_server_files(
     State(state): State<AppState>,
@@ -32,29 +23,15 @@ pub async fn list_server_files(
     Query(query): Query<FilesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     
-    // Get server working directory
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
-    
-    // Build the path - relative to working_dir (includes server/ and manager/)
-    let base_path = StdPath::new(&working_dir);
+    let working_dir = PathBuf::from(server.0);
     let relative_path = query.path.clone().unwrap_or_default();
-    let full_path = if relative_path.is_empty() {
-        base_path.to_path_buf()
-    } else {
-        base_path.join(&relative_path)
-    };
-    
-    // Security: ensure path is within server directory
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&relative_path)).await?;
     
     if !full_path.exists() {
         return Err(AppError::NotFound("Path not found".into()));
@@ -66,7 +43,6 @@ pub async fn list_server_files(
     
     let mut entries: Vec<FileEntry> = Vec::new();
     
-    // Add parent directory if not at root
     if !relative_path.is_empty() {
         let parent = StdPath::new(&relative_path).parent()
             .map(|p| p.to_string_lossy().to_string())
@@ -80,33 +56,28 @@ pub async fn list_server_files(
         });
     }
     
-    // Read directory entries
-    let read_dir = std::fs::read_dir(&full_path)
-        .map_err(|e| AppError::Internal(format!("Failed to read directory: {e}")))?;
+    let mut read_dir = fs::read_dir(&full_path).await?;
     
-    for entry in read_dir.flatten() {
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
         let entry_path = entry.path();
         
-        // Auto-delete .log.lck files
         if let Some(name) = entry_path.file_name() {
              let name_str = name.to_string_lossy();
              if name_str.ends_with(".log.lck") {
-                 let _ = std::fs::remove_file(&entry_path);
+                 let _ = fs::remove_file(&entry_path).await;
                  continue;
              }
         }
 
-        let is_dir = entry_path.is_dir();
-        let metadata = entry_path.metadata().ok();
+        let metadata = entry.metadata().await?;
+        let is_dir = metadata.is_dir();
         let size = if is_dir { 
-            Some(calculate_dir_size(&entry_path)) 
+            Some(calculate_dir_size(&entry_path).await) 
         } else { 
-            metadata.as_ref().map(|m| m.len()) 
+            Some(metadata.len()) 
         };
-        let modified_at = metadata.and_then(|m| {
-            m.modified().ok().and_then(|t| {
-                t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs() as i64)
-            })
+        let modified_at = metadata.modified().ok().and_then(|t| {
+            t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs() as i64)
         });
         
         if let Some(name) = entry_path.file_name() {
@@ -127,7 +98,6 @@ pub async fn list_server_files(
         }
     }
     
-    // Sort: directories first, then alphabetically
     entries.sort_by(|a, b| {
         if a.name == ".." {
             std::cmp::Ordering::Less
@@ -154,23 +124,14 @@ pub async fn read_server_file(
     Query(query): Query<ReadFileQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     
-    // Get server working directory
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let full_path = base_path.join(&query.path);
-    
-    // Security check
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&query.path)).await?;
     
     if !full_path.exists() {
         return Err(AppError::NotFound("File not found".into()));
@@ -181,24 +142,17 @@ pub async fn read_server_file(
     }
     
     let content = if let Some(n) = query.tail {
-        use std::io::{Read, Seek, SeekFrom};
-        let mut file = std::fs::File::open(&full_path)
-            .map_err(|e| AppError::Internal(format!("Failed to open file: {e}")))?;
-        
-        let metadata = file.metadata()
-            .map_err(|e| AppError::Internal(format!("Failed to get metadata: {e}")))?;
+        let mut file = fs::File::open(&full_path).await?;
+        let metadata = file.metadata().await?;
         let len = metadata.len();
         
-        // Strategy: Read last 256KB or whole file if smaller
         let max_bytes = 256 * 1024; // 256KB
         let start_pos = len.saturating_sub(max_bytes);
         
-        file.seek(SeekFrom::Start(start_pos))
-            .map_err(|e| AppError::Internal(format!("Failed to seek: {e}")))?;
+        file.seek(std::io::SeekFrom::Start(start_pos)).await?;
         
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)
-            .map_err(|e| AppError::Internal(format!("Failed to read: {e}")))?;
+        file.read_to_end(&mut buffer).await?;
         
         let full_text = String::from_utf8_lossy(&buffer);
         let lines: Vec<&str> = full_text.lines().collect();
@@ -209,8 +163,7 @@ pub async fn read_server_file(
             full_text.into_owned()
         }
     } else {
-        std::fs::read_to_string(&full_path)
-            .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?
+        fs::read_to_string(&full_path).await?
     };
     
     Ok(Json(serde_json::json!({
@@ -225,26 +178,16 @@ pub async fn write_server_file(
     Json(body): Json<WriteFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     
-    // Get server working directory
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
+    let working_dir = PathBuf::from(server.0);
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&body.path)).await?;
     
-    let base_path = StdPath::new(&working_dir);
-    let full_path = base_path.join(&body.path);
-    
-    // Security check
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
-    
-    std::fs::write(&full_path, &body.content)
-        .map_err(|e| AppError::Internal(format!("Failed to write file: {e}")))?;
+    fs::write(&full_path, &body.content).await?;
     
     info!("File written: {:?}", full_path);
     
@@ -260,36 +203,24 @@ pub async fn delete_server_file(
     Json(body): Json<DeleteFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     
-    // Get server working directory
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let full_path = base_path.join(&body.path);
-    
-    // Security check
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&body.path)).await?;
     
     if !full_path.exists() {
         return Err(AppError::NotFound("File not found".into()));
     }
     
-    // Delete file or directory
     if full_path.is_dir() {
-        std::fs::remove_dir_all(&full_path)
-            .map_err(|e| AppError::Internal(format!("Failed to delete directory: {e}")))?;
+        fs::remove_dir_all(&full_path).await?;
         info!("Directory deleted: {:?}", full_path);
     } else {
-        std::fs::remove_file(&full_path)
-            .map_err(|e| AppError::Internal(format!("Failed to delete file: {e}")))?;
+        fs::remove_file(&full_path).await?;
         info!("File deleted: {:?}", full_path);
     }
     
@@ -305,29 +236,20 @@ pub async fn create_folder(
     Json(body): Json<CreateFolderRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let full_path = base_path.join(&body.path);
-    
-    // Security check
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&body.path)).await?;
     
     if full_path.exists() {
         return Err(AppError::BadRequest("Folder already exists".into()));
     }
     
-    std::fs::create_dir_all(&full_path)
-        .map_err(|e| AppError::Internal(format!("Failed to create folder: {e}")))?;
+    fs::create_dir_all(&full_path).await?;
     
     info!("Folder created: {:?}", full_path);
     
@@ -343,38 +265,25 @@ pub async fn create_file(
     Json(body): Json<CreateFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let full_path = base_path.join(&body.path);
-    
-    // Security check
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&body.path)).await?;
     
     if full_path.exists() {
         return Err(AppError::BadRequest("File already exists".into()));
     }
     
-    // Create parent directories if needed
     if let Some(parent) = full_path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::Internal(format!("Failed to create parent directories: {e}")))?;
-        }
+        fs::create_dir_all(parent).await?;
     }
     
     let content = body.content.unwrap_or_default();
-    std::fs::write(&full_path, &content)
-        .map_err(|e| AppError::Internal(format!("Failed to create file: {e}")))?;
+    fs::write(&full_path, &content).await?;
     
     info!("File created: {:?}", full_path);
     
@@ -390,20 +299,17 @@ pub async fn upload_file(
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, AppError> {
     
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
+    let working_dir = PathBuf::from(server.0);
     let mut uploaded_files: Vec<String> = Vec::new();
     let mut target_path = String::new();
     
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::BadRequest(format!("Failed to read multipart: {e}")))? {
+    while let Some(field) = multipart.next_field().await? {
         let name = field.name().unwrap_or("").to_string();
         
         if name == "path" {
@@ -416,29 +322,25 @@ pub async fn upload_file(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "unnamed".to_string());
             
-            let data = field.bytes().await.map_err(|e| AppError::Internal(format!("Failed to read file data: {e}")))?;
+            // Limit file size to 100MB for now
+            let data = field.bytes().await?;
+            if data.len() > 100 * 1024 * 1024 {
+                return Err(AppError::BadRequest(format!("File {file_name} exceeds the 100MB limit")));
+            }
             
-            let file_path = if target_path.is_empty() {
-                base_path.join(&file_name)
+            let relative_file_path = if target_path.is_empty() {
+                PathBuf::from(&file_name)
             } else {
-                base_path.join(&target_path).join(&file_name)
+                StdPath::new(&target_path).join(&file_name)
             };
             
-            // Security check
-            if !file_path.starts_with(base_path) {
-                return Err(AppError::BadRequest("Invalid path".into()));
-            }
+            let file_path = ensure_within_base(&working_dir, &relative_file_path).await?;
             
-            // Create parent directories if needed
             if let Some(parent) = file_path.parent() {
-                if !parent.exists() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| AppError::Internal(format!("Failed to create directories: {e}")))?;
-                }
+                fs::create_dir_all(parent).await?;
             }
             
-            std::fs::write(&file_path, &data)
-                .map_err(|e| AppError::Internal(format!("Failed to write file: {e}")))?;
+            fs::write(&file_path, &data).await?;
             
             info!("File uploaded: {:?}", file_path);
             uploaded_files.push(file_name);
@@ -457,22 +359,14 @@ pub async fn download_file(
     Query(query): Query<ReadFileQuery>,
 ) -> Result<Response<Body>, AppError> {
     
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("servers.not_found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let full_path = base_path.join(&query.path);
-    
-    // Security check
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&query.path)).await?;
     
     if !full_path.exists() {
         return Err(AppError::NotFound("File not found".into()));
@@ -482,11 +376,8 @@ pub async fn download_file(
         return Err(AppError::BadRequest("Cannot download a directory".into()));
     }
     
-    let file = tokio::fs::File::open(&full_path).await
-        .map_err(|e| AppError::Internal(format!("Failed to open file: {e}")))?;
-    
-    let metadata = file.metadata().await
-        .map_err(|e| AppError::Internal(format!("Failed to get file metadata: {e}")))?;
+    let file = fs::File::open(&full_path).await?;
+    let metadata = file.metadata().await?;
     let size = metadata.len();
 
     let stream = tokio_util::io::ReaderStream::new(file);
@@ -511,27 +402,19 @@ pub async fn rename_file(
     Path(server_id): Path<String>,
     Json(body): Json<RenameFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let full_path = base_path.join(&body.path);
-    
-    if !full_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let full_path = ensure_within_base(&working_dir, StdPath::new(&body.path)).await?;
     
     if !full_path.exists() {
         return Err(AppError::NotFound("File not found".into()));
     }
     
-    // Validate new name (no path separators)
     if body.new_name.contains('/') || body.new_name.contains('\\') {
         return Err(AppError::BadRequest("Invalid file name".into()));
     }
@@ -540,12 +423,9 @@ pub async fn rename_file(
         .ok_or_else(|| AppError::Internal("Cannot get parent directory".into()))?
         .join(&body.new_name);
     
-    if !new_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid destination path".into()));
-    }
+    ensure_within_base(&working_dir, &new_path).await?;
     
-    std::fs::rename(&full_path, &new_path)
-        .map_err(|e| AppError::Internal(format!("Failed to rename: {e}")))?;
+    fs::rename(&full_path, &new_path).await?;
     
     info!("Renamed {} to {}", body.path, body.new_name);
     
@@ -557,40 +437,28 @@ pub async fn copy_file(
     Path(server_id): Path<String>,
     Json(body): Json<CopyFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let source_path = base_path.join(&body.source);
-    let dest_path = base_path.join(&body.destination);
-    
-    if !source_path.starts_with(base_path) || !dest_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let source_path = ensure_within_base(&working_dir, StdPath::new(&body.source)).await?;
+    let dest_path = ensure_within_base(&working_dir, StdPath::new(&body.destination)).await?;
     
     if !source_path.exists() {
         return Err(AppError::NotFound("Source file not found".into()));
     }
     
-    // Create parent directories if needed
     if let Some(parent) = dest_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Internal(format!("Failed to create directories: {e}")))?;
+        fs::create_dir_all(parent).await?;
     }
     
     if source_path.is_dir() {
-        // Recursive copy for directories
-        copy_dir_recursive(&source_path, &dest_path)
-            .map_err(|e| AppError::Internal(format!("Failed to copy directory: {e}")))?;
+        copy_dir_recursive(&source_path, &dest_path).await?;
     } else {
-        std::fs::copy(&source_path, &dest_path)
-            .map_err(|e| AppError::Internal(format!("Failed to copy file: {e}")))?;
+        fs::copy(&source_path, &dest_path).await?;
     }
     
     info!("Copied {} to {}", body.source, body.destination);
@@ -598,55 +466,30 @@ pub async fn copy_file(
     Ok(Json(serde_json::json!({ "success": true, "message": "File copied" })))
 }
 
-fn copy_dir_recursive(src: &StdPath, dst: &StdPath) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let entry_path = entry.path();
-        let dest_path = dst.join(entry.file_name());
-        if entry_path.is_dir() {
-            copy_dir_recursive(&entry_path, &dest_path)?;
-        } else {
-            std::fs::copy(&entry_path, &dest_path)?;
-        }
-    }
-    Ok(())
-}
-
 pub async fn move_file(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
     Json(body): Json<MoveFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
+    let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
-        .await?;
+        .await?
+        .ok_or_else(|| AppError::NotFound("Server not found".into()))?;
     
-    let working_dir = server
-        .ok_or_else(|| AppError::NotFound("Server not found".into()))?
-        .0;
-    
-    let base_path = StdPath::new(&working_dir);
-    let source_path = base_path.join(&body.source);
-    let dest_path = base_path.join(&body.destination);
-    
-    if !source_path.starts_with(base_path) || !dest_path.starts_with(base_path) {
-        return Err(AppError::BadRequest("Invalid path".into()));
-    }
+    let working_dir = PathBuf::from(server.0);
+    let source_path = ensure_within_base(&working_dir, StdPath::new(&body.source)).await?;
+    let dest_path = ensure_within_base(&working_dir, StdPath::new(&body.destination)).await?;
     
     if !source_path.exists() {
         return Err(AppError::NotFound("Source file not found".into()));
     }
     
-    // Create parent directories if needed
     if let Some(parent) = dest_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Internal(format!("Failed to create directories: {e}")))?;
+        fs::create_dir_all(parent).await?;
     }
     
-    std::fs::rename(&source_path, &dest_path)
-        .map_err(|e| AppError::Internal(format!("Failed to move file: {e}")))?;
+    fs::rename(&source_path, &dest_path).await?;
     
     info!("Moved {} to {}", body.source, body.destination);
     

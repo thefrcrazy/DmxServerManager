@@ -215,6 +215,9 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     if !column_names.contains(&"allocated_servers") {
         sqlx::query("ALTER TABLE users ADD COLUMN allocated_servers TEXT").execute(pool).await.ok();
     }
+    if !column_names.contains(&"must_change_password") {
+        sqlx::query("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
+    }
 
     // Server table migrations
     let server_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(servers)")
@@ -267,6 +270,9 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     }
     if !server_column_names.contains(&"port") {
         sqlx::query("ALTER TABLE servers ADD COLUMN port INTEGER NOT NULL DEFAULT 5520").execute(pool).await.ok();
+    }
+    if !server_column_names.contains(&"nice_level") {
+        sqlx::query("ALTER TABLE servers ADD COLUMN nice_level INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
     }
 
     // Server players table migrations

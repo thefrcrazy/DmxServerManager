@@ -4,68 +4,58 @@ use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
 use flate2::Compression;
 use tar::Archive;
+use crate::core::error::AppError;
+use crate::core::error::codes::ErrorCode;
 
-#[derive(Debug)]
-#[allow(dead_code)]
-pub enum BackupError {
-    IoError(std::io::Error),
-    PathError(String),
+pub async fn create_archive(source_dir: String, backup_file_path: String) -> Result<u64, AppError> {
+    tokio::task::spawn_blocking(move || {
+        let source_path = Path::new(&source_dir);
+        let backup_path = Path::new(&backup_file_path);
+
+        if !source_path.exists() {
+            return Err(AppError::NotFound(format!("Source directory not found: {source_dir}"))
+                .with_code(ErrorCode::ServerDirMissing));
+        }
+
+        if let Some(parent) = backup_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let tar_gz = File::create(backup_path)?;
+        let enc = GzEncoder::new(tar_gz, Compression::default());
+        let mut tar = tar::Builder::new(enc);
+
+        tar.append_dir_all(".", source_path)?;
+        tar.finish()?;
+
+        let metadata = std::fs::metadata(backup_path)?;
+        Ok(metadata.len())
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("Spawn blocking failed: {e}")))?
 }
 
-impl From<std::io::Error> for BackupError {
-    fn from(err: std::io::Error) -> Self {
-        BackupError::IoError(err)
-    }
-}
+pub async fn extract_archive(backup_file_path: String, dest_dir: String) -> Result<(), AppError> {
+    tokio::task::spawn_blocking(move || {
+        let backup_path = Path::new(&backup_file_path);
+        let dest_path = Path::new(&dest_dir);
 
-pub fn create_archive(source_dir: &str, backup_file_path: &str) -> Result<u64, BackupError> {
-    let source_path = Path::new(source_dir);
-    let backup_path = Path::new(backup_file_path);
+        if !backup_path.exists() {
+            return Err(AppError::NotFound(format!("Backup file not found: {backup_file_path}"))
+                .with_code(ErrorCode::BackupNotFound));
+        }
 
-    if !source_path.exists() {
-        return Err(BackupError::PathError(format!("Source directory not found: {source_dir}")));
-    }
+        if !dest_path.exists() {
+            let _ = std::fs::create_dir_all(dest_path);
+        }
 
-    // Create parent directory for backup if it doesn't exist
-    if let Some(parent) = backup_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+        let tar_gz = File::open(backup_path)?;
+        let tar = GzDecoder::new(tar_gz);
+        let mut archive = Archive::new(tar);
 
-    let tar_gz = File::create(backup_path)?;
-    let enc = GzEncoder::new(tar_gz, Compression::default());
-    let mut tar = tar::Builder::new(enc);
-
-    // Add directory content recursivly
-    // We add the content OF the directory, not the directory itself as top level if possible, 
-    // or we add "."? 
-    // Usually standard is to archive the content relative to source_dir.
-    tar.append_dir_all(".", source_path)?;
-    
-    tar.finish()?;
-
-    // Get size
-    let metadata = std::fs::metadata(backup_path)?;
-    Ok(metadata.len())
-}
-
-pub fn extract_archive(backup_file_path: &str, dest_dir: &str) -> Result<(), BackupError> {
-    let backup_path = Path::new(backup_file_path);
-    let dest_path = Path::new(dest_dir);
-
-    if !backup_path.exists() {
-        return Err(BackupError::PathError(format!("Backup file not found: {backup_file_path}")));
-    }
-
-    if !dest_path.exists() {
-        std::fs::create_dir_all(dest_path)?;
-    }
-
-    let tar_gz = File::open(backup_path)?;
-    let tar = GzDecoder::new(tar_gz);
-    let mut archive = Archive::new(tar);
-
-    // Unpack
-    archive.unpack(dest_path)?;
-
-    Ok(())
+        archive.unpack(dest_path)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("Spawn blocking failed: {e}")))?
 }

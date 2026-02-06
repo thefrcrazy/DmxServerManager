@@ -55,10 +55,12 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
             if (result) {
                 success(t(`servers.action_${action}_success`) || `Action ${action} successful`);
             } else {
+                // onAction should ideally return the error or throw it
                 error(t("servers.action_failed") || "Action failed");
             }
-        } catch (err) {
-            error(t("servers.action_failed") || "Action failed");
+        } catch (err: any) {
+            const msg = err instanceof Error ? err.message : String(err);
+            error(t(msg) || t("servers.action_failed") || "Action failed");
         } finally {
             setLoadingAction(null);
         }

@@ -120,6 +120,7 @@ async fn perform_setup(
             username: body.username.clone(),
             role: "admin".to_string(),
             accent_color: Some(body.theme_color.clone()),
+            must_change_password: false,
         },
     }))
 }
