@@ -20,7 +20,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { formatBytes, formatGB } from "../utils/formatters";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePageTitle } from "../contexts/PageTitleContext";
-import { useServerWebSocket } from "../hooks";
+import { useServerWebSocket, usePermission } from "../hooks";
 import { useToast } from "../contexts/ToastContext";
 import { useDialog } from "../contexts/DialogContext";
 
@@ -139,6 +139,7 @@ export default function ServerDetail() {
     const { setPageTitle } = usePageTitle();
     const { success, error: showError } = useToast();
     const { confirm } = useDialog();
+    const { hasPermission } = usePermission();
     const { id } = useParams<{ id: string }>();
 
     const [server, setServer] = useState<Server | null>(null);
@@ -147,17 +148,31 @@ export default function ServerDetail() {
     const tabParam = searchParams.get("tab") as TabId | null;
     const [activeTab, setActiveTab] = useState<TabId>(tabParam || "console");
 
-    const tabs = useMemo<Tab[]>(() => [
-        { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
-        { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
-        { id: "schedule", label: t("server_detail.tabs.schedule"), icon: <Clock size={18} /> },
-        { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
-        { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
-        { id: "mods", label: t("server_detail.tabs.mods"), icon: <Package size={18} /> },
-        { id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> },
-        { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
-        { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
-    ], [t]);
+    const tabs = useMemo<Tab[]>(() => {
+        const allTabs: Tab[] = [
+            { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
+            { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
+            { id: "schedule", label: t("server_detail.tabs.schedule"), icon: <Clock size={18} /> },
+            { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
+            { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
+            { id: "mods", label: t("server_detail.tabs.mods"), icon: <Package size={18} /> },
+            { id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> },
+            { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
+            { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
+        ];
+
+        // Filter tabs based on permissions
+        return allTabs.filter(tab => {
+            if (tab.id === "console") return hasPermission("server.console.read");
+            if (tab.id === "logs") return hasPermission("server.console.read");
+            if (tab.id === "files") return hasPermission("server.files.read");
+            if (tab.id === "schedule") return hasPermission("server.schedules.manage");
+            if (tab.id === "config") return hasPermission("settings.manage");
+            if (tab.id === "players") return hasPermission("server.view");
+            if (tab.id === "metrics") return hasPermission("server.view");
+            return true;
+        });
+    }, [t, hasPermission]);
 
     // Sync activeTab from URL changes (activeTab follows URL)
     useEffect(() => {
@@ -321,6 +336,10 @@ export default function ServerDetail() {
     }, [server?.status, server?.started_at, setStartTime]);
 
     const handleAction = useCallback(async (action: "start" | "stop" | "restart" | "kill") => {
+        if (!hasPermission(`server.${action}`)) {
+            showError("Vous n'avez pas la permission d'effectuer cette action");
+            return;
+        }
         if (action === "start" && server?.status === "running") return;
         try {
             const res = await fetch(`/api/v1/servers/${id}/${action}`, {
@@ -345,7 +364,7 @@ export default function ServerDetail() {
             console.error(e);
             showError(t("server_detail.messages.connection_error"));
         }
-    }, [id, server?.status, t, fetchServer, setLogs, setIsAuthRequired, setStartTime, showError]);
+    }, [id, server?.status, t, fetchServer, setLogs, setIsAuthRequired, setStartTime, showError, hasPermission]);
 
     const fetchSchedules = useCallback(async () => {
         if (!id) return;
@@ -1033,25 +1052,31 @@ export default function ServerDetail() {
         if (server) {
             setPageTitle(server.name, `${server.game_type} Server`, { to: "/servers" },
                 <div className="header-actions-group">
-                    <div className={`status-badge-large ${server.status === "running" ? "status-badge-large--online" : server.status === "missing" ? "status-badge-large--error" : "status-badge-large--offline"}`}>
+                    <div className={`status-badge-large ${server.status === "running" ? "status-badge-large--online" : server.status === "missing" ? "status-badge-large--error" : server.status === "missing" ? "status-badge-large--error" : "status-badge-large--offline"}`}>
                         <span className="status-dot"></span>
                         {server.status}
                     </div>
                     <div className="header-controls">
-                        <Tooltip content={t("servers.start")} position="bottom">
-                            <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running" || server.status === "starting" || server.status === "auth_required"}><Play size={16} /> {t("servers.start")}</button>
-                        </Tooltip>
-                        <Tooltip content={t("servers.restart")} position="bottom">
-                            <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running" && server.status !== "auth_required"}><RotateCw size={16} /></button>
-                        </Tooltip>
-                        <Tooltip content={t("servers.stop")} position="bottom">
-                            <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running" && server.status !== "auth_required"}><Square size={16} /></button>
-                        </Tooltip>
+                        {hasPermission("server.start") && (
+                            <Tooltip content={t("servers.start")} position="bottom">
+                                <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running" || server.status === "starting" || server.status === "auth_required"}><Play size={16} /> {t("servers.start")}</button>
+                            </Tooltip>
+                        )}
+                        {hasPermission("server.restart") && (
+                            <Tooltip content={t("servers.restart")} position="bottom">
+                                <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running" && server.status !== "auth_required"}><RotateCw size={16} /></button>
+                            </Tooltip>
+                        )}
+                        {hasPermission("server.stop") && (
+                            <Tooltip content={t("servers.stop")} position="bottom">
+                                <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running" && server.status !== "auth_required"}><Square size={16} /></button>
+                            </Tooltip>
+                        )}
                     </div>
                 </div>
             );
         }
-    }, [server, setPageTitle, handleAction, t]);
+    }, [server, setPageTitle, handleAction, t, hasPermission]);
 
     const configHasChanges = useMemo(() => {
         if (!configFormData.id || !initialConfigFormData.id) return false;
@@ -1100,7 +1125,6 @@ export default function ServerDetail() {
     return (
         <div className="server-detail-page">
             <div className="server-header-stats">
-                {/* ... Stats Pills ... */}
                 <div className="stat-pill"><div className="stat-pill__icon"><Clock size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">UPTIME</div><div className="stat-pill__value">{uptime}</div></div></div>
                 <div className="stat-pill"><div className="stat-pill__icon"><Users size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">PLAYERS</div><div className="stat-pill__value">{currentPlayersList.length} / {server.max_players || 100}</div></div></div>
                 <div className="stat-pill"><div className="stat-pill__icon"><Globe size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">ADDRESS</div><div className="stat-pill__value">{server.bind_address}:{server.port}</div></div></div>

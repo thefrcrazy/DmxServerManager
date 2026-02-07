@@ -9,6 +9,7 @@ import { Server } from "@/schemas/api";
 import { Table, Tooltip } from "@/components/ui";
 import ServerCard from "./ServerCard";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { usePermission } from "@/hooks";
 import { formatBytes, formatGB } from "@/utils/formatters";
 import { getGameLogo } from "@/utils/gameConfig";
 
@@ -22,6 +23,7 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
     const { t } = useLanguage();
     const navigate = useNavigate();
     const { success, error } = useToast();
+    const { hasPermission } = usePermission();
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
     if (viewMode === "grid") {
@@ -48,6 +50,12 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
     const handleActionClick = async (e: React.MouseEvent, serverId: string, action: "start" | "stop" | "restart" | "kill") => {
         e.stopPropagation();
         if (loadingAction) return;
+
+        // Check permission
+        if (!hasPermission(`server.${action}`)) {
+            error(t("common.no_permission") || "Vous n'avez pas la permission d'effectuer cette action");
+            return;
+        }
 
         setLoadingAction(`${serverId}-${action}`);
         try {
@@ -132,44 +140,52 @@ export default function ServerList({ servers, viewMode, onAction }: ServerListPr
                                         </Link>
                                     ) : isRunning ? (
                                         <>
-                                            <Tooltip content={t("servers.restart")} position="top">
-                                                <button
-                                                    className="btn btn--icon btn--ghost text-info"
-                                                    onClick={(e) => handleActionClick(e, server.id, "restart")}
-                                                    disabled={!!loadingAction}
-                                                >
-                                                    {loadingAction === `${server.id}-restart` ? <RotateCw size={16} className="spin" /> : <RotateCw size={16} />}
-                                                </button>
-                                            </Tooltip>
-                                            <Tooltip content={t("servers.stop")} position="top">
-                                                <button
-                                                    className="btn btn--icon btn--ghost text-danger"
-                                                    onClick={(e) => handleActionClick(e, server.id, "stop")}
-                                                    disabled={!!loadingAction}
-                                                >
-                                                    {loadingAction === `${server.id}-stop` ? <RotateCw size={16} className="spin" /> : <Square size={16} />}
-                                                </button>
-                                            </Tooltip>
-                                            <Tooltip content={t("servers.kill")} position="top">
-                                                <button
-                                                    onClick={(e) => handleActionClick(e, server.id, "kill")}
-                                                    className="btn btn--icon btn--ghost text-danger btn-kill"
-                                                    disabled={!!loadingAction}
-                                                >
-                                                    {loadingAction === `${server.id}-kill` ? <RotateCw size={16} className="spin" /> : <Skull size={16} />}
-                                                </button>
-                                            </Tooltip>
+                                            {hasPermission("server.restart") && (
+                                                <Tooltip content={t("servers.restart")} position="top">
+                                                    <button
+                                                        className="btn btn--icon btn--ghost text-info"
+                                                        onClick={(e) => handleActionClick(e, server.id, "restart")}
+                                                        disabled={!!loadingAction}
+                                                    >
+                                                        {isActionLoading && loadingAction === `${server.id}-restart` ? <RotateCw size={16} className="spin" /> : <RotateCw size={16} />}
+                                                    </button>
+                                                </Tooltip>
+                                            )}
+                                            {hasPermission("server.stop") && (
+                                                <Tooltip content={t("servers.stop")} position="top">
+                                                    <button
+                                                        className="btn btn--icon btn--ghost text-danger"
+                                                        onClick={(e) => handleActionClick(e, server.id, "stop")}
+                                                        disabled={!!loadingAction}
+                                                    >
+                                                        {isActionLoading && loadingAction === `${server.id}-stop` ? <RotateCw size={16} className="spin" /> : <Square size={16} />}
+                                                    </button>
+                                                </Tooltip>
+                                            )}
+                                            {hasPermission("server.kill") && (
+                                                <Tooltip content={t("servers.kill")} position="top">
+                                                    <button
+                                                        onClick={(e) => handleActionClick(e, server.id, "kill")}
+                                                        className="btn btn--icon btn--ghost text-danger btn-kill"
+                                                        disabled={!!loadingAction}
+                                                    >
+                                                        {isActionLoading && loadingAction === `${server.id}-kill` ? <RotateCw size={16} className="spin" /> : <Skull size={16} />}
+                                                    </button>
+                                                </Tooltip>
+                                            )}
                                         </>
                                     ) : (
-                                        <Tooltip content={t("servers.start")} position="top">
-                                            <button
-                                                className="btn btn--icon btn--ghost text-success"
-                                                onClick={(e) => handleActionClick(e, server.id, "start")}
-                                                disabled={!!loadingAction}
-                                            >
-                                                {loadingAction === `${server.id}-start` ? <RotateCw size={18} className="spin" /> : <Play size={18} />}
-                                            </button>
-                                        </Tooltip>
+                                        hasPermission("server.start") && (
+                                            <Tooltip content={t("servers.start")} position="top">
+                                                <button
+                                                    className="btn btn--icon btn--ghost text-success"
+                                                    onClick={(e) => handleActionClick(e, server.id, "start")}
+                                                    disabled={!!loadingAction}
+                                                >
+                                                    {isActionLoading && loadingAction === `${server.id}-start` ? <RotateCw size={18} className="spin" /> : <Play size={18} />}
+                                                </button>
+                                            </Tooltip>
+                                        )
                                     )}
                                 </div>
                             </td>

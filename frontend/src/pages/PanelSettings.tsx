@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { DirectoryPicker, LoadingScreen } from "@/components/shared";
 import { Table, Tabs, ColorPicker, Tooltip } from "@/components/ui";
+import RoleManagement from "@/components/features/settings/RoleManagement";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -605,65 +606,7 @@ export default function PanelSettings() {
 
             {/* Roles Tab */}
             {activeTab === "roles" && (
-                <div>
-                    <div className="user-list-header">
-                        <p className="text-muted">{t("panel_settings.roles_subtitle")}</p>
-                        <button className="btn btn--primary">
-                            <Plus size={18} />
-                            {t("panel_settings.create_role")}
-                        </button>
-                    </div>
-
-                    <Table>
-                        <thead>
-                            <tr>
-                                <th>{t("panel_settings.role_name")}</th>
-                                <th>{t("panel_settings.permissions")}</th>
-                                <th>{t("panel_settings.users_count")}</th>
-                                <th className="table-col-actions">{t("common.actions")}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {roles.map((role) => (
-                                <tr key={role.id}>
-                                    <td>
-                                        <div className="role-cell">
-                                            <div className="role-cell__dot" style={{ background: role.color }} />
-                                            <span className="role-cell__name">{role.name}</span>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div className="permissions-list">
-                                            {role.permissions.map(perm => (
-                                                <span key={perm} className="badge badge--secondary permission-badge">
-                                                    {perm}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </td>
-                                    <td>
-                                        {users.filter(u => u.role === (role.name.toLowerCase() === "administrateur" ? "admin" : "user")).length}
-                                    </td>
-                                    <td>
-                                        <div className="table__actions">
-                                            <button className="btn btn--icon btn--ghost" title="Modifier">
-                                                <Edit2 size={16} />
-                                            </button>
-                                            <button className="btn btn--icon btn--ghost btn--danger" title="Supprimer" disabled>
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </Table>
-
-                    <div className="alert alert--info mt-4">
-                        <AlertTriangle size={16} />
-                        <span>{t("panel_settings.roles_coming_soon")}</span>
-                    </div>
-                </div>
+                <RoleManagement />
             )}
 
             {/* Directory Pickers */}

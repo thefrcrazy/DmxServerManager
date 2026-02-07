@@ -7,6 +7,7 @@ import {
     Settings,
     HardDrive,
     ChevronsLeft,
+    MessageSquare,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     const navItems = [
         { icon: LayoutDashboard, label: t("sidebar.dashboard"), path: "/dashboard" },
         { icon: Server, label: t("sidebar.servers"), path: "/servers" },
+        { icon: MessageSquare, label: "Collaboration", path: "/collaboration" },
         { icon: HardDrive, label: t("sidebar.backups"), path: "/backups" },
         { icon: Settings, label: t("sidebar.settings"), path: "/panel-settings" },
     ];

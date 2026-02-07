@@ -18,6 +18,7 @@ import UserSettings from "./pages/UserSettings";
 import Setup from "./pages/Setup";
 import CreateServer from "./pages/CreateServer";
 import EditUser from "./pages/EditUser";
+import Collaboration from "./pages/Collaboration";
 
 function SetupCheck({ children }: { children: React.ReactNode }) {
     const [isChecking, setIsChecking] = useState(true);
@@ -84,6 +85,7 @@ function App() {
                                             <Route path="/backups" element={<Backups />} />
                                             <Route path="/panel-settings" element={<PanelSettings />} />
                                             <Route path="/panel-settings/users/:id" element={<EditUser />} />
+                                            <Route path="/collaboration" element={<Collaboration />} />
                                             <Route path="/user-settings" element={<UserSettings />} />
                                             {/* Redirect old route */}
                                             <Route path="/settings" element={<Navigate to="/panel-settings" replace />} />

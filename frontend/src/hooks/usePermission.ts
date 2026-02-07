@@ -4,7 +4,7 @@ export function usePermission() {
     const { user } = useAuth();
 
     const hasPermission = (permission: string): boolean => {
-        if (!user) return false;
+        if (!user || !user.permissions) return false;
         
         // Admin wildcard
         if (user.permissions.includes("*")) return true;

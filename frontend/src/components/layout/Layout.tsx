@@ -83,6 +83,7 @@ export default function Layout() {
                             {headerActions}
                         </div>
                     )}
+
                     {/* Notifications */}
                     <button className="topbar__icon-btn" title={t("common.notifications")}>
                         <Bell size={20} />
