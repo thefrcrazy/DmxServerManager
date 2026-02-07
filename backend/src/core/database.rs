@@ -83,7 +83,26 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
             last_ip TEXT,
             allocated_servers TEXT,
             created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            must_change_password INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS roles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            permissions TEXT NOT NULL, -- JSON array
+            is_system INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'chat', -- 'chat' or 'note'
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS servers (
@@ -117,7 +136,8 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
             
             auth_mode TEXT NOT NULL DEFAULT 'authenticated',
             bind_address TEXT NOT NULL DEFAULT '0.0.0.0',
-            port INTEGER NOT NULL DEFAULT 5520
+            port INTEGER NOT NULL DEFAULT 5520,
+            nice_level INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS backups (
@@ -230,8 +250,6 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     if !server_column_names.contains(&"config") {
         sqlx::query("ALTER TABLE servers ADD COLUMN config TEXT").execute(pool).await.ok();
     }
-    
-    // New migrations for manager.json fields
     if !server_column_names.contains(&"backup_enabled") {
         sqlx::query("ALTER TABLE servers ADD COLUMN backup_enabled INTEGER NOT NULL DEFAULT 1").execute(pool).await.ok();
     }
@@ -316,11 +334,39 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     if !schedules_column_names.contains(&"delete_after") {
         sqlx::query("ALTER TABLE schedules ADD COLUMN delete_after INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
     }
-    // Make cron_expression optional in migrations if it was NOT NULL before
-    // Sqlite doesn't support easy ALTER COLUMN. But if it was created with the previous SQL, it was NOT NULL.
-    // However, if I just added it, it's fine.
+
+    // Initialize Default Roles if empty
+    let roles_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM roles").fetch_one(pool).await.unwrap_or(0);
+    if roles_count == 0 {
+        let now = Utc::now().to_rfc3339();
+        
+        // Admin: All permissions
+        sqlx::query(
+            "INSERT INTO roles (id, name, permissions, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .bind("admin")
+        .bind("Administrateur")
+        .bind("[\"*\"]") // Wildcard for all
+        .bind(1)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await.ok();
+
+        // User: Basic permissions
+        sqlx::query(
+            "INSERT INTO roles (id, name, permissions, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .bind("user")
+        .bind("Utilisateur")
+        .bind("[\"server.read\", \"server.console.read\"]") // Minimal set
+        .bind(1)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await.ok();
+    }
 
     info!("✅ Migrations completed");
     Ok(())
 }
-

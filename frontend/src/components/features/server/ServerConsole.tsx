@@ -33,23 +33,17 @@ export default function ServerConsole({
     const handleScroll = () => {
         if (!consoleContentRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = consoleContentRef.current;
-        // Check if user is near bottom (within 100px tolerance)
-        const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+        
+        // Check if user is at the bottom (with small 10px tolerance for high-DPI screens)
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 10;
         isAtBottomRef.current = isAtBottom;
     };
 
     // Auto-scroll logic
     useEffect(() => {
-        if (logs.length > 0 && isAtBottomRef.current) {
-            // Use requestAnimationFrame for smoother behavior during rapid log income
-            requestAnimationFrame(() => {
-                if (consoleContentRef.current) {
-                    consoleContentRef.current.scrollTo({
-                        top: consoleContentRef.current.scrollHeight,
-                        behavior: "smooth" // Smooth scroll for better UX
-                    });
-                }
-            });
+        if (logs.length > 0 && isAtBottomRef.current && consoleContentRef.current) {
+            // Use instant scroll for terminals to avoid conflict with manual scrolling
+            consoleContentRef.current.scrollTop = consoleContentRef.current.scrollHeight;
         }
     }, [logs]);
 

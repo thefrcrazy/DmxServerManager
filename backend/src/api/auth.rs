@@ -113,6 +113,7 @@ pub struct UserInfo {
     pub id: String,
     pub username: String,
     pub role: String,
+    pub permissions: Vec<String>,
     pub accent_color: Option<String>,
     pub must_change_password: bool,
 }
@@ -206,12 +207,25 @@ async fn login(
 
     let token = create_token(&user, &state).await?;
 
+    // Fetch permissions
+    let role_perms: Option<(String,)> = sqlx::query_as("SELECT permissions FROM roles WHERE id = ?")
+        .bind(&user.role)
+        .fetch_optional(&state.pool)
+        .await.unwrap_or(None);
+    
+    let permissions: Vec<String> = if let Some((p,)) = role_perms {
+        serde_json::from_str(&p).unwrap_or_default()
+    } else {
+        if user.role == "admin" { vec!["*".to_string()] } else { vec![] }
+    };
+
     Ok(Json(AuthResponse {
         token,
         user: UserInfo {
             id: user.id,
             username: user.username,
             role: user.role,
+            permissions,
             accent_color: user.accent_color,
             must_change_password: user.must_change_password != 0,
         },
@@ -270,12 +284,26 @@ async fn register(
 
     let token = create_token(&user, &state).await?;
 
+    // Fetch permissions (for newly created user)
+    // Note: If roles table empty, migration creates admin/user. If it failed, fallback.
+    let role_perms: Option<(String,)> = sqlx::query_as("SELECT permissions FROM roles WHERE id = ?")
+        .bind(&user.role)
+        .fetch_optional(&state.pool)
+        .await.unwrap_or(None);
+    
+    let permissions: Vec<String> = if let Some((p,)) = role_perms {
+        serde_json::from_str(&p).unwrap_or_default()
+    } else {
+        if user.role == "admin" { vec!["*".to_string()] } else { vec![] }
+    };
+
     Ok((StatusCode::CREATED, Json(AuthResponse {
         token,
         user: UserInfo {
             id: user.id,
             username: user.username,
             role: user.role,
+            permissions,
             accent_color: Some(accent_color),
             must_change_password: false,
         },
@@ -283,17 +311,13 @@ async fn register(
 }
 
 async fn me(auth: AuthUser) -> Result<Json<UserInfo>, AppError> {
-    // We should probably check the DB here to ensure the user still exists or if roles changed
-    // For now, we trust the token but could be improved.
+    // AuthUser already has permissions loaded
     Ok(Json(UserInfo {
         id: auth.id,
         username: auth.username,
         role: auth.role,
+        permissions: auth.permissions,
         accent_color: auth.accent_color,
-        // Since this comes from JWT which doesn't have the flag (unless we add it), 
-        // we might want to default false or fetch from DB if needed. 
-        // For simplicity, let's say false as this endpoint is usually for session check.
-        // If we want to force logout/modal on session resume, we should fetch DB.
         must_change_password: false, 
     }))
 }
@@ -302,6 +326,7 @@ pub struct AuthUser {
     pub id: String,
     pub username: String,
     pub role: String,
+    pub permissions: Vec<String>,
     pub accent_color: Option<String>,
 }
 
@@ -332,10 +357,27 @@ impl FromRequestParts<AppState> for AuthUser {
         .map_err(|_| AppError::Unauthorized("auth.invalid_token".into())
             .with_code(ErrorCode::AuthInvalidToken))?;
 
+        // Fetch permissions for the role
+        let role_perms: Option<(String,)> = sqlx::query_as(
+            "SELECT permissions FROM roles WHERE id = ?"
+        )
+        .bind(&token_data.claims.role)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None); // Fail safe, empty permissions if role deleted
+
+        let permissions: Vec<String> = if let Some((perms_json,)) = role_perms {
+            serde_json::from_str(&perms_json).unwrap_or_default()
+        } else {
+            // Fallback for legacy hardcoded roles if database migration failed partially or role missing
+            if token_data.claims.role == "admin" { vec!["*".to_string()] } else { vec![] }
+        };
+
         Ok(AuthUser {
             id: token_data.claims.sub,
             username: token_data.claims.username,
             role: token_data.claims.role,
+            permissions,
             accent_color: token_data.claims.accent_color,
         })
     }

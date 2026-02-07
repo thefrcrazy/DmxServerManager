@@ -119,6 +119,7 @@ async fn perform_setup(
             id: user_id,
             username: body.username.clone(),
             role: "admin".to_string(),
+            permissions: vec!["*".to_string()], // Admin has all permissions
             accent_color: Some(body.theme_color.clone()),
             must_change_password: false,
         },

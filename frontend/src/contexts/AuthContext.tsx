@@ -5,6 +5,7 @@ export interface User {
     id: string;
     username: string;
     role: string;
+    permissions: string[];
     accent_color?: string;
     must_change_password?: boolean;
 }
