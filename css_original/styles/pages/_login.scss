@@ -1,0 +1,73 @@
+@use "../mixins" as *;
+
+// ========================================
+// Login Page Styles
+// ========================================
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: var(--login-bg-image, radial-gradient(circle at center, var(--color-bg-secondary) 0%, var(--color-bg-primary) 100%));
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+.login-card {
+    max-width: 420px;
+    width: 100%;
+    padding: 2.5rem;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+
+    &__logo {
+        height: 80px;
+        margin-bottom: 1rem;
+    }
+}
+
+.login-setup-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(var(--color-accent-rgb), 0.1);
+    border: 1px solid rgba(var(--color-accent-rgb), 0.2);
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+    color: var(--color-accent);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.login-footer {
+    margin-top: 1.5rem;
+    text-align: center;
+
+    p {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+    }
+}
+
+// Loading state
+.loading-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    @include flex-center;
+}

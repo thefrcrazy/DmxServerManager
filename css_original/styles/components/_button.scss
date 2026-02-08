@@ -1,0 +1,139 @@
+@use "../mixins" as *;
+
+// Button styles
+.btn {
+    @include button-base;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+
+    // Primary Button (Accent)
+    &--primary {
+        background-color: var(--color-accent);
+        color: var(--color-text-inverse);
+        font-weight: 600;
+
+        &:hover:not(:disabled) {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+    }
+
+    // Secondary Button (Outline)
+    &--secondary {
+        background-color: transparent;
+        border-color: var(--color-border);
+        color: var(--color-text-primary);
+
+        &:hover:not(:disabled) {
+            background-color: var(--color-bg-elevated);
+            border-color: var(--color-border-hover);
+        }
+    }
+
+    // Ghost Button (Text only)
+    &--ghost {
+        background-color: transparent;
+        color: var(--color-text-muted);
+
+        &:hover:not(:disabled) {
+            color: var(--color-text-primary);
+            background-color: var(--color-bg-tertiary);
+        }
+    }
+
+    // Danger Button
+    &--danger {
+        background-color: rgba(239, 68, 68, 0.1);
+        color: var(--color-danger);
+
+        &:hover:not(:disabled) {
+            background-color: rgba(239, 68, 68, 0.2);
+        }
+    }
+
+    // Danger Button Solid (red background)
+    &--danger-solid {
+        background-color: var(--color-danger);
+        color: var(--color-text-inverse);
+        font-weight: 600;
+
+        &:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+    }
+
+    // Success Button
+    &--success {
+        background-color: rgba(16, 185, 129, 0.1);
+        color: var(--color-success);
+
+        &:hover:not(:disabled) {
+            background-color: rgba(16, 185, 129, 0.2);
+        }
+    }
+
+    // Sizes
+    &--sm {
+        padding: 0.125rem var(--spacing-2);
+        font-size: 0.6875rem;
+    }
+
+    &--lg {
+        padding: var(--spacing-2) var(--spacing-5);
+        font-size: 0.875rem;
+    }
+
+    &--icon {
+        padding: var(--spacing-1);
+        aspect-ratio: 1;
+        height: 34px;
+    }
+
+    // Full width
+    &--full {
+        width: 100%;
+    }
+}
+
+// Button group
+.btn-group {
+    display: flex;
+    gap: var(--spacing-2);
+}
+
+// Flex center utility
+.flex-center {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+// Spinner
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+
+    &--sm {
+        width: 14px;
+        height: 14px;
+        border-width: 2px;
+    }
+
+    &--light {
+        border-color: rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

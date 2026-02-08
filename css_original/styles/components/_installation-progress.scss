@@ -1,0 +1,377 @@
+@use "../variables" as *;
+@use "../mixins" as *;
+
+.installation-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+    z-index: 50; // Reduced z-index, 9999 was too high for absolute within page
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    border-radius: 0.75rem; // rounded-xl matches this roughly
+
+    &.minimized {
+        background-color: transparent;
+        backdrop-filter: none;
+        pointer-events: none;
+        justify-content: flex-end;
+        align-items: flex-end;
+        padding: 2rem;
+
+        .minimized-badge {
+            pointer-events: auto;
+            background-color: #1a1b1e;
+            border: 1px solid rgba(251, 191, 36, 0.4);
+            padding: 0.75rem 1rem;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
+            animation: slideUp 0.3s ease-out;
+
+            &:hover {
+                transform: translateY(-2px);
+            }
+
+            span {
+                font-weight: 600;
+                color: #fbbf24; // amber-400
+                font-size: 0.9rem;
+            }
+        }
+    }
+
+    &__card {
+        background-color: #1a1b1e;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        max-width: 32rem; // max-w-lg
+        width: 100%;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); // shadow-2xl
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.installation-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+
+    &__title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        background: linear-gradient(to right, #fb923c, #fbbf24); // orange-400 to amber-400
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        margin: 0;
+    }
+
+    &__subtitle {
+        color: #9ca3af; // gray-400
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+    }
+}
+
+.installation-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.installation-step {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #6b7280; // gray-500
+
+    &--current {
+        background-color: rgba(249, 115, 22, 0.1); // orange-500/10
+        border-color: rgba(249, 115, 22, 0.3); // orange-500/30
+        color: #fb923c; // orange-400
+    }
+
+    &--complete {
+        background-color: rgba(34, 197, 94, 0.05); // green-500/5
+        border-color: rgba(34, 197, 94, 0.2); // green-500/20
+        color: #4ade80; // green-400
+    }
+
+    &__icon {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 9999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(255, 255, 255, 0.05);
+
+        .installation-step--current & {
+            background-color: rgba(249, 115, 22, 0.2); // orange-500/20
+        }
+
+        .installation-step--complete & {
+            background-color: rgba(34, 197, 94, 0.2); // green-500/20
+        }
+    }
+
+    &__content {
+        flex: 1;
+    }
+
+    &__label {
+        font-weight: 500;
+        font-size: 0.875rem;
+    }
+
+    &__loader {
+        margin-top: 0.5rem;
+        height: 0.25rem;
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 9999px;
+        overflow: hidden;
+
+        &-bar {
+            height: 100%;
+            background-color: #f97316; // orange-500
+            border-radius: 9999px;
+            width: 100%;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    }
+}
+
+.installation-auth {
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: rgba(234, 179, 8, 0.1); // yellow-500/10
+    border: 1px solid rgba(234, 179, 8, 0.2); // yellow-500/20
+    border-radius: 0.5rem;
+    text-align: center;
+
+    &__title {
+        color: #facc15; // yellow-400
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    &__content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    &__link {
+        color: #3b82f6; // blue-500
+        text-decoration: underline;
+        word-break: break-all;
+        font-size: 0.9rem;
+
+        &:hover {
+            color: #60a5fa; // blue-400
+        }
+    }
+
+    &__code {
+        background-color: rgba(0, 0, 0, 0.3);
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        font-family: monospace;
+        font-size: 1.1rem;
+        font-weight: bold;
+        letter-spacing: 1px;
+        color: white;
+        margin-top: 0.5rem;
+        display: inline-block;
+    }
+}
+
+.installation-actions {
+    .btn-finish {
+        width: 100%;
+        padding: 0.5rem;
+        background-color: #22c55e; // green-500
+        color: white;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        transition: background-color 0.2s;
+        border: none;
+        cursor: pointer;
+
+        &:hover {
+            background-color: #16a34a; // green-600
+        }
+    }
+
+    .btn-cancel {
+        width: 100%;
+        padding: 0.5rem;
+        background-color: rgba(239, 68, 68, 0.1); // red-500/10
+        color: #ef4444; // red-500
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        border-radius: 0.5rem;
+        font-weight: 500;
+        transition: all 0.2s;
+        cursor: pointer;
+        margin-top: 0.75rem;
+
+        &:hover {
+            background-color: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+    }
+}
+
+.installation-status {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 0.5rem;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: #9ca3af; // gray-400
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+
+    &__prefix {
+        color: #3b82f6; // blue-500
+        margin-right: 0.5rem;
+        font-weight: bold;
+    }
+}
+
+.installation-download {
+    margin-top: 1rem;
+
+    &__bar-container {
+        height: 0.5rem;
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 9999px; // full rounded
+        overflow: hidden;
+        margin-bottom: 0.5rem;
+    }
+
+    &__bar-fill {
+        height: 100%;
+        background-color: #3b82f6; // blue-500
+        transition: width 0.3s ease-out;
+    }
+
+    &__details {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: #cbd5e1; // slate-300
+    }
+
+    &__percent {
+        font-weight: 600;
+        color: white;
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .5;
+    }
+}
+
+.installation-details {
+    margin-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 0.5rem;
+
+    &[open] {
+        .installation-details__summary {
+            margin-bottom: 0.5rem;
+            opacity: 1;
+        }
+    }
+
+    &__summary {
+        cursor: pointer;
+        font-size: 0.8rem;
+        color: #9ca3af; // text-muted equivalent
+        user-select: none;
+        display: flex;
+        align-items: center;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+
+        &:hover {
+            opacity: 1;
+            color: white;
+        }
+
+        &::marker {
+            color: #9ca3af;
+        }
+    }
+
+    &__content {
+        background: #111; // Darker background for code block feel
+        border-radius: 6px;
+        padding: 0.5rem;
+        // 5 lines * 1.4 line-height * 0.75rem font-size ~= 5.25rem. plus padding.
+        max-height: 6rem;
+        overflow-y: auto;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 0.75rem;
+        color: #cbd5e1; // text-secondary
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        scrollbar-width: thin;
+
+        &::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        .log-line {
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.4;
+            font-feature-settings: "liga" 0;
+        }
+    }
+}

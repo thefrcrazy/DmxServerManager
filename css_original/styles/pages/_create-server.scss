@@ -1,0 +1,163 @@
+@use "../mixins" as *;
+
+.create-server-page {
+    .creation-mode-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        max-width: 800px;
+        margin: 0 auto 1.5rem auto;
+    }
+
+    .creation-mode-btn {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1rem;
+        background: var(--color-bg-secondary);
+        border: 2px solid var(--color-border);
+        border-radius: 12px;
+        cursor: pointer;
+        color: var(--color-text-primary);
+        transition: all 0.2s ease;
+
+        span {
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        &--active {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: white;
+        }
+    }
+
+    .server-config-card {
+        padding: 1.5rem;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .server-config-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        svg {
+            color: var(--color-accent);
+        }
+    }
+
+    .server-config-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+    }
+
+    .server-config-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.25rem;
+    }
+
+    .form-label-icon {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        svg {
+            color: var(--color-accent);
+        }
+    }
+
+    .zip-upload-zone {
+        border: 2px dashed var(--color-border);
+        border-radius: 8px;
+        padding: 2rem;
+        text-align: center;
+        cursor: pointer;
+        background: var(--color-bg-secondary);
+
+        &--active {
+            background: rgba(16, 185, 129, 0.1);
+        }
+    }
+
+    .zip-upload-content {
+        cursor: pointer;
+        width: 100%;
+    }
+
+    .zip-upload-file-icon {
+        color: #10b981;
+        margin-bottom: 0.5rem;
+    }
+
+    .zip-upload-file-name {
+        font-weight: 600;
+        color: #10b981;
+    }
+
+    .zip-upload-icon {
+        color: var(--color-text-muted);
+        margin-bottom: 0.5rem;
+    }
+
+    .zip-upload-text {
+        font-weight: 600;
+    }
+
+
+
+    .advanced-defaults {
+        padding: 0.75rem;
+        background: var(--color-bg-secondary);
+        border-radius: 8px;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+
+        &__header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        ul {
+            padding-left: 1.5rem;
+            margin: 0;
+        }
+    }
+
+    .error-banner {
+        margin-top: 1.5rem;
+        padding: 0.75rem 1rem;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        border-radius: 8px;
+        color: #ef4444;
+        font-size: 0.875rem;
+    }
+
+    .form-footer {
+        margin-top: 2rem;
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+    }
+
+    .hidden-input {
+        display: none;
+    }
+
+    .server-config-item--disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+}

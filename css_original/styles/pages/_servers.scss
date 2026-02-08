@@ -1,0 +1,193 @@
+@use "../mixins" as *;
+
+.servers-page {
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem 2rem;
+        background: var(--color-bg-secondary);
+        border: 1px dashed var(--color-border);
+        border-radius: var(--radius-lg);
+        text-align: center;
+        margin-top: 2rem;
+
+        &__icon {
+            color: var(--color-text-muted);
+            opacity: 0.5;
+            margin-bottom: 1.5rem;
+        }
+
+        &__title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--color-text-primary);
+        }
+
+        &__description {
+            color: var(--color-text-secondary);
+            margin-bottom: 2rem;
+            max-width: 400px;
+        }
+    }
+
+    .server-row {
+        transition: background-color 0.2s ease;
+
+        &--running {
+            background-color: rgba(var(--color-success-rgb), 0.02);
+
+            &:hover {
+                background-color: rgba(var(--color-success-rgb), 0.05);
+            }
+        }
+
+        &--missing {
+            background-color: rgba(var(--color-warning-rgb), 0.03);
+
+            &:hover {
+                background-color: rgba(var(--color-warning-rgb), 0.06);
+            }
+        }
+    }
+
+    .server-name {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .server-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-muted);
+        flex-shrink: 0;
+
+        &--running {
+            background: rgba(var(--color-success-rgb), 0.1);
+            color: var(--color-success);
+        }
+
+        &--missing {
+            background: rgba(var(--color-warning-rgb), 0.1);
+            color: var(--color-warning);
+        }
+    }
+
+    .server-link {
+        font-weight: 600;
+        color: var(--color-text-primary);
+        text-decoration: none;
+        font-size: 0.9375rem;
+
+        &:hover {
+            color: var(--color-accent);
+        }
+    }
+
+    .server-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+
+        .btn--icon {
+            width: 32px;
+            height: 32px;
+
+            &:hover {
+                background: var(--color-bg-tertiary);
+            }
+        }
+
+        &__corrupt {
+            font-size: 0.75rem;
+            color: var(--color-warning);
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+    }
+
+    .usage-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+
+        &__track {
+            height: 4px;
+            width: 100%;
+            background: var(--color-bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        &__fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+
+            &--cpu {
+                background: var(--color-accent);
+            }
+
+            &--mem {
+                background: var(--color-info);
+            }
+        }
+
+        &__text {
+            font-size: 0.75rem;
+            color: var(--color-text-muted);
+        }
+    }
+
+    .text-cell {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+
+    .col-server {
+        width: 20%;
+    }
+
+    .col-actions {
+        width: 15%;
+    }
+
+    .col-cpu {
+        width: 12%;
+    }
+
+    .col-mem {
+        width: 15%;
+    }
+
+    .col-disk {
+        width: 12%;
+    }
+
+    .col-players {
+        width: 10%;
+    }
+
+    .col-status {
+        width: 10%;
+        text-align: right;
+    }
+
+    .btn-kill {
+        opacity: 0.7;
+    }
+
+    .text-right {
+        text-align: right;
+    }
+}

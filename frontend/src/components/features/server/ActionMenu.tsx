@@ -79,46 +79,6 @@ export default function ActionMenu({ actions }: ActionMenuProps) {
                     ))}
                 </div>
             )}
-
-            <style>{`
-                .action-menu-container {
-                    position: relative;
-                    display: inline-block;
-                }
-                .action-menu-dropdown {
-                    position: fixed;
-                    background: var(--bg-surface, #1e1e1e);
-                    border: 1px solid var(--border-color, #333);
-                    border-radius: 6px;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                    min-width: 160px;
-                    z-index: 9999;
-                    padding: 4px;
-                }
-                .action-menu-item {
-                    display: flex;
-                    align-items: center;
-                    width: 100%;
-                    padding: 8px 12px;
-                    border: none;
-                    background: none;
-                    color: var(--text-primary, #fff);
-                    text-align: left;
-                    font-size: 0.9rem;
-                    cursor: pointer;
-                    border-radius: 4px;
-                    gap: 8px;
-                    transition: background 0.1s;
-                }
-                .action-menu-item:hover {
-                    background: var(--bg-hover, rgba(255,255,255,0.1));
-                }
-                .action-menu-item.danger { color: var(--color-danger, #ef4444); }
-                .action-menu-item.danger:hover { background: rgba(239, 68, 68, 0.1); }
-                .action-menu-item.warning { color: var(--color-warning, #f59e0b); }
-                
-                .action-icon { opacity: 0.8; }
-            `}</style>
         </div>
     );
 }

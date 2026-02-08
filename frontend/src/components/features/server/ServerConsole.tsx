@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import Ansi from "ansi-to-react";
 import { Terminal, Send, AlertTriangle, ExternalLink } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Tooltip } from "@/components/ui";
+import { Tooltip, Button } from "@/components/ui";
 import { enhanceLogContent } from "@/utils/logUtils";
 
 interface ServerConsoleProps {
@@ -78,9 +78,14 @@ export default function ServerConsole({
                                 <AlertTriangle size={18} className="text-warning" />
                                 <span>{t("installation.auth_required")}</span>
                             </div>
-                            <button onClick={onOpenAuth} className="btn btn--warning btn--sm">
-                                <ExternalLink size={14} /> {t("installation.action_required")}
-                            </button>
+                            <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                onClick={onOpenAuth}
+                                icon={<ExternalLink size={14} />}
+                            >
+                                {t("installation.action_required")}
+                            </Button>
                         </div>
                     )}
                     {logs.length === 0 ? (
@@ -151,50 +156,17 @@ export default function ServerConsole({
                         />
                     </div>
                     <Tooltip content={t("common.send")} position="top">
-                        <button
+                        <Button
                             type="submit"
+                            variant="primary"
+                            size="icon"
                             disabled={!isConnected || !isRunning || !command.trim()}
-                            className="btn btn--primary btn--icon"
                         >
                             <Send size={16} />
-                        </button>
+                        </Button>
                     </Tooltip>
                 </form>
             </div>
-
-            <style>{`
-                .auth-alert-banner {
-                    background: rgba(255, 165, 0, 0.1);
-                    border: 1px solid rgba(255, 165, 0, 0.3);
-                    border-radius: 8px;
-                    padding: 12px 16px;
-                    margin-bottom: 16px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: 12px;
-                    animation: fadeIn 0.3s ease-out;
-                    position: sticky;
-                    top: 0;
-                    z-index: 10;
-                    backdrop-filter: blur(8px);
-                }
-                
-                .auth-alert-banner__content {
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    font-weight: 500;
-                    color: var(--text-primary);
-                }
-                
-                .text-warning { color: #ff9800; }
-                
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(-10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-            `}</style>
         </div>
     );
 }

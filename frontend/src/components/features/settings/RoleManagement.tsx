@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Edit2, Trash2, Shield, Check, X } from "lucide-react";
-import { Table, Tooltip, Checkbox, Input } from "@/components/ui";
+import { Table, Tooltip, Checkbox, Input, Button, Modal } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useDialog } from "@/contexts/DialogContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -35,7 +35,6 @@ const ALL_PERMISSIONS = [
 ];
 
 export default function RoleManagement() {
-    const { t } = useLanguage();
     const { confirm } = useDialog();
     const { success, error: showError } = useToast();
     const [roles, setRoles] = useState<Role[]>([]);
@@ -129,10 +128,10 @@ export default function RoleManagement() {
                     <h2 className="section-title">Gestion des Rôles</h2>
                     <p className="section-desc">Définissez les permissions granulaires pour vos collaborateurs.</p>
                 </div>
-                <button className="btn btn--primary" onClick={handleCreate}>
+                <Button onClick={handleCreate}>
                     <Plus size={18} />
                     Nouveau Rôle
-                </button>
+                </Button>
             </div>
 
             <Table>
@@ -170,15 +169,15 @@ export default function RoleManagement() {
                             <td>
                                 <div className="table__actions">
                                     <Tooltip content="Modifier" position="top">
-                                        <button className="btn btn--icon btn--ghost" onClick={() => handleEdit(role)}>
+                                        <Button variant="ghost" size="icon" onClick={() => handleEdit(role)}>
                                             <Edit2 size={16} />
-                                        </button>
+                                        </Button>
                                     </Tooltip>
                                     {!role.is_system && (
                                         <Tooltip content="Supprimer" position="top">
-                                            <button className="btn btn--icon btn--ghost btn--danger" onClick={() => handleDelete(role)}>
+                                            <Button variant="ghost" size="icon" className="text-danger" onClick={() => handleDelete(role)}>
                                                 <Trash2 size={16} />
-                                            </button>
+                                            </Button>
                                         </Tooltip>
                                     )}
                                 </div>
@@ -195,26 +194,6 @@ export default function RoleManagement() {
                     onSave={handleSave}
                 />
             )}
-
-            <style>{`
-                .role-management {
-                    animation: fadeIn 0.3s ease-out;
-                }
-                .role-name-cell {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    font-weight: 600;
-                }
-                .section-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 2rem;
-                }
-                .section-title { margin: 0; font-size: 1.25rem; }
-                .section-desc { margin: 4px 0 0; color: var(--text-secondary); font-size: 0.9rem; }
-            `}</style>
         </div>
     );
 }
@@ -255,85 +234,77 @@ function RoleModal({ role, onClose, onSave }: RoleModalProps) {
         return acc;
     }, {} as Record<string, typeof ALL_PERMISSIONS>);
 
+    const footer = (
+        <>
+            <Button variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button onClick={handleSubmit} disabled={isSaving} isLoading={isSaving}>
+                Enregistrer le rôle
+            </Button>
+        </>
+    );
+
+    const title = (
+        <div className="flex items-center gap-2">
+            <Shield size={20} className="text-primary" />
+            <span>{role ? "Modifier le rôle" : "Créer un rôle"}</span>
+        </div>
+    );
+
     return (
-        <div className="modal-overlay">
-            <div className="modal role-modal">
-                <div className="modal-header">
-                    <Shield size={20} className="text-primary" />
-                    <h3>{role ? "Modifier le rôle" : "Créer un rôle"}</h3>
-                    <button className="modal-close" onClick={onClose}><X size={20} /></button>
+        <Modal
+            isOpen={true}
+            onClose={onClose}
+            title={title}
+            footer={footer}
+            size="lg"
+        >
+            <form onSubmit={handleSubmit} className="role-modal-content">
+                <div className="form-group">
+                    <label className="form-label">Nom du rôle</label>
+                    <Input
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        placeholder="ex: Modérateur"
+                        required
+                        disabled={role?.is_system}
+                    />
                 </div>
 
-                <form onSubmit={handleSubmit}>
-                    <div className="modal-content">
-                        <div className="form-group mb-6">
-                            <label className="form-label">Nom du rôle</label>
-                            <Input
-                                value={name}
-                                onChange={e => setName(e.target.value)}
-                                placeholder="ex: Modérateur"
-                                required
-                                disabled={role?.is_system}
-                            />
-                        </div>
-
-                        <div className="permissions-editor">
-                            <div className="permissions-header">
-                                <label className="form-label">Permissions granulaires</label>
-                                <button type="button" className="text-btn" onClick={toggleAll}>
-                                    {selectedPerms.length === ALL_PERMISSIONS.length ? "Tout décocher" : "Tout cocher"}
-                                </button>
-                            </div>
-
-                            {role?.id === "admin" ? (
-                                <div className="alert alert--info">
-                                    <Shield size={16} />
-                                    <span>Ce rôle système possède toutes les permissions (*) et ne peut pas être restreint.</span>
-                                </div>
-                            ) : (
-                                <div className="permissions-groups">
-                                    {Object.entries(groupedPermissions).map(([group, perms]) => (
-                                        <div key={group} className="perm-group">
-                                            <h4 className="perm-group-title">{group}</h4>
-                                            <div className="perm-grid">
-                                                {perms.map(perm => (
-                                                    <Checkbox
-                                                        key={perm.id}
-                                                        checked={selectedPerms.includes(perm.id) || selectedPerms.includes("*")}
-                                                        onChange={() => togglePermission(perm.id)}
-                                                        disabled={selectedPerms.includes("*")}
-                                                        label={perm.label}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="modal-footer">
-                        <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
-                        <button type="submit" className="btn btn--primary" disabled={isSaving}>
-                            {isSaving ? "Enregistrement..." : "Enregistrer le rôle"}
+                <div className="permissions-editor">
+                    <div className="permissions-header">
+                        <label className="form-label">Permissions granulaires</label>
+                        <button type="button" className="text-btn" onClick={toggleAll}>
+                            {selectedPerms.length === ALL_PERMISSIONS.length ? "Tout décocher" : "Tout cocher"}
                         </button>
                     </div>
-                </form>
-            </div>
 
-            <style>{`
-                .role-modal { width: 600px; max-height: 90vh; display: flex; flex-direction: column; }
-                .modal-content { overflow-y: auto; flex: 1; padding: 1.5rem; }
-                .permissions-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-                .text-btn { background: none; border: none; color: var(--primary-color); font-size: 0.85rem; cursor: pointer; padding: 0; }
-                .text-btn:hover { text-decoration: underline; }
-                
-                .perm-group { margin-bottom: 1.5rem; }
-                .perm-group-title { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; }
-                
-                .perm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-            `}</style>
-        </div>
+                    {role?.id === "admin" ? (
+                        <div className="alert alert--info">
+                            <Shield size={16} />
+                            <span>Ce rôle système possède toutes les permissions (*) et ne peut pas être restreint.</span>
+                        </div>
+                    ) : (
+                        <div className="permissions-groups">
+                            {Object.entries(groupedPermissions).map(([group, perms]) => (
+                                <div key={group} className="perm-group">
+                                    <h4 className="perm-group-title">{group}</h4>
+                                    <div className="perm-grid">
+                                        {perms.map(perm => (
+                                            <Checkbox
+                                                key={perm.id}
+                                                checked={selectedPerms.includes(perm.id) || selectedPerms.includes("*")}
+                                                onChange={() => togglePermission(perm.id)}
+                                                disabled={selectedPerms.includes("*")}
+                                                label={perm.label}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </form>
+        </Modal>
     );
 }

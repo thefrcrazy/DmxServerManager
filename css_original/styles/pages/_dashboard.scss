@@ -1,0 +1,287 @@
+@use "../mixins" as *;
+
+// ========================================
+// Dashboard Page Styles (Reworked)
+// ========================================
+
+.dashboard-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+// 1. Header Stat Pills (Compact Overview)
+.dashboard-header-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem; // Match Server Detail
+}
+
+.stat-pill {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem; // Tighter gap
+    transition: all var(--transition-base);
+    min-width: 0; // Prevent overflow
+
+    &:hover {
+        border-color: var(--color-border-hover);
+        background: var(--color-bg-tertiary); // Match Server Detail hover
+        transform: translateY(-1px); // Subtle lift
+    }
+
+    &__icon {
+        width: 36px; // Match Server Detail
+        height: 36px;
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-bg-primary); // Consistent with Server Detail
+        flex-shrink: 0;
+
+        &--default {
+            color: var(--color-text-secondary);
+        }
+
+        &--success {
+            color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        &--muted {
+            color: var(--color-text-muted);
+        }
+
+        &--purple {
+            color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.1);
+        }
+    }
+
+    &__content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    &__label {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.125rem;
+    }
+
+    &__value {
+        font-size: 0.9375rem; // Match Server Detail
+        font-weight: 600;
+        color: var(--color-text-primary);
+        display: flex;
+        align-items: baseline;
+        gap: 0.375rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+
+        &--success {
+            color: #10b981;
+        }
+
+        &--muted {
+            color: var(--color-text-muted);
+        }
+    }
+
+    &__sublabel {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
+        text-transform: none;
+        margin-left: auto; // Push to right if space permits, or close
+    }
+
+    &__suffix {
+        font-size: 0.8125rem;
+        color: var(--color-text-muted);
+    }
+}
+
+// 2. Resource Grid (System vs Servers)
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+
+    @media (max-width: 1300px) {
+        grid-template-columns: repeat(2, 1fr);
+
+        // Make the last item span full width for better symmetry
+        > :last-child {
+            grid-column: 1 / -1;
+        }
+    }
+
+    @media (max-width: 768px) {
+        grid-template-columns: 1fr;
+
+        > :last-child {
+            grid-column: auto;
+        }
+    }
+}
+
+.stat-card--resource {
+    background: var(--color-bg-secondary); // Match pills base
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: all var(--transition-base);
+
+    &:hover {
+        border-color: var(--color-border-hover);
+        background: var(--color-bg-tertiary);
+        transform: translateY(-1px);
+    }
+
+    .stat-card__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-card__title-group {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+    }
+
+    .stat-card__label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+
+    .stat-card__value--large {
+        font-size: 1.5rem; // Slightly cleaner
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .resource-usage {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+
+        &__row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end; // Align values to bottom for better baseline
+            font-size: 0.8125rem;
+            color: var(--color-text-secondary);
+        }
+
+        &__label {
+            font-weight: 500;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+
+            small {
+                font-size: 0.7rem;
+                color: var(--color-text-muted);
+                letter-spacing: 0.02em;
+            }
+        }
+
+        &__value {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+
+            .main-val {
+                color: var(--color-accent);
+                font-size: 0.875rem;
+            }
+
+            .secondary-val {
+                font-size: 0.75rem;
+                color: var(--color-text-muted);
+            }
+        }
+    }
+
+    .progress-container {
+        height: 10px; // Slightly thicker
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 5px;
+        overflow: hidden;
+        position: relative;
+
+        &--dimmed {
+            background: rgba(255, 255, 255, 0.02);
+        }
+    }
+
+    .progress-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        border-radius: 5px;
+        transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+
+        &--success { background: #10b981; }
+        &--warning { background: #f59e0b; }
+        &--danger  { background: #ef4444; }
+
+        &--info {
+            background: var(--color-accent);
+            z-index: 2;
+            box-shadow: 2px 0 8px rgba(var(--color-accent-rgb), 0.5);
+        }
+    }
+
+    .stat-card__footer {
+        display: none; // Integrated into header/labels
+    }
+}
+
+// 3. Helpers (Kept minimal)
+.text-success {
+    color: #10b981;
+}
+
+.text-warning {
+    color: #f59e0b;
+}
+
+.text-danger {
+    color: #ef4444;
+}
+
+.text-info {
+    color: var(--color-accent);
+}
+
+.mt-2 {
+    margin-top: 0.5rem;
+}
+
+.mt-4 {
+    margin-top: 1.5rem;
+}

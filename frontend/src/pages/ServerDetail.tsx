@@ -163,13 +163,19 @@ export default function ServerDetail() {
 
         // Filter tabs based on permissions
         return allTabs.filter(tab => {
+            // If user has full access, show all tabs
+            if (hasPermission("*")) return true;
+
             if (tab.id === "console") return hasPermission("server.console.read");
             if (tab.id === "logs") return hasPermission("server.console.read");
             if (tab.id === "files") return hasPermission("server.files.read");
             if (tab.id === "schedule") return hasPermission("server.schedules.manage");
             if (tab.id === "config") return hasPermission("settings.manage");
+            // Players and Metrics are basic views, usually allowed if one can view the server
             if (tab.id === "players") return hasPermission("server.view");
             if (tab.id === "metrics") return hasPermission("server.view");
+            
+            // Default: allow if no specific permission required (e.g. mods, webhooks for now)
             return true;
         });
     }, [t, hasPermission]);
