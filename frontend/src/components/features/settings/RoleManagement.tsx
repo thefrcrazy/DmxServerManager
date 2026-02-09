@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Edit2, Trash2, Shield, Check, X } from "lucide-react";
 import { Table, Tooltip, Checkbox, Input, Button, Modal } from "@/components/ui";
-import { useLanguage } from "@/contexts/LanguageContext";
 import { useDialog } from "@/contexts/DialogContext";
 import { useToast } from "@/contexts/ToastContext";
 

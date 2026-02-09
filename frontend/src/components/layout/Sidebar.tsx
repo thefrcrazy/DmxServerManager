@@ -7,7 +7,6 @@ import {
     Settings,
     HardDrive,
     ChevronsLeft,
-    MessageSquare,
 } from "lucide-react";
 
 interface SidebarProps {

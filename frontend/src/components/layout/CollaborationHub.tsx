@@ -143,7 +143,7 @@ export default function CollaborationHub({ isOpen, onClose }: { isOpen: boolean;
                                 <div className="message-item__header">
                                     <span className="message-item__user" style={{ color: msg.accent_color || "var(--color-accent)" }}>{msg.username}</span>
                                     <span className="message-item__time">
-                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                     </span>
                                 </div>
                                 <div className="message-item__content">

@@ -215,8 +215,10 @@ async fn login(
     
     let permissions: Vec<String> = if let Some((p,)) = role_perms {
         serde_json::from_str(&p).unwrap_or_default()
+    } else if user.role == "admin" {
+        vec!["*".to_string()]
     } else {
-        if user.role == "admin" { vec!["*".to_string()] } else { vec![] }
+        vec![]
     };
 
     Ok(Json(AuthResponse {
@@ -293,8 +295,10 @@ async fn register(
     
     let permissions: Vec<String> = if let Some((p,)) = role_perms {
         serde_json::from_str(&p).unwrap_or_default()
+    } else if user.role == "admin" {
+        vec!["*".to_string()]
     } else {
-        if user.role == "admin" { vec!["*".to_string()] } else { vec![] }
+        vec![]
     };
 
     Ok((StatusCode::CREATED, Json(AuthResponse {
@@ -368,9 +372,10 @@ impl FromRequestParts<AppState> for AuthUser {
 
         let permissions: Vec<String> = if let Some((perms_json,)) = role_perms {
             serde_json::from_str(&perms_json).unwrap_or_default()
+        } else if token_data.claims.role == "admin" {
+            vec!["*".to_string()]
         } else {
-            // Fallback for legacy hardcoded roles if database migration failed partially or role missing
-            if token_data.claims.role == "admin" { vec!["*".to_string()] } else { vec![] }
+            vec![]
         };
 
         Ok(AuthUser {

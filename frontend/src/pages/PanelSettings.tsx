@@ -39,13 +39,6 @@ interface User {
     allocated_servers: string[];
 }
 
-interface Role {
-    id: string;
-    name: string;
-    permissions: string[];
-    color: string;
-}
-
 type ActiveTab = "general" | "users" | "roles";
 
 export default function PanelSettings() {
@@ -98,12 +91,6 @@ export default function PanelSettings() {
     // Users state
     const [users, setUsers] = useState<User[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
-
-    // Roles state (placeholder for future)
-    const [roles] = useState<Role[]>([
-        { id: "1", name: t("user_settings.role_admin"), permissions: ["all"], color: "#FF591E" },
-        { id: "2", name: t("user_settings.role_user"), permissions: ["view", "manage_own_servers"], color: "#3A82F6" },
-    ]);
 
     useEffect(() => {
         fetchSettings();
