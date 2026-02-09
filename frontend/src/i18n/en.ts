@@ -37,11 +37,17 @@ export const en: TranslationType = {
         ok: "OK",
         active: "Active",
         inactive: "Inactive",
-        enable: "Enable",
-        disable: "Disable",
-        never: "Never"
-    },
-    errors: {
+                enable: "Enable",
+                disable: "Disable",
+                never: "Never",
+                system: "System"
+            },
+        
+            collaboration: {
+                message_deleted: "This message was deleted by a team member.",
+            },
+        
+            errors: {
         internal: "Internal server error. Please check server logs.",
         database: "Database error. Please try again later.",
         network: "Network error. Please check your connection."

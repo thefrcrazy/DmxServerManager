@@ -28,6 +28,9 @@ pub enum AppError {
     
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
     
     #[error("Internal error: {0}")]
     Internal(String),
@@ -52,6 +55,8 @@ pub enum AppErrorKind {
     BadRequest,
     #[error("Unauthorized")]
     Unauthorized,
+    #[error("Forbidden")]
+    Forbidden,
     #[error("Internal error")]
     Internal,
     #[error("Database error")]
@@ -85,6 +90,7 @@ impl AppError {
             Self::NotFound(_) => AppErrorKind::NotFound,
             Self::BadRequest(_) => AppErrorKind::BadRequest,
             Self::Unauthorized(_) => AppErrorKind::Unauthorized,
+            Self::Forbidden(_) => AppErrorKind::Forbidden,
             Self::Internal(_) => AppErrorKind::Internal,
             Self::Database(_) => AppErrorKind::Database,
             Self::Rich { kind, .. } => *kind,
@@ -94,7 +100,7 @@ impl AppError {
     fn get_message(&self) -> &str {
         match self {
             Self::NotFound(msg) | Self::BadRequest(msg) | Self::Unauthorized(msg) 
-            | Self::Internal(msg) | Self::Database(msg) => msg,
+            | Self::Forbidden(msg) | Self::Internal(msg) | Self::Database(msg) => msg,
             Self::Rich { message, .. } => message,
         }
     }
@@ -125,6 +131,7 @@ impl IntoResponse for AppError {
             AppErrorKind::NotFound => StatusCode::NOT_FOUND,
             AppErrorKind::BadRequest => StatusCode::BAD_REQUEST,
             AppErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppErrorKind::Forbidden => StatusCode::FORBIDDEN,
             AppErrorKind::Internal | AppErrorKind::Database => StatusCode::INTERNAL_SERVER_ERROR,
         };
         

@@ -12,7 +12,7 @@ import {
     UserCog,
     MessageSquare
 } from "lucide-react";
-import CollaborationHub from "./CollaborationHub";
+import TeamChat from "./TeamChat";
 
 export default function Layout() {
     const { user, logout } = useAuth();
@@ -20,7 +20,7 @@ export default function Layout() {
     const { t } = useLanguage();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-    const [isCollabHubOpen, setIsCollabHubOpen] = useState(false);
+    const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     // Close menu when clicking outside
@@ -57,8 +57,8 @@ export default function Layout() {
         <div className={`layout ${isSidebarCollapsed ? "layout--sidebar-collapsed" : ""}`}>
             <Sidebar isCollapsed={isSidebarCollapsed} onToggle={toggleSidebar} />
 
-            {/* Collaboration Hub */}
-            <CollaborationHub isOpen={isCollabHubOpen} onClose={() => setIsCollabHubOpen(false)} />
+            {/* Team Chat */}
+            <TeamChat isOpen={isTeamChatOpen} onClose={() => setIsTeamChatOpen(false)} />
 
             {/* Topbar */}
             <header className={`topbar ${isSidebarCollapsed ? "topbar--sidebar-collapsed" : ""}`}>
@@ -90,11 +90,11 @@ export default function Layout() {
                         </div>
                     )}
 
-                    {/* Team Collaboration Hub Toggle */}
+                    {/* Team Chat Toggle */}
                     <button 
-                        className={`topbar__icon-btn ${isCollabHubOpen ? "active" : ""}`} 
-                        onClick={() => setIsCollabHubOpen(!isCollabHubOpen)}
-                        title="Collaboration Hub"
+                        className={`topbar__icon-btn ${isTeamChatOpen ? "active" : ""}`} 
+                        onClick={() => setIsTeamChatOpen(!isTeamChatOpen)}
+                        title="Team Chat"
                     >
                         <MessageSquare size={20} />
                     </button>

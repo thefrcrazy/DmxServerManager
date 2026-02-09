@@ -37,7 +37,12 @@ export const fr = {
         inactive: "Inactif",
         enable: "Activer",
         disable: "Désactiver",
-        never: "Jamais"
+        never: "Jamais",
+        system: "Système"
+    },
+
+    collaboration: {
+        message_deleted: "Ce message a été supprimé par un membre de l'équipe.",
     },
 
     errors: {

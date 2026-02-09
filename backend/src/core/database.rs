@@ -101,6 +101,7 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
             user_id TEXT NOT NULL,
             content TEXT NOT NULL,
             type TEXT NOT NULL DEFAULT 'chat', -- 'chat' or 'note'
+            is_deleted INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
@@ -237,6 +238,18 @@ pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
     }
     if !column_names.contains(&"must_change_password") {
         sqlx::query("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
+    }
+
+    // Messages table migrations
+    let message_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(messages)")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| Error::other(e.to_string()))?;
+
+    let message_column_names: Vec<&str> = message_columns.iter().map(|c| c.1.as_str()).collect();
+
+    if !message_column_names.contains(&"is_deleted") {
+        sqlx::query("ALTER TABLE messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
     }
 
     // Server table migrations

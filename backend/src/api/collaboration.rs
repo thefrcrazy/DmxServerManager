@@ -1,6 +1,6 @@
 use axum::{
     routing::get,
-    extract::State,
+    extract::{State, Path},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,7 @@ use crate::core::error::AppError;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/messages", get(list_messages).post(create_message))
+        .route("/messages/:id", axum::routing::delete(delete_message))
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -25,6 +26,7 @@ pub struct MessageRow {
     pub content: String,
     #[sqlx(rename = "type")]
     pub type_name: String,
+    pub is_deleted: i32,
     pub created_at: String,
     pub accent_color: Option<String>,
 }
@@ -40,7 +42,7 @@ async fn list_messages(
 ) -> Result<Json<Vec<MessageRow>>, AppError> {
     let messages: Vec<MessageRow> = sqlx::query_as(
         r#"
-        SELECT m.id, m.user_id, m.content, m.type, m.created_at, u.username, u.accent_color
+        SELECT m.id, m.user_id, m.content, m.type, m.is_deleted, m.created_at, u.username, u.accent_color
         FROM messages m
         JOIN users u ON m.user_id = u.id
         ORDER BY m.created_at ASC
@@ -78,7 +80,33 @@ async fn create_message(
         username: auth.username,
         content: body.content,
         type_name: body.msg_type,
+        is_deleted: 0,
         created_at: now,
         accent_color: auth.accent_color,
     }))
+}
+
+async fn delete_message(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Check if message exists and user is owner or admin
+    let message: (String, String) = sqlx::query_as("SELECT id, user_id FROM messages WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound("collaboration.message_not_found".into()))?;
+
+    if message.1 != auth.id && auth.role != "admin" {
+        return Err(AppError::Forbidden("collaboration.delete_forbidden".into()));
+    }
+
+    // Soft delete: keep row but mark as deleted
+    sqlx::query("UPDATE messages SET is_deleted = 1, content = 'auth.message_deleted' WHERE id = ?")
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }

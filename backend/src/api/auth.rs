@@ -342,13 +342,19 @@ impl FromRequestParts<AppState> for AuthUser {
         let auth_header = parts.headers
             .get("Authorization")
             .and_then(|h| h.to_str().ok())
-            .ok_or_else(|| AppError::Unauthorized("auth.missing_auth_header".into())
-                .with_code(ErrorCode::AuthMissingHeader))?;
+            .ok_or_else(|| {
+                warn!("Auth failed: Missing Authorization header");
+                AppError::Unauthorized("auth.missing_auth_header".into())
+                    .with_code(ErrorCode::AuthMissingHeader)
+            })?;
 
         let token = auth_header
             .strip_prefix("Bearer ")
-            .ok_or_else(|| AppError::Unauthorized("auth.invalid_auth_header".into())
-                .with_code(ErrorCode::AuthInvalidHeader))?;
+            .ok_or_else(|| {
+                warn!("Auth failed: Invalid Authorization header format");
+                AppError::Unauthorized("auth.invalid_auth_header".into())
+                    .with_code(ErrorCode::AuthInvalidHeader)
+            })?;
 
         // Use state directly passed by Axum
         let secret = get_jwt_secret(state).await?;
@@ -358,8 +364,11 @@ impl FromRequestParts<AppState> for AuthUser {
             &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
             &jsonwebtoken::Validation::default(),
         )
-        .map_err(|_| AppError::Unauthorized("auth.invalid_token".into())
-            .with_code(ErrorCode::AuthInvalidToken))?;
+        .map_err(|e| {
+            warn!("Auth failed: Invalid token: {}", e);
+            AppError::Unauthorized("auth.invalid_token".into())
+                .with_code(ErrorCode::AuthInvalidToken)
+        })?;
 
         // Fetch permissions for the role
         let role_perms: Option<(String,)> = sqlx::query_as(
