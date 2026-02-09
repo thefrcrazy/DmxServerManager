@@ -29,6 +29,7 @@ export const UserInfoSchema = z.object({
     id: z.string(),
     username: z.string(),
     role: z.string(),
+    permissions: z.array(z.string()),
     accent_color: z.string().optional(),
 });
 

@@ -5,7 +5,7 @@ interface CardProps {
     icon?: React.ReactNode;
     children: React.ReactNode;
     className?: string;
-    onClick?: () => void;
+    onClick?: (e: React.MouseEvent) => void;
     footer?: React.ReactNode;
     headerAction?: React.ReactNode;
 }

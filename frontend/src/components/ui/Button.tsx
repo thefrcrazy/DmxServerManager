@@ -12,6 +12,7 @@ interface BaseButtonProps {
     fullWidth?: boolean;
     className?: string;
     children?: React.ReactNode;
+    disabled?: boolean;
 }
 
 // Button as button element

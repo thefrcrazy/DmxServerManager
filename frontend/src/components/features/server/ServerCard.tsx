@@ -37,7 +37,7 @@ export default function ServerCard({ server, onAction }: ServerCardProps) {
     };
 
     return (
-        <Card className={`server-card ${isRunning ? "server-card--running" : ""} ${isMissing ? "server-card--missing" : ""}`} onClick={handleCardClick}>
+        <Card className={`server-card ${isRunning ? "server-card--running" : ""} ${isMissing ? "server-card--missing" : ""}`} onClick={(e: React.MouseEvent) => handleCardClick(e)}>
             <div className="server-card__header">
                 <div className={`server-card__icon ${isRunning ? "server-card__icon--running" : ""} ${isMissing ? "server-card__icon--missing" : ""} ${isInstalling ? "server-card__icon--installing" : ""}`}>
                     {getGameLogo(server.game_type) ? (
