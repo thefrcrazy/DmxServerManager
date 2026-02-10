@@ -5,6 +5,19 @@ use chrono::Utc;
 
 pub type DbPool = Pool<Sqlite>;
 
+/// Upsert a key-value setting in the settings table
+pub async fn upsert_setting(pool: &DbPool, key: &str, value: &str) -> Result<(), crate::core::error::AppError> {
+    sqlx::query(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+    )
+    .bind(key)
+    .bind(value)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Generate a secure random JWT secret
 pub fn generate_jwt_secret() -> String {
     use rand::Rng;
