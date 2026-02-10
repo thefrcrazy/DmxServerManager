@@ -1,8 +1,27 @@
 use axum::{
     routing::get,
-    Router,
+    Json, Router,
 };
+use serde::Serialize;
 use crate::core::AppState;
+
+/// Réponse standard pour les opérations réussies
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+impl SuccessResponse {
+    pub fn ok() -> Json<Self> {
+        Json(Self { success: true, message: None })
+    }
+
+    pub fn with_message(msg: impl Into<String>) -> Json<Self> {
+        Json(Self { success: true, message: Some(msg.into()) })
+    }
+}
 
 pub mod auth;
 pub mod backups;

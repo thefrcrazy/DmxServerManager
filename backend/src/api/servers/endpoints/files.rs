@@ -11,6 +11,7 @@ use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::core::{AppState, error::AppError};
+use crate::api::SuccessResponse;
 use crate::api::servers::models::{
     FileEntry, FilesQuery, ReadFileQuery, WriteFileRequest, DeleteFileRequest, 
     CreateFolderRequest, CreateFileRequest, RenameFileRequest, CopyFileRequest, MoveFileRequest
@@ -401,7 +402,7 @@ pub async fn rename_file(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
     Json(body): Json<RenameFileRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
@@ -429,14 +430,14 @@ pub async fn rename_file(
     
     info!("Renamed {} to {}", body.path, body.new_name);
     
-    Ok(Json(serde_json::json!({ "success": true, "message": "File renamed" })))
+    Ok(SuccessResponse::with_message("File renamed"))
 }
 
 pub async fn copy_file(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
     Json(body): Json<CopyFileRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
@@ -463,14 +464,14 @@ pub async fn copy_file(
     
     info!("Copied {} to {}", body.source, body.destination);
     
-    Ok(Json(serde_json::json!({ "success": true, "message": "File copied" })))
+    Ok(SuccessResponse::with_message("File copied"))
 }
 
 pub async fn move_file(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
     Json(body): Json<MoveFileRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let server: (String,) = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&server_id)
         .fetch_optional(&state.pool)
@@ -493,5 +494,5 @@ pub async fn move_file(
     
     info!("Moved {} to {}", body.source, body.destination);
     
-    Ok(Json(serde_json::json!({ "success": true, "message": "File moved" })))
+    Ok(SuccessResponse::with_message("File moved"))
 }

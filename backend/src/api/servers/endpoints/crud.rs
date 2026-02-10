@@ -11,6 +11,7 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::core::AppState;
+use crate::api::SuccessResponse;
 use crate::core::error::AppError;
 use crate::utils::memory::{parse_memory_to_bytes, calculate_total_memory};
 use crate::utils::templates;
@@ -458,7 +459,7 @@ pub async fn update_server(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(body): Json<CreateServerRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let now = Utc::now().to_rfc3339();
     let auto_start = body.auto_start.unwrap_or(false) as i32;
 
@@ -567,13 +568,13 @@ pub async fn update_server(
         }
     }
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }
 
 pub async fn delete_server(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let server: Option<(String,)> = sqlx::query_as("SELECT working_dir FROM servers WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.pool)
@@ -604,7 +605,7 @@ pub async fn delete_server(
         }
     }
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }
 
 pub async fn get_server_by_id_internal(pool: &DbPool, id: &str) -> Result<ServerRow, AppError> {

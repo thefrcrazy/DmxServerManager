@@ -4,10 +4,11 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+
 use crate::core::AppState;
+use crate::core::database::{get_or_create_jwt_secret, upsert_setting};
 use crate::core::error::AppError;
 use crate::api::auth::AuthResponse;
-use crate::core::database::get_or_create_jwt_secret;
 
 #[derive(Serialize)]
 struct SetupStatusResponse {
@@ -53,38 +54,23 @@ async fn perform_setup(
     }
 
     // 2. Create Admin User
-    // Note: We're reusing auth logic but we need to hash password manually if we don't use auth service helper
-    // Let's use bcrypt directly as in auth.rs
     let password_hash = bcrypt::hash(&body.password, bcrypt::DEFAULT_COST)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     let user_id = uuid::Uuid::new_v4().to_string();
-    
-    // Use role text instead of is_admin boolean
+
     sqlx::query(
         "INSERT INTO users (id, username, password_hash, role, accent_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
     )
     .bind(&user_id)
     .bind(&body.username)
     .bind(&password_hash)
-    .bind("admin") // Role
-    .bind(&body.theme_color) // Sync accent_color with theme_color
+    .bind("admin")
+    .bind(&body.theme_color)
     .execute(&state.pool)
     .await?;
 
     // 3. Update Settings
-    async fn upsert_setting(pool: &crate::core::database::DbPool, key: &str, value: &str) -> Result<(), AppError> {
-        sqlx::query(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) 
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
-        )
-        .bind(key)
-        .bind(value)
-        .execute(pool)
-        .await?;
-        Ok(())
-    }
-
     upsert_setting(&state.pool, "servers_dir", &body.servers_dir).await?;
     upsert_setting(&state.pool, "backups_dir", &body.backups_dir).await?;
     upsert_setting(&state.pool, "login_default_color", &body.theme_color).await?;

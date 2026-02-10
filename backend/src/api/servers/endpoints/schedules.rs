@@ -7,6 +7,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::core::AppState;
+use crate::api::SuccessResponse;
 use crate::core::error::AppError;
 use crate::api::servers::models::{ScheduleRow, ScheduleResponse, CreateScheduleRequest, ToggleScheduleRequest};
 
@@ -130,33 +131,33 @@ pub async fn update_schedule(
 pub async fn delete_schedule(
     State(state): State<AppState>,
     Path((_server_id, schedule_id)): Path<(String, String)>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     sqlx::query("DELETE FROM schedules WHERE id = ?")
         .bind(&schedule_id)
         .execute(&state.pool)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }
 
 pub async fn toggle_schedule(
     State(state): State<AppState>,
     Path((_server_id, schedule_id)): Path<(String, String)>,
     Json(body): Json<ToggleScheduleRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     sqlx::query("UPDATE schedules SET enabled = ? WHERE id = ?")
         .bind(body.enabled as i32)
         .bind(&schedule_id)
         .execute(&state.pool)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }
 
 pub async fn run_schedule(
     State(state): State<AppState>,
     Path((_server_id, schedule_id)): Path<(String, String)>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let s: ScheduleRow = sqlx::query_as("SELECT * FROM schedules WHERE id = ?")
         .bind(&schedule_id)
         .fetch_one(&state.pool)
@@ -223,5 +224,5 @@ pub async fn run_schedule(
         sqlx::query("DELETE FROM schedules WHERE id = ?").bind(&s.id).execute(&state.pool).await?;
     }
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }

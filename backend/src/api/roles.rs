@@ -9,6 +9,7 @@ use uuid::Uuid;
 use chrono::Utc;
 
 use crate::core::AppState;
+use crate::api::SuccessResponse;
 use crate::core::error::AppError;
 
 pub fn routes() -> Router<AppState> {
@@ -170,7 +171,7 @@ async fn update_role(
 async fn delete_role(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let role: RoleRow = sqlx::query_as("SELECT * FROM roles WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.pool)
@@ -186,5 +187,5 @@ async fn delete_role(
         .execute(&state.pool)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }

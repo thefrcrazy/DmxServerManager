@@ -62,14 +62,14 @@ export class BaseClient {
             const timestamp = new Date().toISOString();
             if (error instanceof Error) {
                 return {
-                    data: null,
+                    data: null as unknown as T,
                     success: false,
                     timestamp,
                     error: {
                         error: error.message,
                         code: "API_ERROR"
                     }
-                } as any;
+                };
             }
             throw error;
         }

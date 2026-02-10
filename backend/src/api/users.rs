@@ -10,6 +10,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::core::AppState;
+use crate::api::SuccessResponse;
 use crate::core::error::AppError;
 
 pub fn routes() -> Router<AppState> {
@@ -228,7 +229,7 @@ async fn update_user(
     State(state): State<AppState>,
     Path(user_id): Path<String>,
     Json(body): Json<UpdateUserRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let now = Utc::now().to_rfc3339();
 
     // Check if user exists
@@ -329,16 +330,13 @@ async fn update_user(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to update user: {e}")))?;
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "users.update_success"
-    })))
+    Ok(SuccessResponse::with_message("users.update_success"))
 }
 
 async fn delete_user(
     State(state): State<AppState>,
     Path(user_id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let result = sqlx::query("DELETE FROM users WHERE id = ?")
         .bind(&user_id)
         .execute(&state.pool)
@@ -348,8 +346,5 @@ async fn delete_user(
         return Err(AppError::NotFound("users.not_found".into()));
     }
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "users.delete_success"
-    })))
+    Ok(SuccessResponse::with_message("users.delete_success"))
 }

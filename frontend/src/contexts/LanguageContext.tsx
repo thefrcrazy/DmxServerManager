@@ -15,10 +15,10 @@ type LanguageContextType = {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 // Helper to get nested property from object by string key (e.g. "common.save")
-const getNestedValue = (obj: any, path: string): string => {
+const getNestedValue = (obj: Record<string, any>, path: string): string => {
     return path.split(".").reduce((prev, curr) => {
         return prev ? prev[curr] : null;
-    }, obj) || path;
+    }, obj) as unknown as string || path;
 };
 
 export function LanguageProvider({ children }: { children: ReactNode }) {

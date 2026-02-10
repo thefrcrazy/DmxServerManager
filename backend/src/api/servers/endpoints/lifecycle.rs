@@ -8,6 +8,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 use crate::core::AppState;
+use crate::api::SuccessResponse;
 use crate::core::error::AppError;
 use crate::utils::templates;
 use crate::api::servers::models::{ServerRow};
@@ -193,9 +194,9 @@ pub async fn restart_server(
 pub async fn kill_server(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     state.process_manager.kill(&id).await?;
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }
 
 pub async fn reinstall_server(

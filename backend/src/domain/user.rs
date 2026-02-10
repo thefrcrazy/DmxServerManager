@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct User {
     pub id: String,
     pub username: String,
     #[serde(skip_serializing)]
+    #[allow(dead_code)]
     pub password_hash: String,
     pub role: UserRole,
     pub discord_id: Option<String>,

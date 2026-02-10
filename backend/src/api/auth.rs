@@ -17,6 +17,7 @@ use tracing::warn;
 
 use crate::{core::AppState, core::error::AppError, core::database::get_or_create_jwt_secret};
 use crate::core::error::codes::ErrorCode;
+use crate::api::SuccessResponse;
 
 // ============= Rate Limiting =============
 
@@ -439,7 +440,7 @@ async fn change_password(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(body): Json<ChangePasswordRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     // Extract user_id from Authorization header
     let auth_header = headers
         .get("Authorization")
@@ -482,8 +483,5 @@ async fn change_password(
         return Err(AppError::NotFound("auth.user_not_found".into()));
     }
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "auth.password_updated"
-    })))
+    Ok(SuccessResponse::with_message("auth.password_updated"))
 }

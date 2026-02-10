@@ -4,9 +4,12 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::core::AppState;
+use crate::core::database::upsert_setting;
 use crate::core::error::AppError;
+use crate::api::SuccessResponse;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -72,20 +75,7 @@ async fn get_settings(State(state): State<AppState>) -> Result<Json<SettingsResp
 async fn update_settings(
     State(state): State<AppState>,
     Json(body): Json<UpdateSettingsRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    // Helper function to upsert a setting
-    async fn upsert_setting(pool: &crate::core::database::DbPool, key: &str, value: &str) -> Result<(), AppError> {
-        sqlx::query(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) 
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
-        )
-        .bind(key)
-        .bind(value)
-        .execute(pool)
-        .await?;
-        Ok(())
-    }
-
+) -> Result<Json<SuccessResponse>, AppError> {
     if let Some(ref webhook_url) = body.webhook_url {
         upsert_setting(&state.pool, "webhook_url", webhook_url).await?;
     }
@@ -99,12 +89,10 @@ async fn update_settings(
         if let Some(ref dir) = body.backups_dir {
             upsert_setting(&state.pool, "backups_dir", dir).await?;
         }
-        // Database path handling via .env
         if let Some(ref db_path) = body.database_path {
-             match update_env_file("DATABASE_URL", db_path).await {
-                 Ok(_) => {},
-                 Err(e) => eprintln!("Failed to update .env: {e}"),
-             }
+            if let Err(e) = update_env_file("DATABASE_URL", db_path).await {
+                error!("Failed to update .env: {e}");
+            }
         }
     }
 
@@ -116,10 +104,7 @@ async fn update_settings(
         upsert_setting(&state.pool, "login_background_url", url).await?;
     }
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "Settings updated successfully"
-    })))
+    Ok(SuccessResponse::with_message("Settings updated successfully"))
 }
 
 async fn update_env_file(key: &str, value: &str) -> std::io::Result<()> {

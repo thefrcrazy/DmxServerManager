@@ -10,6 +10,7 @@ use chrono::Utc;
 
 use crate::core::AppState;
 use crate::api::auth::AuthUser;
+use crate::api::SuccessResponse;
 use crate::core::error::AppError;
 
 pub fn routes() -> Router<AppState> {
@@ -90,7 +91,7 @@ async fn delete_message(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     // Check if message exists and user is owner or admin
     let message: (String, String) = sqlx::query_as("SELECT id, user_id FROM messages WHERE id = ?")
         .bind(&id)
@@ -108,5 +109,5 @@ async fn delete_message(
         .execute(&state.pool)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }

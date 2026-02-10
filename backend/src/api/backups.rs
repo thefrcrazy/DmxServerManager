@@ -11,6 +11,7 @@ use uuid::Uuid;
 use tokio::fs;
 
 use crate::core::AppState;
+use crate::api::SuccessResponse;
 use crate::core::error::AppError;
 use crate::core::error::codes::ErrorCode;
 
@@ -181,7 +182,7 @@ async fn get_backup(
 async fn delete_backup(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let backup: Option<(String,)> = sqlx::query_as("SELECT filename FROM backups WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.pool)
@@ -204,13 +205,13 @@ async fn delete_backup(
         return Err(AppError::NotFound("Backup not found".into()).with_code(ErrorCode::BackupNotFound));
     }
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(SuccessResponse::ok())
 }
 
 async fn restore_backup(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SuccessResponse>, AppError> {
     let backup: BackupRow = sqlx::query_as(
         "SELECT id, server_id, filename, size_bytes, created_at FROM backups WHERE id = ?",
     )
@@ -239,8 +240,5 @@ async fn restore_backup(
         .map_err(|e| AppError::Internal(format!("Restore failed: {e}"))
             .with_code(ErrorCode::BackupRestoreFailed))?;
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": format!("Restoring backup {} for server {}", backup.filename, backup.server_id)
-    })))
+    Ok(SuccessResponse::with_message(format!("Restoring backup {} for server {}", backup.filename, backup.server_id)))
 }
