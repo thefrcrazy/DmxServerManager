@@ -33,5 +33,25 @@
     "sass": "^1.86.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.7"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.57.1",
+    "@rollup/rollup-darwin-x64": "^4.57.1",
+    "@rollup/rollup-darwin-arm64": "^4.57.1"
+  },
+  "trustedDependencies": [
+    "sass"
+  ],
+  "bun": {
+    "install": {
+      "platform": [
+        "darwin",
+        "linux"
+      ],
+      "arch": [
+        "x64",
+        "arm64"
+      ]
+    }
   }
 }

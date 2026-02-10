@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -15,6 +16,7 @@ pub struct User {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum UserRole {
     Admin,
     User,
