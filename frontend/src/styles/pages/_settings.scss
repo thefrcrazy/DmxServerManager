@@ -1,38 +1,7 @@
 @use "../mixins" as *;
 
 .settings-page {
-    .tabs-nav {
-        display: flex;
-        gap: 0.25rem;
-        margin-bottom: 1.5rem;
-        border-bottom: 1px solid var(--color-border);
-        padding-bottom: 0;
-    }
-
-    .tab-btn {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem 1.25rem;
-        background: transparent;
-        border: none;
-        border-bottom: 2px solid transparent;
-        color: var(--color-text-secondary);
-        font-weight: 400;
-        cursor: pointer;
-        margin-bottom: -1px;
-        transition: all 0.2s ease;
-
-        &:hover {
-            color: var(--color-text-primary);
-        }
-
-        &--active {
-            border-bottom-color: var(--color-accent);
-            color: var(--color-accent);
-            font-weight: 600;
-        }
-    }
+    // tabs-nav et tab-btn → centralisés dans _tabs.scss
 
     .settings-grid {
         display: grid;

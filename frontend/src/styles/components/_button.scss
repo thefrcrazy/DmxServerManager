@@ -3,10 +3,6 @@
 // Button styles
 .btn {
     @include button-base;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
 
     // Primary Button (Accent)
     &--primary {
@@ -103,14 +99,6 @@
     gap: var(--spacing-2);
 }
 
-// Flex center utility
-.flex-center {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-}
-
 // Spinner
 .spinner {
     width: 20px;
@@ -129,11 +117,5 @@
     &--light {
         border-color: rgba(255, 255, 255, 0.3);
         border-top-color: white;
-    }
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
     }
 }

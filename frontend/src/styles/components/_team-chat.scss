@@ -18,7 +18,7 @@
     flex-direction: column;
     z-index: 1100;
     overflow: hidden;
-    
+
     animation: chatSlideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 
     &--closing {
@@ -71,7 +71,7 @@
 
         &:hover {
             background: rgba(255, 255, 255, 0.04);
-            
+
             .chat-message__actions {
                 opacity: 1;
                 pointer-events: auto;
@@ -153,7 +153,7 @@
 
                 &--danger {
                     color: #ff4d4f;
-                    
+
                     &:hover {
                         color: white;
                         background: #ff4d4f;
@@ -168,7 +168,9 @@
             font-size: 0.9375rem;
             line-height: 1.5;
 
-            p { margin: 0; }
+            p {
+                margin: 0;
+            }
 
             .text-deleted {
                 font-style: italic;
@@ -179,7 +181,7 @@
 
         &--deleted {
             opacity: 0.8;
-            
+
             .chat-message__avatar {
                 background: var(--color-bg-elevated) !important;
                 color: var(--color-text-muted) !important;
@@ -258,16 +260,21 @@
 }
 
 @keyframes chatSlideInRight {
-    from { transform: translateX(100%); }
-    to { transform: translateX(0); }
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
 }
 
 @keyframes chatSlideOutRight {
-    from { transform: translateX(0); }
-    to { transform: translateX(100%); }
-}
+    from {
+        transform: translateX(0);
+    }
 
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    to {
+        transform: translateX(100%);
+    }
 }

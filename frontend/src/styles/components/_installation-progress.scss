@@ -357,15 +357,7 @@
         color: #cbd5e1; // text-secondary
         border: 1px solid rgba(255, 255, 255, 0.1);
         scrollbar-width: thin;
-
-        &::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        &::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 4px;
-        }
+        @include custom-scrollbar;
 
         .log-line {
             white-space: pre-wrap;

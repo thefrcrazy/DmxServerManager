@@ -162,6 +162,12 @@ export const fr = {
         password_updated: "Mot de passe mis à jour avec succès"
     },
 
+    settings: {
+        language: "Langue",
+        select_language: "Sélectionner la langue",
+        theme: "Thème"
+    },
+
     user_settings: {
         title: "Paramètres Utilisateur",
         subtitle: "Gérez votre compte et vos préférences",
@@ -504,11 +510,6 @@ export const fr = {
             new_player: "Nouveau joueur",
             search_placeholder: "Rechercher (Nom ou UUID)..."
         }
-    },
-    settings: {
-        language: "Langue",
-        select_language: "Choisir la langue",
-        theme: "Thème"
     },
 
     users: {

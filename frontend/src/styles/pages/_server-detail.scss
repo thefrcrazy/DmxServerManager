@@ -50,59 +50,7 @@
     }
 }
 
-.stat-pill {
-    background-color: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-4);
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-4);
-    transition: transform var(--transition-base), border-color var(--transition-base);
-
-    &:hover {
-        transform: translateY(-2px);
-        border-color: var(--color-border-hover);
-    }
-
-    &__icon {
-        width: 48px;
-        height: 48px;
-        border-radius: var(--radius-md);
-        background-color: var(--color-bg-tertiary);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--color-accent);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-
-        svg {
-            width: 24px;
-            height: 24px;
-        }
-    }
-
-    &__content {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    &__label {
-        font-size: var(--font-size-xs);
-        font-weight: 600;
-        text-transform: uppercase;
-        color: var(--color-text-muted);
-        letter-spacing: 0.05em;
-    }
-
-    &__value {
-        font-size: var(--font-size-lg);
-        font-weight: 700;
-        color: var(--color-text-primary);
-        font-family: var(--font-family-mono);
-    }
-}
+// stat-pill styles → centralisés dans _dashboard.scss
 
 // ==========================================
 // Tabs Navigation
@@ -415,11 +363,6 @@
     }
 }
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
 
 .backup-list {
     display: grid;

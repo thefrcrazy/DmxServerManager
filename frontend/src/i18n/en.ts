@@ -37,17 +37,17 @@ export const en: TranslationType = {
         ok: "OK",
         active: "Active",
         inactive: "Inactive",
-                enable: "Enable",
-                disable: "Disable",
-                never: "Never",
-                system: "System"
-            },
-        
-            collaboration: {
-                message_deleted: "This message was deleted by a team member.",
-            },
-        
-            errors: {
+        enable: "Enable",
+        disable: "Disable",
+        never: "Never",
+        system: "System"
+    },
+
+    collaboration: {
+        message_deleted: "This message was deleted by a team member.",
+    },
+
+    errors: {
         internal: "Internal server error. Please check server logs.",
         database: "Database error. Please try again later.",
         network: "Network error. Please check your connection."
@@ -70,7 +70,7 @@ export const en: TranslationType = {
         collapse_menu: "Collapse menu"
     },
     dashboard: {
-        welcome: "Gérez vos instances de serveurs de jeu",
+        welcome: "Manage your game server instances",
         system_status: "System Status",
         cpu_usage: "CPU Usage",
         ram_usage: "RAM Usage",
