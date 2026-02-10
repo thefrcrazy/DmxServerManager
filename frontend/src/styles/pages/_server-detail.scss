@@ -185,6 +185,7 @@
     min-height: 0;
     height: auto;
     color: #d4d4d4;
+    scroll-behavior: auto !important;
 
     @include custom-scrollbar;
     overflow: auto;

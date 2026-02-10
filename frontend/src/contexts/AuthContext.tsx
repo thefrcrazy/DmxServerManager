@@ -91,6 +91,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("user");
     };
 
+    useEffect(() => {
+        const handleLogoutRequired = () => {
+            logout();
+        };
+
+        window.addEventListener("logout-required", handleLogoutRequired);
+        return () => {
+            window.removeEventListener("logout-required", handleLogoutRequired);
+        };
+    }, []);
+
     const updateUser = (updates: Partial<User>) => {
         if (user) {
             const updatedUser = { ...user, ...updates };

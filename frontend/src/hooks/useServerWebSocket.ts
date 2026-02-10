@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { apiService } from "@/services";
 
 interface WebSocketMetrics {
     cpu: number;
@@ -69,31 +70,22 @@ export function useServerWebSocket({
     // Fetch console log history
     const fetchConsoleLog = useCallback(async () => {
         if (!serverId) return;
-        const token = localStorage.getItem("token");
-        if (!token) return;
-
+        
         try {
             // Try install log first
-            const installRes = await fetch(`/api/v1/servers/${serverId}/files/read?path=logs/install.log`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
+            const installRes = await apiService.readFile(serverId, "logs/install.log");
+            
             // Try console log
-            const res = await fetch(`/api/v1/servers/${serverId}/files/read?path=logs/console.log`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const res = await apiService.readFile(serverId, "logs/console.log");
 
-            if (res.ok) {
-                const data = await res.json();
-                if (data.content && data.content.length > 0) {
-                    setLogs(data.content.split("\n"));
-                }
-            } else if (installRes.ok) {
-                const data = await installRes.json();
-                if (data.content) setLogs(data.content.split("\n"));
+            if (res.success && res.data.content && res.data.content.length > 0) {
+                setLogs(res.data.content.split("\n"));
+            } else if (installRes.success && installRes.data.content) {
+                setLogs(installRes.data.content.split("\n"));
             }
         } catch (error) {
             console.error("Failed to fetch console log:", error);
+            // 401 errors are now handled by base.client.ts which dispatches "logout-required"
         }
     }, [serverId]);
 
@@ -181,9 +173,20 @@ export function useServerWebSocket({
             });
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
             setIsConnected(false);
             wsRef.current = null;
+            
+            // If the connection was closed cleanly or we shouldn't reconnect, stop here.
+            // But if it closed unexpectedly (code != 1000), it might be an auth issue.
+            // Since we can't get the HTTP status code from WS, we trigger a simple fetch 
+            // to check if we are still authenticated.
+            if (event.code !== 1000 && event.code !== 1001) {
+                 apiService.auth.me().catch(() => {
+                    // If this fails with 401, base.client.ts will handle the logout
+                 });
+            }
+
             const shouldRetry = shouldReconnectRef.current &&
                 (serverStatusRef.current === "running" ||
                     serverStatusRef.current === "installing" ||

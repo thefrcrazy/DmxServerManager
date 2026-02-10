@@ -24,6 +24,7 @@ class ApiService {
     async reinstallServer(id: string) { return this.servers.reinstallServer(id); }
     async sendCommand(id: string, c: string) { return this.servers.sendCommand(id, c); }
     async getServerMetrics(id: string, p?: string) { return this.servers.getServerMetrics(id, p); }
+    async readFile(id: string, path: string) { return this.servers.readFile(id, path); }
     async getBackups(sid?: string) { return this.backups.getBackups(sid); }
     async createBackup(sid: string) { return this.backups.createBackup(sid); }
     async deleteBackup(id: string) { return this.backups.deleteBackup(id); }

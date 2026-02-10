@@ -34,16 +34,20 @@ export default function ServerConsole({
         if (!consoleContentRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = consoleContentRef.current;
         
-        // Check if user is at the bottom (with small 10px tolerance for high-DPI screens)
-        const isAtBottom = scrollHeight - scrollTop - clientHeight < 10;
+        // Check if user is at the bottom (with small 5px tolerance for rounding)
+        // If they are at the bottom, we enable auto-scroll
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 5;
         isAtBottomRef.current = isAtBottom;
     };
 
     // Auto-scroll logic
     useEffect(() => {
         if (logs.length > 0 && isAtBottomRef.current && consoleContentRef.current) {
-            // Use instant scroll for terminals to avoid conflict with manual scrolling
-            consoleContentRef.current.scrollTop = consoleContentRef.current.scrollHeight;
+            // Force scroll to bottom without smooth behavior
+            consoleContentRef.current.scrollTo({
+                top: consoleContentRef.current.scrollHeight,
+                behavior: "auto"
+            });
         }
     }, [logs]);
 

@@ -45,6 +45,12 @@ export class BaseClient {
 
             const timestamp = new Date().toISOString();
 
+            if (response.status === 401) {
+                // Dispatch event for auth context to handle
+                window.dispatchEvent(new CustomEvent("logout-required"));
+                throw new Error("Session expired");
+            }
+
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: "Unknown error" })) as ApiError;
                 throw new Error(errorData.error || errorData.code || `HTTP ${response.status}`);

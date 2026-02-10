@@ -70,4 +70,8 @@ export class ServerClient extends BaseClient {
     async getServerMetrics(id: string, period: string = "1d"): Promise<ApiResponse<MetricsHistoryResponse>> {
         return this.request<MetricsHistoryResponse>(`/servers/${id}/metrics?period=${period}`);
     }
+
+    async readFile(serverId: string, path: string): Promise<ApiResponse<{ content: string }>> {
+        return this.request<{ content: string }>(`/servers/${serverId}/files/read?path=${encodeURIComponent(path)}`);
+    }
 }

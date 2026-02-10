@@ -31,11 +31,23 @@ export default function ServerLogs({
 }: ServerLogsProps) {
     const { t } = useLanguage();
     const logsContentRef = useRef<HTMLDivElement>(null);
+    const isAtBottomRef = useRef(true);
+
+    // Track scroll position
+    const handleScroll = () => {
+        if (!logsContentRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = logsContentRef.current;
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 5;
+        isAtBottomRef.current = isAtBottom;
+    };
 
     // Auto-scroll logic similar to console but for static content rendering
     useEffect(() => {
-        if (logContent && logsContentRef.current) {
-            logsContentRef.current.scrollTop = logsContentRef.current.scrollHeight;
+        if (logContent && logsContentRef.current && isAtBottomRef.current) {
+            logsContentRef.current.scrollTo({
+                top: logsContentRef.current.scrollHeight,
+                behavior: "auto"
+            });
         }
     }, [logContent, selectedLogFile]);
 
@@ -95,6 +107,7 @@ export default function ServerLogs({
                 <div
                     className="console-output"
                     ref={logsContentRef}
+                    onScroll={handleScroll}
                 >
                     {logFiles.length === 0 ? (
                         <div className="console-output__empty">

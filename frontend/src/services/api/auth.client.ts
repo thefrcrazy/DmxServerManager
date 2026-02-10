@@ -21,4 +21,8 @@ export class AuthClient extends BaseClient {
     async checkAuthStatus(): Promise<ApiResponse<SetupStatus>> {
         return this.request<SetupStatus>("/auth/status", { skipAuth: true });
     }
+
+    async me(): Promise<ApiResponse<AuthResponse["user"]>> {
+        return this.request<AuthResponse["user"]>("/auth/me");
+    }
 }
