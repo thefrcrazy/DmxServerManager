@@ -37,7 +37,11 @@
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.57.1",
     "@rollup/rollup-darwin-x64": "^4.57.1",
-    "@rollup/rollup-darwin-arm64": "^4.57.1"
+    "@rollup/rollup-darwin-arm64": "^4.57.1",
+    "@esbuild/linux-x64": "^0.25.0",
+    "@esbuild/linux-arm64": "^0.25.0",
+    "@esbuild/darwin-x64": "^0.25.0",
+    "@esbuild/darwin-arm64": "^0.25.0"
   },
   "trustedDependencies": [
     "sass"

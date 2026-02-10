@@ -82,7 +82,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: ./frontend
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Run Lint
         working-directory: ./frontend
@@ -102,7 +102,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: ./frontend
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Build
         working-directory: ./frontend
