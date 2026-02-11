@@ -315,15 +315,26 @@ async fn register(
     })))
 }
 
-async fn me(auth: AuthUser) -> Result<Json<UserInfo>, AppError> {
-    // AuthUser already has permissions loaded
+async fn me(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<UserInfo>, AppError> {
+    // Récupérer must_change_password depuis la DB
+    let must_change: (i32,) = sqlx::query_as(
+        "SELECT COALESCE(must_change_password, 0) FROM users WHERE id = ?"
+    )
+    .bind(&auth.id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or((0,));
+
     Ok(Json(UserInfo {
         id: auth.id,
         username: auth.username,
         role: auth.role,
         permissions: auth.permissions,
         accent_color: auth.accent_color,
-        must_change_password: false, 
+        must_change_password: must_change.0 != 0,
     }))
 }
 
@@ -431,7 +442,6 @@ async fn create_token(user: &UserRow, state: &AppState) -> Result<String, AppErr
 
 #[derive(Debug, Deserialize)]
 pub struct ChangePasswordRequest {
-    #[allow(dead_code)]
     pub current_password: Option<String>,
     pub new_password: String,
 }
@@ -461,6 +471,21 @@ async fn change_password(
     .map_err(|_| AppError::Unauthorized("auth.invalid_token".into()))?;
 
     let user_id = token_data.claims.sub;
+
+    // Vérifier le mot de passe actuel si fourni
+    let user_row: (String,) = sqlx::query_as("SELECT password_hash FROM users WHERE id = ?")
+        .bind(&user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("auth.user_not_found".into()))?;
+
+    if let Some(ref current) = body.current_password {
+        if !bcrypt::verify(current, &user_row.0)
+            .map_err(|_| AppError::Internal("Password verification failed".into()))? {
+            return Err(AppError::Unauthorized("auth.invalid_current_password".into())
+                .with_code(ErrorCode::AuthInvalidCredentials));
+        }
+    }
 
     // Validate new password strength
     validate_password_strength(&body.new_password)?;

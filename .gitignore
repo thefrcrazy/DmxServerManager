@@ -29,6 +29,7 @@ logs/
 # Database
 *.db
 *.sqlite
+**/uploads
 
 # Server files (user data)
 /data/

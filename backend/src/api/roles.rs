@@ -135,10 +135,9 @@ async fn update_role(
         .ok_or_else(|| AppError::NotFound("Role not found".into()))?;
 
     if role.is_system && body.name.is_some() {
-        // System roles cannot be renamed (but permissions can be updated if we want admins to customize them)
-        // For strict RBAC, maybe prevent even permission edits on 'admin'?
-        // Let's allow permission edits but not name edits for now.
-        // Actually, renaming 'admin' or 'user' might break default logic, so prevent it.
+        return Err(AppError::BadRequest(
+            "Cannot rename system roles".into()
+        ));
     }
 
     let now = Utc::now().to_rfc3339();

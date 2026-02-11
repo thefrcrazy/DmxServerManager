@@ -67,7 +67,7 @@ async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<serde_json
            COALESCE(language, 'fr') as language,
            COALESCE(accent_color, '#3A82F6') as accent_color,
            created_at, updated_at, last_login, last_ip, allocated_servers,
-           COALESCE(must_change_password, 0) != 0 as must_change_password
+           (COALESCE(must_change_password, 0) != 0) as must_change_password
            FROM users ORDER BY created_at DESC"#,
     )
     .fetch_all(&state.pool)
@@ -113,7 +113,7 @@ async fn get_user(
            COALESCE(language, 'fr') as language,
            COALESCE(accent_color, '#3A82F6') as accent_color,
            created_at, updated_at, last_login, last_ip, allocated_servers,
-           COALESCE(must_change_password, 0) != 0 as must_change_password
+           (COALESCE(must_change_password, 0) != 0) as must_change_password
            FROM users WHERE id = ?"#,
     )
     .bind(&user_id)
@@ -145,9 +145,12 @@ async fn get_user(
 
 use regex::Regex;
 
+lazy_static::lazy_static! {
+    static ref USERNAME_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9_-]{3,32}$").unwrap();
+}
+
 fn validate_username(username: &str) -> Result<(), AppError> {
-    let re = Regex::new(r"^[a-zA-Z0-9_-]{3,32}$").unwrap();
-    if !re.is_match(username) {
+    if !USERNAME_REGEX.is_match(username) {
         return Err(AppError::BadRequest("Invalid username format (3-32 chars, alphanumeric, _ -)".into()));
     }
     Ok(())

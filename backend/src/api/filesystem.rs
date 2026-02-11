@@ -27,7 +27,12 @@ pub struct ListQuery {
 }
 
 async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_json::Value>, AppError> {
-    let base_path_str = query.path.clone().unwrap_or_else(|| "/".to_string());
+    // Déterminer le répertoire racine autorisé
+    let allowed_base = std::env::var("DATA_DIR")
+        .unwrap_or_else(|_| "/".to_string());
+    let allowed = std::path::Path::new(&allowed_base);
+
+    let base_path_str = query.path.clone().unwrap_or_else(|| allowed_base.clone());
     let path = PathBuf::from(&base_path_str);
 
     if !path.exists() {
@@ -36,6 +41,16 @@ async fn list_directory(Query(query): Query<ListQuery>) -> Result<Json<serde_jso
 
     if !path.is_dir() {
         return Err(AppError::BadRequest("Path is not a directory".into()));
+    }
+
+    // Vérifier que le chemin reste dans la zone autorisée
+    if let (Ok(canonical), Ok(allowed_canonical)) = (
+        std::fs::canonicalize(&path),
+        std::fs::canonicalize(allowed),
+    ) {
+        if !canonical.starts_with(&allowed_canonical) {
+            return Err(AppError::Forbidden("Access denied: path outside allowed directory".into()));
+        }
     }
 
     let mut entries: Vec<DirectoryEntry> = Vec::new();

@@ -128,7 +128,7 @@ async fn update_env_file(key: &str, value: &str) -> std::io::Result<()> {
     let new_line = format!("{key}={value}");
 
     for line in content.lines() {
-        if line.starts_with(key) && line.contains('=') {
+        if line.split('=').next() == Some(key) {
             new_lines.push(new_line.as_str());
             key_found = true;
         } else {
