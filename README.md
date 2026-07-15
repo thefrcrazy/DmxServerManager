@@ -51,7 +51,7 @@ Le réseau hôte est obligatoire : les instances réservent des ports TCP/UDP dy
 
 ```bash
 cd install/linux
-export DMX_VERSION='1.0.4'
+export DMX_VERSION='1.0.5'
 export DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>'
 sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct
 docker compose pull
@@ -70,7 +70,7 @@ Pour une exposition publique avec Let's Encrypt :
 cd install/linux
 DMX_DOMAIN=panel.example.com \
 DMX_ACME_EMAIL=admin@example.com \
-DMX_VERSION='1.0.4' \
+DMX_VERSION='1.0.5' \
 DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>' \
 sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh traefik
 docker compose -f docker-compose.traefik.yml up -d
