@@ -5,18 +5,45 @@
 
 Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version 1.0 cible Linux AMD64 natif sur Ubuntu 24.04/glibc 2.39+, Windows AMD64 et les conteneurs Linux AMD64. Elle utilise SQLite, des comptes locaux et des sauvegardes locales.
 
+> [!IMPORTANT]
+> Pour une installation de production, utilisez exclusivement une release signée et ses checksums. Une archive construite directement depuis une branche Git n’est pas un artefact de publication.
+
+## Fonctionnalités
+
+- installation et mise à jour transactionnelles avec staging, validation et rollback ;
+- supervision des groupes de processus, console, watchdog, métriques et journaux en temps réel par SSE ;
+- file de jobs persistante pour les installations, mises à jour, sauvegardes, restaurations et imports ;
+- sessions opaques, CSRF, RBAC, affectation des instances et journal d’audit ;
+- sauvegardes locales vérifiées, gestionnaire de fichiers cloisonné et imports ZIP sécurisés ;
+- tâches planifiées, notifications, chat d’équipe, webhooks Discord et catalogue local `.dmxpack` ;
+- interface React responsive en français et en anglais, pilotée par les capacités de chaque profil.
+
 ## Profils 1.0
 
-- Hytale
-- Minecraft Java : Vanilla, Paper, Fabric, Forge, NeoForge, Spigot, Purpur et Quilt
-- Minecraft Bedrock
-- Valheim
-- Palworld
-- serveurs SteamCMD anonymes personnalisés, avec compatibilité « best effort »
+| Profil | Distribution | Ports par défaut | Particularités |
+|---|---|---|---|
+| Hytale | downloader officiel, Java 25 géré | UDP 5520 | OAuth device par instance et mise à jour atomique |
+| Minecraft Java | Vanilla, Paper, Fabric, Forge, NeoForge, Spigot, Purpur et Quilt | TCP 25565 | version et loader épinglés, EULA explicite |
+| Minecraft Bedrock | archive officielle Linux ou Windows | UDP 19132 et 19133 | mondes, allowlist, permissions et packs |
+| Valheim | SteamCMD anonyme, AppID `896660` | UDP `N` et `N+1` | Crossplay optionnel et sauvegardes isolées |
+| Palworld | SteamCMD anonyme, AppID `2394010` | UDP 8211 | paramètres INI sûrs, REST/RCON désactivés par défaut |
+| Steam personnalisé | dépôt anonyme natif | déclarés par le profil | AppID numérique, exécutable relatif, aucun shell |
 
 Les binaires de jeux ne sont jamais inclus dans l’image ou les releases. Les installateurs officiels et SteamCMD les téléchargent à la demande, selon leurs licences.
 
+Un AppID Steam personnalisé n’est pas automatiquement compatible. Le dépôt doit autoriser la connexion anonyme, fournir un exécutable natif AMD64 pour l’OS hôte et réussir la validation du profil. Les comptes Steam privés, Wine et Proton ne sont pas pris en charge en 1.0.
+
 Les builds officiels surveillent par défaut un manifeste de release Ed25519 avec checksums complets, à partir d’une URL et d’une clé publique intégrées au binaire. Le panneau affiche une procédure native ou une image Docker épinglée par digest uniquement pour une version strictement plus récente ; il n’exécute jamais la mise à niveau et ne se remplace pas lui-même.
+
+## Architecture du dépôt
+
+| Répertoire | Contenu |
+|---|---|
+| `backend/` | API Axum `/api/v1`, SQLite/SQLx, profils, jobs, sécurité et supervision |
+| `frontend/` | SPA React 19, Vite 8, TypeScript 6, client API généré depuis OpenAPI |
+| `install/` | image Docker, Compose, service systemd et installateur Windows |
+| `docs/` | installation, configuration, sécurité, profils et exploitation |
+| `.github/workflows/` | CI, artefacts signés, SBOM, image GHCR et publication |
 
 ## Installation rapide avec Docker
 
@@ -94,10 +121,13 @@ cargo test --locked --all-targets --all-features
 cd ../frontend
 bun install --frozen-lockfile
 bun run lint
+bun run test
 bun run build
 ```
 
 La CI contrôle aussi Clippy sans warning, les licences/advisories, l’audit Bun, les tests Playwright, le build Docker AMD64, le smoke test, Trivy et le SBOM SPDX. La configuration et les suites Playwright 1.0 sont obligatoires : leur absence ou un test en échec bloque la CI.
+
+Les contributions doivent partir d’une branche dédiée et passer par une pull request. La publication est déclenchée uniquement par un tag `vX.Y.Z` correspondant à la version du crate et produit les binaires Linux/Windows, l’image GHCR, les checksums, le manifeste Ed25519, les signatures Sigstore et le SBOM.
 
 ## Licence
 
