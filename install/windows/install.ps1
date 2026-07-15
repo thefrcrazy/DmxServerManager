@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[0-9A-Za-z.+-]+$')]
-    [string]$Version = $(if ($env:DMX_VERSION) { $env:DMX_VERSION } else { '1.0.5' }),
+    [string]$Version = $(if ($env:DMX_VERSION) { $env:DMX_VERSION } else { '1.0.6' }),
 
     [string]$ExpectedArchiveSha256 = $(if ($env:DMX_EXPECTED_ARCHIVE_SHA256) { $env:DMX_EXPECTED_ARCHIVE_SHA256 } else { '' }),
 
@@ -128,7 +128,7 @@ if ($SteamCmdPath -notmatch '^[A-Za-z]:[\\/]') {
 }
 
 function Invoke-Sc {
-    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$Arguments)
+    param([Parameter(Mandatory)][string[]]$Arguments)
 
     $output = & "$env:SystemRoot\System32\sc.exe" @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -541,7 +541,8 @@ try {
         }
 
         $serviceAccount = "NT SERVICE\$ServiceName"
-        Invoke-Sc -Arguments @('config', $ServiceName, 'obj=', $serviceAccount, 'password=', '')
+        # Virtual service accounts are managed by Windows and must not receive a password argument.
+        Invoke-Sc -Arguments @('config', $ServiceName, 'obj=', $serviceAccount)
         if ($serviceCreated) {
             Invoke-Sc -Arguments @('description', $ServiceName, 'DmxServerManager game server manager')
             Invoke-Sc -Arguments @('sidtype', $ServiceName, 'unrestricted')
@@ -618,7 +619,7 @@ try {
             try {
                 Invoke-Sc -Arguments @('config', $ServiceName, 'binPath=', $previousService.PathName, 'start=', $startMode)
                 if ($previousService.StartName) {
-                    Invoke-Sc -Arguments @('config', $ServiceName, 'obj=', $previousService.StartName, 'password=', '')
+                    Invoke-Sc -Arguments @('config', $ServiceName, 'obj=', $previousService.StartName)
                 }
             } catch {
                 Write-Warning "Unable to restore the previous SCM configuration: $_"
