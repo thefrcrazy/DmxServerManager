@@ -1,49 +1,37 @@
-import { defineConfig } from "vite";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import path from "path";
-import { fileURLToPath } from "url";
+import { defineConfig, loadEnv } from "vite";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
-    plugins: [react()],
-    resolve: {
-        alias: {
-            "@": path.resolve(__dirname, "./src"),
-        },
-    },
-    server: {
-        port: 3000,
-        proxy: {
-            "/api": {
-                target: process.env.VITE_BACKEND_HTTPS === "true" 
-                    ? "https://localhost:5500" 
-                    : "http://localhost:5500",
-                changeOrigin: true,
-                secure: false, // Essential for self-signed certificates
-                ws: true,
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd(), "VITE_");
+    const backendProtocol = env.VITE_BACKEND_HTTPS === "true" ? "https" : "http";
+
+    return {
+        plugins: [react()],
+        resolve: {
+            alias: {
+                "@": path.resolve(rootDirectory, "src"),
             },
         },
-    },
-    css: {
-        preprocessorOptions: {
-            scss: {
-                additionalData: "@use \"@/styles/_variables\" as *; @use \"@/styles/_mixins\" as *;",
-            },
-        },
-    },
-    build: {
-        rollupOptions: {
-            output: {
-                manualChunks(id) {
-                    if (id.includes("node_modules")) {
-                        if (id.includes("cronstrue")) return "vendor-cron";
-                        if (id.includes("lucide-react")) return "vendor-icons";
-                        return "vendor";
-                    }
+        server: {
+            port: 3000,
+            proxy: {
+                "/api": {
+                    target: `${backendProtocol}://localhost:5500`,
+                    changeOrigin: true,
+                    secure: false,
                 },
             },
         },
-        chunkSizeWarningLimit: 1000,
-    },
+        css: {
+            preprocessorOptions: {
+                scss: {
+                    additionalData: "@use \"@/styles/_variables\" as *; @use \"@/styles/_mixins\" as *;",
+                },
+            },
+        },
+    };
 });

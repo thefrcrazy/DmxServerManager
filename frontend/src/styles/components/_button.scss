@@ -52,7 +52,8 @@
     // Danger Button Solid (red background)
     &--danger-solid {
         background-color: var(--color-danger);
-        color: var(--color-text-inverse);
+        // #000 keeps a 5.58:1 contrast on the fixed #EF4444 danger background.
+        color: #000000;
         font-weight: 600;
 
         &:hover:not(:disabled) {

@@ -57,35 +57,6 @@
 // ==========================================
 // Styles are now in components/_tabs.scss
 
-
-// ==========================================
-// WIP Placeholder
-// ==========================================
-.wip-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 400px;
-    background-color: var(--color-bg-tertiary);
-    border: 1px dashed var(--color-border);
-    border-radius: var(--radius-lg);
-    color: var(--color-text-muted);
-    gap: var(--spacing-4);
-
-    .wip-icon {
-        width: 64px;
-        height: 64px;
-        color: var(--color-accent);
-        opacity: 0.5;
-    }
-
-    h3 {
-        font-size: var(--font-size-lg);
-        color: var(--color-text-primary);
-    }
-}
-
 .console-wrapper {
     display: flex;
     flex-direction: column;

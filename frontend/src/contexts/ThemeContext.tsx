@@ -1,99 +1,78 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { applyThemeTokens, DEFAULT_THEME_TOKENS } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
+import type { ActiveTheme } from "@/schemas/catalog";
+import { apiService } from "@/services";
 
-type Theme = {
+type ThemeContextValue = {
     accentColor: string;
     setAccentColor: (color: string) => void;
+    activeTheme: ActiveTheme;
+    refreshTheme: () => Promise<void>;
 };
 
-const ThemeContext = createContext<Theme | undefined>(undefined);
+const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
+const DEFAULT_ACCENT = DEFAULT_THEME_TOKENS.accent;
+const STORAGE_KEY = "dmx_server_manager_accent_color";
+const DEFAULT_THEME: ActiveTheme = {
+    selection: { kind: "default" },
+    tokens: DEFAULT_THEME_TOKENS,
+    assets: { logo: null, preview: null },
+    version: 1,
+    updated_at: "1970-01-01T00:00:00Z",
+};
 
-// Default Blue (synchronized with backend)
-const DEFAULT_ACCENT = "#3A82F6";
+function validAccent(color: string | null | undefined): color is string {
+    return typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color);
+}
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-    const [accentColor, setAccentColor] = useState<string>(() => {
-        // Priority: User's accent_color > localStorage theme > default
-        const savedUser = localStorage.getItem("user");
-        if (savedUser) {
-            try {
-                const user = JSON.parse(savedUser);
-                if (user.accent_color) {
-                    return user.accent_color;
-                }
-            } catch (e) {
-                // Ignore parse errors
-            }
-        }
-        return localStorage.getItem("draveur_accent_color") || DEFAULT_ACCENT;
+    const { user } = useAuth();
+    const [accentColor, setAccentColorState] = useState(() => {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return validAccent(stored) ? stored : DEFAULT_ACCENT;
     });
+    const [activeTheme, setActiveTheme] = useState<ActiveTheme>(DEFAULT_THEME);
+
+    const setAccentColor = useCallback((color: string) => {
+        const safeColor = validAccent(color) ? color : DEFAULT_ACCENT;
+        setAccentColorState(safeColor);
+        localStorage.setItem(STORAGE_KEY, safeColor);
+    }, []);
+
+    const refreshTheme = useCallback(async () => {
+        if (!user) {
+            setActiveTheme(DEFAULT_THEME);
+            return;
+        }
+        const response = await apiService.catalog.activeTheme();
+        if (response.success) setActiveTheme(response.data);
+    }, [user]);
 
     useEffect(() => {
-        const root = document.documentElement;
+        if (validAccent(user?.accent_color)) setAccentColor(user.accent_color);
+    }, [setAccentColor, user?.accent_color]);
 
-        // Set HEX color
-        root.style.setProperty("--color-accent", accentColor);
-
-        // Set RGB color (for opacities)
-        // Convert hex to rgb
-        const r = parseInt(accentColor.slice(1, 3), 16);
-        const g = parseInt(accentColor.slice(3, 5), 16);
-        const b = parseInt(accentColor.slice(5, 7), 16);
-        root.style.setProperty("--color-accent-rgb", `${r}, ${g}, ${b}`);
-
-        // Persist
-        localStorage.setItem("draveur_accent_color", accentColor);
-    }, [accentColor]);
-
-    // Prevent flash of unstyled theme
     useEffect(() => {
-        // Force immediate apply on mount
-        const root = document.documentElement;
-        root.style.setProperty("--color-accent", accentColor);
-        const r = parseInt(accentColor.slice(1, 3), 16);
-        const g = parseInt(accentColor.slice(3, 5), 16);
-        const b = parseInt(accentColor.slice(5, 7), 16);
-        root.style.setProperty("--color-accent-rgb", `${r}, ${g}, ${b}`);
-    }, [accentColor]);
+        void refreshTheme();
+    }, [refreshTheme]);
 
-    // Sync with localStorage changes (from other components like AuthContext.updateUser)
     useEffect(() => {
-        const syncFromStorage = () => {
-            const savedUser = localStorage.getItem("user");
-            if (savedUser) {
-                try {
-                    const user = JSON.parse(savedUser);
-                    if (user.accent_color && user.accent_color.toLowerCase() !== accentColor.toLowerCase()) {
-                        setAccentColor(user.accent_color);
-                    }
-                } catch (e) {
-                    // Ignore parse errors
-                }
-            }
-        };
+        applyThemeTokens(activeTheme.tokens, accentColor);
+    }, [accentColor, activeTheme.tokens]);
 
-        // Listen for storage events (works across tabs)
-        window.addEventListener("storage", syncFromStorage);
+    const value = useMemo<ThemeContextValue>(() => ({
+        accentColor,
+        setAccentColor,
+        activeTheme,
+        refreshTheme,
+    }), [accentColor, activeTheme, refreshTheme, setAccentColor]);
 
-        // Also check on route changes by polling (same tab updates don't trigger storage event)
-        const interval = setInterval(syncFromStorage, 500);
-
-        return () => {
-            window.removeEventListener("storage", syncFromStorage);
-            clearInterval(interval);
-        };
-    }, [accentColor]);
-
-    return (
-        <ThemeContext.Provider value={{ accentColor, setAccentColor }}>
-            {children}
-        </ThemeContext.Provider>
-    );
+    return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {
     const context = useContext(ThemeContext);
-    if (context === undefined) {
-        throw new Error("useTheme must be used within a ThemeProvider");
-    }
+    if (!context) throw new Error("useTheme must be used within a ThemeProvider");
     return context;
 }

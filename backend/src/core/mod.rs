@@ -1,18 +1,25 @@
 pub mod config;
 pub mod database;
 pub mod error;
+pub mod events;
 
 pub use config::Settings;
 pub use database::DbPool;
-pub use error::AppError;
 
-use crate::services::game::ProcessManager;
+use crate::services::profiles::ProfileRegistry;
+use crate::services::releases::ReleaseMonitor;
+use crate::services::runtime::RuntimeManager;
+use crate::services::secrets::SecretStore;
+use events::EventHub;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: DbPool,
-    pub process_manager: ProcessManager,
-    #[allow(dead_code)]
     pub settings: Arc<Settings>,
+    pub profiles: Arc<ProfileRegistry>,
+    pub events: EventHub,
+    pub secrets: SecretStore,
+    pub runtime: RuntimeManager,
+    pub releases: ReleaseMonitor,
 }

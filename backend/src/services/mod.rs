@@ -1,2 +1,15 @@
-pub mod game;
-pub mod system;
+pub mod backups;
+pub mod catalog;
+pub mod installers;
+pub mod instance_storage;
+pub mod jobs;
+pub mod metrics;
+pub mod mod_providers;
+pub mod notifications;
+pub mod profiles;
+pub mod releases;
+pub mod runtime;
+pub mod schedules;
+pub mod secrets;
+pub mod secure_fs;
+pub mod webhooks;

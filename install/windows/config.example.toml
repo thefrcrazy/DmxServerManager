@@ -1,0 +1,31 @@
+bind = "127.0.0.1:5500"
+data_dir = 'C:\ProgramData\DmxServerManager\data'
+database_url = 'sqlite://C:/ProgramData/DmxServerManager/data/dmx-server-manager.sqlite?mode=rwc'
+master_key_file = 'C:\ProgramData\DmxServerManager\config\master.key'
+steamcmd_path = 'C:\ProgramData\DmxServerManager\data\toolchains\steamcmd\steamcmd.exe'
+static_dir = 'C:\Program Files\DmxServerManager\current\static'
+reverse_proxy = false
+trusted_proxies = []
+import_roots = []
+log = "info"
+deployment_mode = "native"
+session_ttl_hours = 24
+
+# Uniquement pour le premier Owner créé depuis une adresse non-loopback.
+# Utilisez une valeur aléatoire temporaire, puis supprimez cette ligne.
+# setup_token = "remplacer-par-un-secret-aleatoire-temporaire"
+
+# Ces valeurs officielles sont intégrées au binaire. Décommentez et remplacez
+# obligatoirement les deux lignes ensemble uniquement pour un build administré.
+# release_manifest_url = "https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/release-manifest.json"
+# release_public_key = "b8fhZWmHeC2hXYirmouwawPjiN3H7GMXrVixcmivg-M"
+# release_check_interval_seconds = 21600
+
+# Microsoft ne publie pas de manifeste stable avec checksum Bedrock. Laissez
+# cette section absente pour utiliser le dépôt Owner + SHA-256 du job, ou
+# remplacez toutes les valeurs par celles de l'archive officielle exacte.
+# [bedrock_windows_source]
+# url = "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-VERSION.zip"
+# version = "VERSION"
+# sha256 = "64-caracteres-hexadecimaux"
+# size_bytes = 123456789

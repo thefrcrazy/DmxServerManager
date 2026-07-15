@@ -1,1271 +1,335 @@
-import {
-    BarChart3,
-    Clock,
-    Cpu,
-    HardDrive,
-    Play,
-    RotateCw,
-    Square,
-    Terminal,
-    Users,
-    Settings,
-    FolderOpen,
-    FileText,
-    Webhook,
-    Globe,
-    Package,
-} from "lucide-react";
-import React, { useCallback, useEffect, useState, useMemo } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
-import { formatBytes, formatGB } from "../utils/formatters";
-import { useLanguage } from "../contexts/LanguageContext";
-import { usePageTitle } from "../contexts/PageTitleContext";
-import { useServerWebSocket, usePermission } from "../hooks";
-import { useToast } from "../contexts/ToastContext";
-import { useDialog } from "../contexts/DialogContext";
+import { Activity, Archive, CalendarClock, Download, FolderOpen, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Shield, Skull, Square, Terminal, Trash2, Wrench } from "lucide-react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileSettingsFields, ServerBackups, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerSchedules } from "@/components/features/server";
+import { EmptyState, LoadingScreen } from "@/components/shared";
+import { Button, StatPill, Tabs } from "@/components/ui";
+import { useDialog } from "@/contexts/DialogContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useToast } from "@/contexts/ToastContext";
+import { usePermission, useServerEvents } from "@/hooks";
+import { SecretStatusSchema } from "@/schemas/api";
+import type { GameProfile, Instance } from "@/schemas/api";
+import { BedrockArchiveAuthorizationSchema, HytaleDeviceAuthorizationSchema } from "@/schemas/operations";
+import type { BedrockArchiveAuthorization, HytaleDeviceAuthorization } from "@/schemas/operations";
+import { apiService } from "@/services";
+import type { ServerAction } from "@/services/api/server.client";
+import type { ProfileValue } from "@/utils/profileSettings";
 
-// New Components
-import {
-    ServerConsole,
-    ServerFiles,
-    ServerLogs,
-    ServerConfig,
-    ServerPlayers,
-    ServerMetrics,
-    ServerSchedule,
-    AddPlayerModal
-} from "@/components/features/server";
-import { Schedule } from "@/components/features/server/ServerSchedule";
-import { Tabs, Tooltip } from "@/components/ui";
-import { WorkInProgress, InstallationProgress } from "@/components/shared";
-
-interface FileEntry {
-    name: string;
-    path: string;
-    is_dir: boolean;
-    size?: number;
-}
-
-interface Player {
-    name: string;
-    uuid?: string;
-    is_online: boolean;
-    last_seen?: string;
-    is_op?: boolean;
-    is_banned?: boolean;
-    is_whitelisted?: boolean;
-    reason?: string;
-    bannedBy?: string;
-    expires?: string;
-    created?: string;
-}
-
-interface Server {
-    id: string;
-    name: string;
-    game_type: string;
-    status: string;
-    working_dir: string;
-    executable_path: string;
-    min_memory?: string;
-    max_memory?: string;
-    java_path?: string;
-    extra_args?: string;
-    assets_path?: string;
-    accept_early_plugins?: boolean;
-    auto_start?: boolean;
-    disable_sentry?: boolean;
-    max_memory_bytes?: number;
-    max_heap_bytes?: number;
-    memory_usage_bytes?: number;
-    cpu_usage?: number;
-    disk_usage_bytes?: number;
-    bind_address?: string;
-    port?: number;
-    motd?: string;
-    password?: string;
-    nice_level: number;
-    auth_mode?: "authenticated" | "offline";
-    allow_op?: boolean;
-    backup_enabled?: boolean;
-    backup_dir?: string;
-    backup_frequency?: number;
-    seed?: string;
-    world_gen_type?: string;
-    world_name?: string;
-    game_mode?: string;
-    view_distance?: number;
-    gameplay_config?: string;
-    is_pvp_enabled?: boolean;
-    is_fall_damage_enabled?: boolean;
-    is_ticking?: boolean;
-    is_block_ticking?: boolean;
-    is_game_time_paused?: boolean;
-    is_spawning_npc?: boolean;
-    is_spawn_markers_enabled?: boolean;
-    is_all_npc_frozen?: boolean;
-    is_compass_updating?: boolean;
-    is_saving_players?: boolean;
-    is_saving_chunks?: boolean;
-    is_unloading_chunks?: boolean;
-    is_objective_markers_enabled?: boolean;
-    dir_exists: boolean;
-    config?: any;
-    max_players?: number;
-    players?: Player[];
-    started_at?: string;
-}
-
-type TabId =
-    | "console"
-    | "logs"
-    | "schedule"
-    | "backups"
-    | "files"
-    | "config"
-    | "mods"
-    | "players"
-    | "metrics"
-    | "webhooks";
-
-interface Tab {
-    id: TabId;
-    label: string;
-    icon: React.ReactNode;
-}
+type TabId = "configuration" | "console" | "files" | "backups" | "metrics" | "mods" | "schedules";
 
 export default function ServerDetail() {
+    const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
     const { t } = useLanguage();
     const { setPageTitle } = usePageTitle();
-    const { success, error: showError } = useToast();
+    const toast = useToast();
+    const { user } = useAuth();
     const { confirm } = useDialog();
     const { hasPermission } = usePermission();
-    const { id } = useParams<{ id: string }>();
+    const [instance, setInstance] = useState<Instance | null>(null);
+    const [profile, setProfile] = useState<GameProfile | null>(null);
+    const [settings, setSettings] = useState<Record<string, ProfileValue>>({});
+    const [secretStatuses, setSecretStatuses] = useState<Array<{ name: string; configured: boolean }>>([]);
+    const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
+    const [name, setName] = useState("");
+    const [autoStart, setAutoStart] = useState(false);
+    const [watchdog, setWatchdog] = useState(true);
+    const [activeTab, setActiveTab] = useState<TabId>("configuration");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [action, setAction] = useState<ServerAction | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [fallbackBedrockArchive, setFallbackBedrockArchive] = useState<BedrockArchiveAuthorization | null>(null);
+    const [fallbackDeviceAuthorization, setFallbackDeviceAuthorization] = useState<HytaleDeviceAuthorization | null>(null);
 
-    const [server, setServer] = useState<Server | null>(null);
-    const [searchParams, setSearchParams] = useSearchParams();
-
-    const tabParam = searchParams.get("tab") as TabId | null;
-    const [activeTab, setActiveTab] = useState<TabId>(tabParam || "console");
-
-    const tabs = useMemo<Tab[]>(() => {
-        const allTabs: Tab[] = [
-            { id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> },
-            { id: "logs", label: t("server_detail.tabs.logs"), icon: <FileText size={18} /> },
-            { id: "schedule", label: t("server_detail.tabs.schedule"), icon: <Clock size={18} /> },
-            { id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> },
-            { id: "config", label: t("server_detail.tabs.config"), icon: <Settings size={18} /> },
-            { id: "mods", label: t("server_detail.tabs.mods"), icon: <Package size={18} /> },
-            { id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> },
-            { id: "metrics", label: t("server_detail.tabs.metrics"), icon: <BarChart3 size={18} /> },
-            { id: "webhooks", label: t("server_detail.tabs.webhooks"), icon: <Webhook size={18} /> },
-        ];
-
-        // Filter tabs based on permissions
-        return allTabs.filter(tab => {
-            // If user has full access, show all tabs
-            if (hasPermission("*")) return true;
-
-            if (tab.id === "console") return hasPermission("server.console.read");
-            if (tab.id === "logs") return hasPermission("server.console.read");
-            if (tab.id === "files") return hasPermission("server.files.read");
-            if (tab.id === "schedule") return hasPermission("server.schedules.manage");
-            if (tab.id === "config") return hasPermission("settings.manage");
-            // Players and Metrics are basic views, usually allowed if one can view the server
-            if (tab.id === "players") return hasPermission("server.view");
-            if (tab.id === "metrics") return hasPermission("server.view");
-            
-            // Default: allow if no specific permission required (e.g. mods, webhooks for now)
-            return true;
-        });
-    }, [t, hasPermission]);
-
-    // Sync activeTab from URL changes (activeTab follows URL)
-    useEffect(() => {
-        const tab = searchParams.get("tab") as TabId | null;
-        if (tab && tabs.some(t => t.id === tab)) {
-            setActiveTab(tab);
-        }
-    }, [searchParams, tabs]);
-
-    const handleTabChange = (tabId: TabId) => {
-        setActiveTab(tabId);
-        setSearchParams({ tab: tabId });
-    };
-
-    // Data Fetching Handlers - defined before the hook to avoid circular dependency
-    const fetchServer = useCallback(async () => {
-        const response = await fetch(`/api/v1/servers/${id}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        });
-        const data = await response.json();
-        setServer(data);
-    }, [id]);
-
-    const onStatusChange = useCallback((status: string) => setServer((prev) => (prev ? { ...prev, status } : null)), []);
-
-    // Use WebSocket hook for console, metrics and installation state
-    const {
-        logs,
-        setLogs,
-        isConnected,
-        cpuUsage,
-        ramUsage,
-        memoryLimit,
-        diskUsage,
-        startTime,
-        setStartTime,
-        isInstalling,
-        setIsInstalling,
-        isAuthRequired,
-        setIsAuthRequired,
-        isBooted,
-        sendCommand,
-        currentPlayers,
-        currentPlayersList,
-    } = useServerWebSocket({
-        serverId: id!,
-        serverStatus: server?.status,
-        onServerUpdate: fetchServer,
-        onStatusChange,
-    });
-
-    // Notify when auth is required
-    useEffect(() => {
-        if (isAuthRequired && isBooted) {
-            showError(t("installation.auth_required"), 10000);
-        }
-    }, [isAuthRequired, isBooted, t, showError]);
-
-    // Initial server fetch on mount
-    useEffect(() => {
-        fetchServer();
-    }, [fetchServer]);
-
-    const [uptime, setUptime] = useState("--:--:--");
-
-    // Schedules tab state
-    const [schedules, setSchedules] = useState<Schedule[]>([]);
-    const [schedulesLoading, setSchedulesLoading] = useState(false);
-
-    // Auth Fallback state
-    const [showAuthModal, setShowAuthModal] = useState(false);
-
-    // Files tab state
-    const [files, setFiles] = useState<FileEntry[]>([]);
-    const [currentPath, setCurrentPath] = useState("");
-    const [filesLoading, setFilesLoading] = useState(false);
-    const [selectedFile, setSelectedFile] = useState<string | null>(null);
-    const [fileContent, setFileContent] = useState("");
-    const [fileSaving, setFileSaving] = useState(false);
-
-    // Logs tab state
-    const [logFiles, setLogFiles] = useState<FileEntry[]>([]);
-    const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
-    const [logContent, setLogContent] = useState("");
-
-    const readLogFile = useCallback(async (path: string) => {
+    const loadInstance = useCallback(async () => {
         if (!id) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files/read?path=${encodeURIComponent(path)}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            const data = await response.json();
-            setLogContent(data.content || "");
-            setSelectedLogFile(path);
-        } catch (error) { console.error(error); }
-    }, [id]);
-
-    const fetchLogFiles = useCallback(async () => {
-        if (!id) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files?path=logs`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            const data = await response.json();
-            let logs = (data.entries || []).filter((f: FileEntry) => !f.is_dir);
-            logs.sort((a: FileEntry, b: FileEntry) => b.name.localeCompare(a.name));
-
-            const bottomLogs = ["console.log", "install.log"];
-            const specialLogs: FileEntry[] = [];
-            logs = logs.filter((l: FileEntry) => {
-                if (l.name.endsWith(".lck")) return false;
-                if (bottomLogs.includes(l.name)) { specialLogs.push(l); return false; }
-                return true;
-            });
-            if (!specialLogs.some((l) => l.name === "console.log")) {
-                specialLogs.push({ name: "console.log", path: "logs/console.log", is_dir: false });
-            }
-            logs.push(...specialLogs);
-            setLogFiles(logs);
-            if (logs.length > 0 && !selectedLogFile) readLogFile(logs[0].path);
-        } catch (error) { console.error(error); }
-    }, [id, selectedLogFile, readLogFile]);
-
-    // Config tab state
-    const [configFormData, setConfigFormData] = useState<Partial<Server>>({});
-    const [initialConfigFormData, setInitialConfigFormData] = useState<Partial<Server>>({});
-    const [configSaving, setConfigSaving] = useState(false);
-    const [configError, setConfigError] = useState("");
-    const [javaVersions, setJavaVersions] = useState<
-        { path: string; version: string }[]
-    >([]);
-
-    // Players tab state
-    const [activePlayerTab, setActivePlayerTab] = useState<"online" | "whitelist" | "bans" | "ops" | "database">("online");
-    const [playerData, setPlayerData] = useState<Player[]>([]);
-    const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
-
-    // Uptime
-    useEffect(() => {
-        if (server?.status === "running" && startTime) {
-            const interval = setInterval(() => {
-                const diff = Date.now() - startTime.getTime();
-                const hours = Math.floor(diff / 3600000);
-                const minutes = Math.floor((diff % 3600000) / 60000);
-                const seconds = Math.floor((diff % 60000) / 1000);
-                setUptime(`${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`);
-            }, 1000);
-            return () => clearInterval(interval);
-        } else {
-            setUptime("--:--:--");
-        }
-    }, [server?.status, startTime]);
-
-    // Sync startTime from server data when fetched
-    useEffect(() => {
-        if (server?.status === "running" && server?.started_at) {
-            setStartTime(new Date(server.started_at));
-        } else if (server?.status !== "running") {
-            setStartTime(null);
-        }
-    }, [server?.status, server?.started_at, setStartTime]);
-
-    const handleAction = useCallback(async (action: "start" | "stop" | "restart" | "kill") => {
-        if (!hasPermission(`server.${action}`)) {
-            showError("Vous n'avez pas la permission d'effectuer cette action");
+        const response = await apiService.servers.getServer(id);
+        if (!response.success) {
+            setLoadError(response.error.message);
             return;
         }
-        if (action === "start" && server?.status === "running") return;
-        try {
-            const res = await fetch(`/api/v1/servers/${id}/${action}`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            if (!res.ok) {
-                const data = await res.json();
-                if (res.status === 400 && action === "start" && data.error === "Server already running") {
-                    fetchServer();
-                    return;
-                }
-                showError(t("server_detail.messages.action_error"));
+        setInstance(response.data);
+        setName(response.data.name);
+        setSettings(response.data.settings as Record<string, ProfileValue>);
+        setAutoStart(response.data.auto_start);
+        setWatchdog(response.data.watchdog_enabled);
+        setLoadError(null);
+    }, [id]);
+
+    useEffect(() => {
+        void loadInstance().finally(() => setLoading(false));
+    }, [loadInstance]);
+
+    useEffect(() => {
+        if (!instance) return;
+        setPageTitle(instance.name, `${instance.profile_id} · ${t("servers.revision")} ${instance.profile_revision}`, { to: "/servers" });
+        void apiService.profiles.getProfiles().then((response) => {
+            if (response.success) setProfile(response.data.find((item) => item.id === instance.profile_id) ?? null);
+        });
+    }, [instance, setPageTitle, t]);
+
+    useEffect(() => {
+        if (!id || !profile || !Object.values(profile.settings_schema.properties).some((property) => property.secret || property.writeOnly)) return;
+        void apiService.servers.getSecrets(id).then((response) => {
+            if (response.success) setSecretStatuses(response.data.items.map((item) => SecretStatusSchema.parse(item)));
+        });
+    }, [id, profile]);
+
+    const onStatusChange = useCallback((runtimeState: string) => {
+        setInstance((current) => current ? { ...current, runtime_state: runtimeState as Instance["runtime_state"] } : current);
+    }, []);
+    const events = useServerEvents({ serverId: id, serverStatus: instance?.runtime_state, onServerUpdate: loadInstance, onStatusChange });
+
+    useEffect(() => {
+        if (!id
+            || !instance
+            || !["installing", "updating"].includes(instance.installation_state)
+            || !hasPermission("job.read")) {
+            setFallbackBedrockArchive(null);
+            setFallbackDeviceAuthorization(null);
+            return;
+        }
+        let active = true;
+        void apiService.jobs.list().then((response) => {
+            if (!active || !response.success) return;
+            const waitingJob = response.data.find((job) => job.instance_id === id && job.kind === "install" && job.state === "waiting_for_user");
+            if (!waitingJob?.interaction) {
+                setFallbackBedrockArchive(null);
+                setFallbackDeviceAuthorization(null);
                 return;
             }
-            if (action === "start") { setLogs([]); setIsAuthRequired(false); }
-            else if (action === "stop" || action === "kill") { setStartTime(null); setIsAuthRequired(false); setLogs([]); }
-            fetchServer();
-            setTimeout(fetchServer, 1000);
-            setTimeout(fetchServer, 3000);
-        } catch (e) {
-            console.error(e);
-            showError(t("server_detail.messages.connection_error"));
-        }
-    }, [id, server?.status, t, fetchServer, setLogs, setIsAuthRequired, setStartTime, showError, hasPermission]);
+            if (waitingJob.interaction.kind === "bedrock_archive_upload") {
+                const parsed = BedrockArchiveAuthorizationSchema.safeParse({ job_id: waitingJob.id, interaction: waitingJob.interaction });
+                setFallbackBedrockArchive(parsed.success ? parsed.data : null);
+                setFallbackDeviceAuthorization(null);
+            } else {
+                const parsed = HytaleDeviceAuthorizationSchema.safeParse({ job_id: waitingJob.id, interaction: waitingJob.interaction });
+                setFallbackDeviceAuthorization(parsed.success ? parsed.data : null);
+                setFallbackBedrockArchive(null);
+            }
+        });
+        return () => { active = false; };
+    }, [events.operationRevision, hasPermission, id, instance]);
 
-    const fetchSchedules = useCallback(async () => {
+    const tabs = useMemo(() => {
+        const result: Array<{ id: TabId; label: string; icon: ReactNode }> = [
+            { id: "configuration", label: t("server_detail.tabs.config"), icon: <Wrench size={18} /> },
+        ];
+        if (profile?.capabilities.includes("console") && hasPermission("server.console.read")) {
+            result.unshift({ id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> });
+        }
+        if (profile?.capabilities.includes("files") && hasPermission("server.files.read")) {
+            result.push({ id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> });
+        }
+        if (profile?.capabilities.includes("backups") && hasPermission("server.backup.read")) {
+            result.push({ id: "backups", label: t("server_detail.tabs.backups"), icon: <Archive size={18} /> });
+        }
+        if (profile?.capabilities.includes("metrics") && hasPermission("server.read")) {
+            result.push({ id: "metrics", label: t("server_detail.tabs.metrics"), icon: <Activity size={18} /> });
+        }
+        if (profile?.capabilities.includes("mods") && hasPermission("mods.manage")) {
+            result.push({ id: "mods", label: t("server_detail.tabs.mods"), icon: <Puzzle size={18} /> });
+        }
+        const supportsScheduledActions = profile?.capabilities.some((capability) =>
+            ["lifecycle", "backups", "install", "console"].includes(capability));
+        if (profile && supportsScheduledActions && hasPermission("schedule.manage")) {
+            result.push({ id: "schedules", label: t("server_detail.tabs.schedules"), icon: <CalendarClock size={18} /> });
+        }
+        return result;
+    }, [hasPermission, profile, t]);
+
+    useEffect(() => {
+        if (!tabs.some((tab) => tab.id === activeTab)) setActiveTab("configuration");
+    }, [activeTab, tabs]);
+
+    const runAction = async (nextAction: ServerAction) => {
         if (!id) return;
-        setSchedulesLoading(true);
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/schedules`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            if (response.ok) {
-                setSchedules(await response.json());
-            }
-        } catch (error) { console.error(error); } finally { setSchedulesLoading(false); }
-    }, [id]);
-
-    const saveSchedule = async (schedule: Partial<Schedule>) => {
-        if (!id) return;
-        try {
-            const method = schedule.id ? "PUT" : "POST";
-            const url = schedule.id 
-                ? `/api/v1/servers/${id}/schedules/${schedule.id}`
-                : `/api/v1/servers/${id}/schedules`;
-            
-            const response = await fetch(url, {
-                method,
-                headers: { 
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${localStorage.getItem("token")}` 
-                },
-                body: JSON.stringify({ ...schedule, server_id: id }),
-            });
-
-            if (response.ok) {
-                success(t("server_detail.messages.save_success"));
-                fetchSchedules();
-            } else {
-                showError(t("server_detail.messages.save_error"));
-            }
-        } catch (error) { console.error(error); showError(t("server_detail.messages.connection_error")); }
+        setAction(nextAction);
+        const response = await apiService.servers.runAction(id, nextAction);
+        setAction(null);
+        if (!response.success) {
+            toast.error(response.error.message);
+            return;
+        }
+        toast.success(t("server_detail.job_queued"));
+        if (nextAction === "install" && hasPermission("job.read")) {
+            navigate(`/jobs?focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(id)}`);
+            return;
+        }
+        await loadInstance();
     };
 
-    const deleteSchedule = async (scheduleId: string) => {
-        if (!await confirm(t("server_detail.messages.item_deleted"), { isDestructive: true })) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/schedules/${scheduleId}`, {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            if (response.ok) {
-                success(t("server_detail.messages.item_deleted"));
-                fetchSchedules();
-            }
-        } catch (error) { console.error(error); }
-    };
+    const saveConfiguration = async () => {
+        if (!id || !instance) return;
+        setSaving(true);
+        const response = await apiService.servers.updateServer(id, {
+            name: name.trim(),
+            settings,
+            auto_start: autoStart,
+            watchdog_enabled: watchdog,
+        }, instance.config_version);
+        if (!response.success) {
+            toast.error(response.error.status === 409 ? t("server_detail.config_conflict") : response.error.message);
+            setSaving(false);
+            return;
+        }
 
-    const toggleSchedule = async (scheduleId: string, enabled: boolean) => {
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/schedules/${scheduleId}/toggle`, {
-                method: "POST",
-                headers: { 
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${localStorage.getItem("token")}` 
-                },
-                body: JSON.stringify({ enabled }),
-            });
-            if (response.ok) {
-                fetchSchedules();
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    const runSchedule = async (scheduleId: string) => {
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/schedules/${scheduleId}/run`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            if (response.ok) {
-                success(t("server_detail.messages.action_success") || "Tâche exécutée avec succès");
-                fetchSchedules(); // Refresh because delete_after might have been triggered
-            } else {
-                showError(t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); showError(t("server_detail.messages.connection_error")); }
-    };
-
-    const fetchFiles = useCallback(async (path = "") => {
-        if (!id) return;
-        setFilesLoading(true);
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files?path=${encodeURIComponent(path)}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            const data = await response.json();
-            setFiles(data.entries || []);
-            setCurrentPath(data.current_path || "");
-        } catch (error) { console.error(error); } finally { setFilesLoading(false); }
-    }, [id]);
-
-    const readFile = async (path: string) => {
-        if (!id) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files/read?path=${encodeURIComponent(path)}`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            const data = await response.json();
-            setFileContent(data.content || "");
-            setSelectedFile(path);
-        } catch (error) { console.error(error); }
-    };
-
-    const saveFile = async (content: string) => {
-        if (!id || !selectedFile) return;
-        setFileSaving(true);
-        try {
-            await fetch(`/api/v1/servers/${id}/files/write`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ path: selectedFile, content }),
-            });
-            success(t("server_detail.messages.file_saved"));
-        } catch (error) { console.error(error); } finally { setFileSaving(false); }
-    };
-
-    const createFolder = async (name: string) => {
-        if (!id || !name.trim()) return;
-        try {
-            const folderPath = currentPath ? `${currentPath}/${name}` : name;
-            const response = await fetch(`/api/v1/servers/${id}/files/mkdir`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ path: folderPath }),
-            });
-            if (response.ok) {
-                fetchFiles(currentPath);
-            } else {
-                const data = await response.json();
-                showError(data.error || t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    const createFile = async (name: string) => {
-        if (!id || !name.trim()) return;
-        try {
-            const filePath = currentPath ? `${currentPath}/${name}` : name;
-            const response = await fetch(`/api/v1/servers/${id}/files/create`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ path: filePath }),
-            });
-            if (response.ok) {
-                fetchFiles(currentPath);
-                readFile(filePath);
-            } else {
-                const data = await response.json();
-                showError(data.error || t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    const uploadFiles = async (files: FileList) => {
-        if (!id || files.length === 0) return;
-        try {
-            const formData = new FormData();
-            formData.append("path", currentPath);
-            for (let i = 0; i < files.length; i++) {
-                formData.append("files", files[i]);
-            }
-            const response = await fetch(`/api/v1/servers/${id}/files/upload`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: formData,
-            });
-            if (response.ok) {
-                fetchFiles(currentPath);
-            } else {
-                const data = await response.json();
-                showError(data.error || t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    const deleteFile = async (path: string) => {
-        if (!id || !path) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files/delete`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ path }),
-            });
-            if (response.ok) {
-                if (selectedFile === path) {
-                    setSelectedFile(null);
-                    setFileContent("");
-                }
-                fetchFiles(currentPath);
-            } else {
-                const data = await response.json();
-                showError(data.error || t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    const renameFile = async (path: string, newName: string) => {
-        if (!id || !path || !newName.trim()) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files/rename`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ path, new_name: newName }),
-            });
-            if (response.ok) {
-                fetchFiles(currentPath);
-            } else {
-                const data = await response.json();
-                showError(data.error || t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    const copyFile = async (source: string, destination: string) => {
-        if (!id || !source || !destination) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files/copy`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ source, destination }),
-            });
-            if (response.ok) {
-                fetchFiles(currentPath);
-            } else {
-                const data = await response.json();
-                showError(data.error || t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    const moveFile = async (source: string, destination: string) => {
-        if (!id || !source || !destination) return;
-        try {
-            const response = await fetch(`/api/v1/servers/${id}/files/move`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify({ source, destination }),
-            });
-            if (response.ok) {
-                fetchFiles(currentPath);
-            } else {
-                const data = await response.json();
-                showError(data.error || t("server_detail.messages.action_error"));
-            }
-        } catch (error) { console.error(error); }
-    };
-
-    // Config Logic
-    useEffect(() => {
-        if (activeTab === "config") {
-            const fetchJavaVersions = async () => {
-                try {
-                    const response = await fetch("/api/v1/system/java-versions", {
-                        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-                    });
-                    if (response.ok) setJavaVersions(await response.json());
-                } catch (error) { console.error(error); }
-            };
-            fetchJavaVersions();
-            if (server) {
-                // If we haven't initialized yet, OR if the server ID changed (e.g. navigation)
-                const isNewServer = configFormData.id !== server.id;
-
-                // Only reset if it's a new server or we explicitly want to re-sync (e.g. after external update)
-                // Note: We don't want to overwrite user inputs if they are typing, but here we only sync on mount/tab-change/id-change or explicit flush.
-                if (isNewServer) {
-                    // Create a temporary object with all possible data merged
-                    const fullData: any = { ...server };
-                    if (server.config) {
-                        Object.assign(fullData, server.config);
-                        if (server.config.MaxPlayers) fullData.max_players = server.config.MaxPlayers;
-                        if (server.config.MaxViewRadius) fullData.view_distance = server.config.MaxViewRadius;
-                        if (server.config.Seed) fullData.seed = server.config.Seed;
-                        if (server.config.ServerName) fullData.name = server.config.ServerName;
-                        if (server.config.MOTD) fullData.motd = server.config.MOTD;
-                        if (server.config.Password) fullData.password = server.config.Password;
-                        if (server.config.Defaults?.GameMode) fullData.game_mode = server.config.Defaults.GameMode;
-                        if (server.config.Defaults?.World) fullData.world_name = server.config.Defaults.World;
-
-                        // Auth mode mapping
-                        if (server.config.AuthCredentialStore || server.config.auth_mode === "authenticated") {
-                            fullData.auth_mode = "authenticated";
-                        } else if (server.config.auth_mode === "offline") {
-                            fullData.auth_mode = "offline";
-                        }
-
-                        // World and Gameplay mapping from Hytale config keys
-                        if (server.config.WorldGen?.Type) fullData.world_gen_type = server.config.WorldGen.Type;
-                        if (server.config.IsPvpEnabled !== undefined) fullData.is_pvp_enabled = server.config.IsPvpEnabled;
-                        if (server.config.IsFallDamageEnabled !== undefined) fullData.is_fall_damage_enabled = server.config.IsFallDamageEnabled;
-                        if (server.config.IsSpawningNPC !== undefined) fullData.is_spawning_npc = server.config.IsSpawningNPC;
-                        if (server.config.IsGameTimePaused !== undefined) fullData.is_game_time_paused = server.config.IsGameTimePaused;
-                        if (server.config.IsSavingPlayers !== undefined) fullData.is_saving_players = server.config.IsSavingPlayers;
-                        if (server.config.IsSavingChunks !== undefined) fullData.is_saving_chunks = server.config.IsSavingChunks;
-                    }
-
-                    // Whitelist only the fields we edit in the form to avoid noise from other server props
-                    const configKeys = [
-                        "id",
-                        // Mandatory fields for backend validation (CreateServerRequest)
-                        "name", "game_type", "executable_path", "working_dir",
-                        "auth_mode",
-                        "min_memory", "max_memory", "java_path", "extra_args",
-                        "bind_address", "port", "motd", "password",
-                        "world_name", "game_mode",
-                        "allow_op", "disable_sentry", "accept_early_plugins",
-                        "world_gen_type", "seed", "view_distance", "max_players",
-                        "is_pvp_enabled", "is_fall_damage_enabled", "is_spawning_npc",
-                        "is_game_time_paused", "is_saving_players", "is_saving_chunks"
-                    ];
-
-                    const cleanData: Partial<Server> = {};
-                    configKeys.forEach(key => {
-                        if (fullData[key] !== undefined) {
-                            // @ts-ignore
-                            cleanData[key] = fullData[key];
-                        }
-                    });
-
-                    setConfigFormData(cleanData);
-                    setInitialConfigFormData(JSON.parse(JSON.stringify(cleanData)));
-                }
+        for (const [secretName, value] of Object.entries(secretDrafts)) {
+            if (!value) continue;
+            const secretResponse = await apiService.servers.setSecret(id, secretName, value);
+            if (!secretResponse.success) {
+                toast.error(secretResponse.error.message);
+                setSaving(false);
+                return;
             }
         }
-    }, [activeTab, server, configFormData.id]);
-
-    const updateConfigValue = <K extends keyof Server>(key: K, value: Server[K]) => {
-        setConfigFormData((prev) => ({ ...prev, [key]: value }));
+        setInstance(response.data);
+        setSecretDrafts({});
+        const statuses = await apiService.servers.getSecrets(id);
+        if (statuses.success) setSecretStatuses(statuses.data.items);
+        toast.success(t("server_detail.messages.save_success"));
+        setSaving(false);
     };
 
-    const toggleJvmArg = (arg: string) => {
-        const currentArgs = configFormData.extra_args || "";
-        let parts = currentArgs.trim().split(/\s+/).filter((a) => a.length > 0);
-        if (parts.includes(arg)) parts = parts.filter((a) => a !== arg);
-        else parts.push(arg);
-        updateConfigValue("extra_args", parts.join(" "));
+    const deleteInstance = async () => {
+        if (!id || !instance) return;
+        const accepted = await confirm(t("server_detail.delete_confirm"), {
+            isDestructive: true,
+            verificationString: instance.name,
+            verificationLabel: instance.name,
+        });
+        if (!accepted) return;
+        const response = await apiService.servers.deleteServer(id);
+        if (!response.success) return toast.error(response.error.message);
+        navigate("/servers");
     };
 
-    const handleSaveConfig = async (e: React.FormEvent) => {
-        e.preventDefault();
-        configFormData.id = id;
-        setConfigSaving(true);
-        setConfigError("");
-        try {
-            const payload = { ...configFormData };
-            if (!payload.config) payload.config = server?.config || {};
+    if (loading) return <LoadingScreen />;
+    if (!instance || loadError) {
+        return <EmptyState icon={<ServerIcon size={48} />} title={t("servers.not_found")} description={loadError ?? t("servers.not_found")} />;
+    }
 
-            // Sync back to config object
-            if (payload.max_players) payload.config.MaxPlayers = Number(payload.max_players);
-            if (payload.view_distance) payload.config.MaxViewRadius = Number(payload.view_distance);
-            if (payload.seed) payload.config.Seed = payload.seed;
-            if (payload.name) payload.config.ServerName = payload.name;
-            if (payload.port) payload.config.port = Number(payload.port);
-            if (payload.bind_address) payload.config.bind_address = payload.bind_address;
-            if (payload.auth_mode) payload.config.auth_mode = payload.auth_mode;
-            
-            // New fields
-            if (payload.motd !== undefined) payload.config.MOTD = payload.motd;
-            if (payload.password !== undefined) payload.config.Password = payload.password;
-            if (payload.game_mode || payload.world_name) {
-                if (!payload.config.Defaults) payload.config.Defaults = {};
-                if (payload.game_mode) payload.config.Defaults.GameMode = payload.game_mode;
-                if (payload.world_name) payload.config.Defaults.World = payload.world_name;
-            }
-            if (payload.allow_op !== undefined) payload.config.allow_op = payload.allow_op;
-            if (payload.disable_sentry !== undefined) payload.config.disable_sentry = payload.disable_sentry;
-            if (payload.accept_early_plugins !== undefined) payload.config.accept_early_plugins = payload.accept_early_plugins;
-
-            // Sync Gameplay and World toggles back to Hytale config keys
-            if (payload.world_gen_type) {
-                if (!payload.config.WorldGen) payload.config.WorldGen = {};
-                payload.config.WorldGen.Type = payload.world_gen_type;
-            }
-            if (payload.is_pvp_enabled !== undefined) payload.config.IsPvpEnabled = payload.is_pvp_enabled;
-            if (payload.is_fall_damage_enabled !== undefined) payload.config.IsFallDamageEnabled = payload.is_fall_damage_enabled;
-            if (payload.is_spawning_npc !== undefined) payload.config.IsSpawningNPC = payload.is_spawning_npc;
-            if (payload.is_game_time_paused !== undefined) payload.config.IsGameTimePaused = payload.is_game_time_paused;
-            if (payload.is_saving_players !== undefined) payload.config.IsSavingPlayers = payload.is_saving_players;
-            if (payload.is_saving_chunks !== undefined) payload.config.IsSavingChunks = payload.is_saving_chunks;
-
-            const response = await fetch(`/api/v1/servers/${id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-                body: JSON.stringify(payload),
-            });
-            if (response.ok) {
-                fetchServer();
-                // Fix: Update initial state to match the saved state so "has changes" becomes false
-                setInitialConfigFormData(JSON.parse(JSON.stringify(configFormData)));
-                success(t("server_detail.messages.config_saved"));
-            }
-            else { const data = await response.json(); setConfigError(data.error || t("server_detail.messages.save_error")); }
-        } catch (err) { setConfigError(t("server_detail.messages.connection_error")); }
-        finally { setConfigSaving(false); }
-    };
-
-
-
-    const handleDeleteServer = async () => {
-        if (!server) return;
-        
-        const confirmed = await confirm(
-            t("server_detail.messages.delete_confirm") + ` "${server.name}"`, 
-            { 
-                isDestructive: true,
-                verificationString: server.name,
-                verificationLabel: t("server_detail.messages.delete_confirm_label")
-            }
-        );
-        
-        if (!confirmed) return;
-        
-        try {
-            const res = await fetch(`/api/v1/servers/${id}`, {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            if (res.ok) {
-                success(t("server_detail.messages.delete_success"));
-                setPageTitle("Dashboard", "", { to: "/" }); // Reset title
-                window.location.href = "/";
-            } else {
-                showError(t("server_detail.messages.delete_error"));
-            }
-        } catch (e) { console.error(e); }
-    };
-
-    const handleReinstallServer = async () => {
-        if (!await confirm(t("server_detail.messages.reinstall_confirm"), { isDestructive: true })) return;
-        try {
-            const res = await fetch(`/api/v1/servers/${id}/reinstall`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            });
-            if (res.ok) {
-                setIsInstalling(true);
-                setLogs([]);
-                // Re-fetch server to get updated status if needed, though socket will do it
-            } else {
-                showError(t("server_detail.messages.action_error"));
-            }
-        } catch (e) { console.error(e); }
-    };
-
-    // Merge real-time players (names) with static player data (op, etc.)
-    const onlinePlayers: Player[] = useMemo(() => currentPlayersList.map(name => {
-        const existing = server?.players?.find(p => p.name === name);
-        if (existing) return { ...existing, is_online: true };
-        return {
-            name,
-            is_online: true,
-            last_seen: new Date().toISOString(),
-            is_op: false,
-            is_banned: false,
-            is_whitelisted: false
-        };
-    }), [currentPlayersList, server?.players]);
-
-    // Effect for Online players tab (No API calls)
-    useEffect(() => {
-        if (activeTab === "players" && activePlayerTab === "online") {
-            setPlayerData(onlinePlayers);
-        }
-    }, [activeTab, activePlayerTab, onlinePlayers]);
-
-    // Effect for API-based players tabs (Whitelist, Bans, Ops, Database)
-    const fetchApiPlayers = useCallback(async () => {
-        if (!server || !id) return;
-        
-        try {
-            let list: Player[] = [];
-            
-            if (activePlayerTab === "database") {
-                list = server.players || [];
-            } else if (activePlayerTab === "whitelist") {
-                const res = await fetch(`/api/v1/servers/${id}/whitelist`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    list = data.map((entry: any) => ({
-                        name: entry.name || "Inconnu",
-                        uuid: entry.uuid,
-                        is_online: false,
-                        last_seen: "",
-                        is_whitelisted: true
-                    }));
-                }
-            } else if (activePlayerTab === "bans") {
-                const res = await fetch(`/api/v1/servers/${id}/bans`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    list = data.map((b: any) => ({
-                        name: b.username || "Inconnu (" + (b.target || "?") + ")",
-                        uuid: b.target,
-                        reason: b.reason,
-                        banned_by: b.by,
-                        expires: b.type === "infinite" ? undefined : b.expires,
-                        created: b.timestamp ? new Date(b.timestamp).toISOString() : undefined,
-                        is_online: false,
-                        last_seen: "",
-                        is_banned: true
-                    }));
-                }
-            } else if (activePlayerTab === "ops") {
-                const res = await fetch(`/api/v1/servers/${id}/ops`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    list = data.map((op: any) => ({
-                        name: "UUID: " + op.uuid.substring(0, 8),
-                        uuid: op.uuid,
-                        reason: (op.groups || []).join(", "),
-                        is_op: true,
-                        is_online: false,
-                        last_seen: ""
-                    }));
-                }
-            }
-            
-            // Only update if we are not on "online" tab (handled by other effect)
-            if (activePlayerTab !== "online") {
-                setPlayerData(list);
-            }
-        } catch (e) {
-            console.error("Failed to fetch player data", e);
-        }
-    }, [id, activePlayerTab, server]);
-
-    useEffect(() => {
-        if (activeTab === "players" && activePlayerTab !== "online") {
-            fetchApiPlayers();
-        }
-    }, [activeTab, activePlayerTab, fetchApiPlayers]);
-    
-    // Helper to refresh current view
-    const refreshPlayers = useCallback(() => {
-        if (activePlayerTab !== "online") {
-            fetchApiPlayers();
-        }
-    }, [activePlayerTab, fetchApiPlayers]);
-
-    const handlePlayerAction = async (action: string, player: Player) => {
-        if (!player.name) return;
-
-        // Online actions via commands
-        if (server?.status === "running") {
-            if (action === "op") await sendCommand(`op add ${player.name}`);
-            else if (action === "deop") await sendCommand(`op remove ${player.name}`);
-            else if (action === "kick") await sendCommand(`kick ${player.name}`);
-            else if (action === "ban") await sendCommand(`ban ${player.name}`);
-            else if (action === "unban") {
-                await sendCommand(`pardon ${player.name}`);
-            }
-
-            setTimeout(() => {
-                fetchServer();
-                refreshPlayers();
-            }, 1000);
-        } else {
-            showError(t("server_detail.messages.server_offline_action"));
-        }
-    };
-
-    const handleAddPlayer = async () => {
-        setShowAddPlayerModal(true);
-    };
-
-    const handleConfirmAddPlayer = async (name: string) => {
-        setShowAddPlayerModal(false);
-        if (!name) return;
-
-        if (server?.status === "running") {
-            if (activePlayerTab === "whitelist") sendCommand(`whitelist add ${name}`);
-            else if (activePlayerTab === "ops") sendCommand(`op ${name}`);
-            else if (activePlayerTab === "bans") sendCommand(`ban ${name}`);
-            setTimeout(refreshPlayers, 1000);
-        } else {
-            // Offline API usage
-            try {
-                if (activePlayerTab === "whitelist") {
-                    await fetch(`/api/v1/servers/${id}/whitelist`, {
-                        method: "POST",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${localStorage.getItem("token")}` 
-                        },
-                        body: JSON.stringify({ name, uuid: name }) // Fallback uuid=name if unknown
-                    });
-                } else if (activePlayerTab === "ops") {
-                    await fetch(`/api/v1/servers/${id}/ops`, {
-                        method: "POST",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${localStorage.getItem("token")}` 
-                        },
-                        body: JSON.stringify({ uuid: name }) // Prompt is name/uuid entry
-                    });
-                } else if (activePlayerTab === "bans") {
-                    await fetch(`/api/v1/servers/${id}/bans`, {
-                        method: "POST",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${localStorage.getItem("token")}` 
-                        },
-                        body: JSON.stringify({ target: name, reason: "Banned via Panel" })
-                    });
-                }
-                success(t("server_detail.messages.save_success"));
-                refreshPlayers();
-            } catch (e) {
-                showError("Erreur lors de l'ajout via API");
-            }
-        }
-    };
-
-    const handleRemovePlayer = async (player: Player) => {
-        if (!await confirm(t("server_detail.players.remove_confirm"), { isDestructive: true })) return;
-
-        if (server?.status === "running") {
-            if (activePlayerTab === "whitelist") sendCommand(`whitelist remove ${player.name}`);
-            else if (activePlayerTab === "ops") sendCommand(`deop ${player.name}`);
-            else if (activePlayerTab === "bans") sendCommand(`pardon ${player.name}`);
-            setTimeout(refreshPlayers, 1000);
-        } else {
-            try {
-                if (activePlayerTab === "whitelist") {
-                    await fetch(`/api/v1/servers/${id}/whitelist`, {
-                        method: "DELETE",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${localStorage.getItem("token")}`
-                        },
-                        body: JSON.stringify({ name: player.name, uuid: player.uuid })
-                    });
-                } else if (activePlayerTab === "ops") {
-                    await fetch(`/api/v1/servers/${id}/ops`, {
-                        method: "DELETE",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${localStorage.getItem("token")}` 
-                        },
-                        body: JSON.stringify({ uuid: player.uuid })
-                    });
-                } else if (activePlayerTab === "bans") {
-                    await fetch(`/api/v1/servers/${id}/bans`, {
-                        method: "DELETE",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${localStorage.getItem("token")}` 
-                        },
-                        body: JSON.stringify({ target: player.uuid })
-                    });
-                }
-                success(t("server_detail.messages.save_success"));
-                refreshPlayers();
-            } catch (e) {
-                showError("Erreur lors de la suppression via API");
-            }
-        }
-    };
-
-    // Effect triggers
-    useEffect(() => {
-        if (activeTab === "schedule") fetchSchedules();
-        else if (activeTab === "files") { fetchFiles(); setSelectedFile(null); setFileContent(""); }
-        else if (activeTab === "logs") {
-            fetchLogFiles();
-            if (selectedLogFile) readLogFile(selectedLogFile);
-        }
-    }, [activeTab, fetchFiles, fetchSchedules, fetchLogFiles, readLogFile, selectedLogFile]);
-
-    // Page Title
-    useEffect(() => {
-        if (server) {
-            setPageTitle(server.name, `${server.game_type} Server`, { to: "/servers" },
-                <div className="header-actions-group">
-                    <div className={`status-badge-large ${server.status === "running" ? "status-badge-large--online" : server.status === "missing" ? "status-badge-large--error" : server.status === "missing" ? "status-badge-large--error" : "status-badge-large--offline"}`}>
-                        <span className="status-dot"></span>
-                        {server.status}
-                    </div>
-                    <div className="header-controls">
-                        {hasPermission("server.start") && (
-                            <Tooltip content={t("servers.start")} position="bottom">
-                                <button className="btn btn--sm btn--primary" onClick={() => handleAction("start")} disabled={server.status === "running" || server.status === "starting" || server.status === "auth_required"}><Play size={16} /> {t("servers.start")}</button>
-                            </Tooltip>
-                        )}
-                        {hasPermission("server.restart") && (
-                            <Tooltip content={t("servers.restart")} position="bottom">
-                                <button className="btn btn--sm btn--secondary" onClick={() => handleAction("restart")} disabled={server.status !== "running" && server.status !== "auth_required"}><RotateCw size={16} /></button>
-                            </Tooltip>
-                        )}
-                        {hasPermission("server.stop") && (
-                            <Tooltip content={t("servers.stop")} position="bottom">
-                                <button className="btn btn--sm btn--danger" onClick={() => handleAction("stop")} disabled={server.status !== "running" && server.status !== "auth_required"}><Square size={16} /></button>
-                            </Tooltip>
-                        )}
-                    </div>
-                </div>
-            );
-        }
-    }, [server, setPageTitle, handleAction, t, hasPermission]);
-
-    const configHasChanges = useMemo(() => {
-        if (!configFormData.id || !initialConfigFormData.id) return false;
-
-        const keys = Array.from(new Set([...Object.keys(configFormData), ...Object.keys(initialConfigFormData)]));
-
-        for (const key of keys) {
-            // @ts-ignore
-            const val1 = configFormData[key];
-            // @ts-ignore
-            const val2 = initialConfigFormData[key];
-
-            // Custom equality check
-            const areEqual = (v1: any, v2: any) => {
-                // Treat null, undefined, empty string as equivalent
-                const isEmpty1 = v1 === null || v1 === undefined || v1 === "";
-                const isEmpty2 = v2 === null || v2 === undefined || v2 === "";
-                if (isEmpty1 && isEmpty2) return true;
-                if (isEmpty1 !== isEmpty2) return false;
-
-                // Loose equality
-                if (v1 == v2) return true;
-
-                // Deep compare
-                if (typeof v1 === "object" && typeof v2 === "object") {
-                    if (v1 === null || v2 === null) return v1 === v2; // Should be caught by isEmpty but being safe
-                    return JSON.stringify(v1) === JSON.stringify(v2);
-                }
-
-                return false;
-            };
-
-            if (!areEqual(val1, val2)) {
-                return true;
-            }
-        }
-        return false;
-    }, [configFormData, initialConfigFormData]);
-
-    if (!server) return <div className="loading-screen"><div className="spinner"></div></div>;
-
-    const displayCpu = cpuUsage > 0 ? cpuUsage : (server.cpu_usage || 0);
-    const displayRam = ramUsage > 0 ? ramUsage : (server.memory_usage_bytes || 0);
-    const displayDisk = diskUsage !== null ? diskUsage : (server.disk_usage_bytes || 0);
+    const running = instance.runtime_state === "running";
+    const installed = instance.installation_state === "installed";
+    const canInstall = profile?.capabilities.includes("install") ?? false;
+    const canStartStop = profile?.capabilities.includes("lifecycle") ?? false;
+    const busy = action !== null || ["starting", "stopping"].includes(instance.runtime_state)
+        || ["installing", "updating"].includes(instance.installation_state);
+    const bedrockArchive = events.pendingBedrockArchive ?? fallbackBedrockArchive;
+    const deviceAuthorization = events.pendingDeviceAuthorization ?? fallbackDeviceAuthorization;
+    const canUploadBedrockArchive = user?.role === "owner" && hasPermission("server.files.write");
 
     return (
         <div className="server-detail-page">
+            {deviceAuthorization && <HytaleDeviceAuthorizationNotice authorization={deviceAuthorization} />}
+            {bedrockArchive && <BedrockArchiveUploadNotice
+                authorization={bedrockArchive}
+                canUpload={canUploadBedrockArchive}
+                onAccepted={() => {
+                    events.clearPendingBedrockArchive();
+                    setFallbackBedrockArchive(null);
+                    void loadInstance();
+                }}
+            />}
             <div className="server-header-stats">
-                <div className="stat-pill"><div className="stat-pill__icon"><Clock size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">UPTIME</div><div className="stat-pill__value">{uptime}</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><Users size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">PLAYERS</div><div className="stat-pill__value">{currentPlayersList.length} / {server.max_players || 100}</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><Globe size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">ADDRESS</div><div className="stat-pill__value">{server.bind_address}:{server.port}</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><Cpu size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">CPU</div><div className="stat-pill__value">{Math.round(displayCpu)}%</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">RAM</div><div className="stat-pill__value">{formatGB(displayRam)}</div></div></div>
-                <div className="stat-pill"><div className="stat-pill__icon"><HardDrive size={16} /></div><div className="stat-pill__content"><div className="stat-pill__label">DISK</div><div className="stat-pill__value">{formatBytes(displayDisk)}</div></div></div>
+                <StatPill icon={<ServerIcon size={18} />} label={t("server_detail.runtime_state")} value={t(`servers.runtime_states.${instance.runtime_state}`)} variant={running ? "success" : instance.runtime_state === "crashed" ? "danger" : "muted"} />
+                <StatPill icon={<Download size={18} />} label={t("server_detail.installation_state")} value={t(`servers.installation_states.${instance.installation_state}`)} variant={installed ? "success" : "warning"} />
+                <StatPill icon={<Shield size={18} />} label={t("server_detail.desired_state")} value={t(`servers.desired_states.${instance.desired_state}`)} variant={instance.desired_state === "running" ? "success" : "muted"} />
+                <StatPill icon={<Wrench size={18} />} label={t("server_detail.configuration_version")} value={`v${instance.config_version}`} variant="default" />
+                {instance.installed_version && <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={instance.installed_version} variant="default" />}
+                {instance.installed_build && <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_build")} value={instance.installed_build} variant="default" />}
             </div>
 
-            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
+            <div className="server-actions" style={{ marginBottom: "1rem", justifyContent: "flex-end" }}>
+                {hasPermission("job.read") && <Button as="link" to={`/jobs?instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
+                {!installed && canInstall && hasPermission("server.update_game") && <Button onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.install")}</Button>}
+                {installed && canInstall && !running && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
+                {installed && canStartStop && !running && hasPermission("server.start") && <Button variant="success" onClick={() => void runAction("start")} disabled={busy} icon={<Play size={17} />}>{t("servers.start")}</Button>}
+                {running && canStartStop && <>
+                    {hasPermission("server.start") && hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("restart")} disabled={busy} icon={<RotateCw size={17} />}>{t("servers.restart")}</Button>}
+                    {hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={17} />}>{t("servers.stop")}</Button>}
+                    {hasPermission("server.kill") && <Button variant="danger" onClick={() => void runAction("kill")} disabled={busy} icon={<Skull size={17} />}>{t("servers.kill")}</Button>}
+                </>}
+            </div>
 
-            {(isInstalling || (isAuthRequired && isBooted) || showAuthModal) && <InstallationProgress logs={logs} isInstalling={isInstalling} isAuthRequired={isAuthRequired} onClose={() => { setIsInstalling(false); setIsAuthRequired(false); setShowAuthModal(false); }} onSendAuth={() => sendCommand("auth login device")} />}
-
-            <div className="tab-content">
-                {activeTab === "console" && (
+            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={(tab: TabId) => setActiveTab(tab)} idPrefix="server-detail" panelId="server-detail-tabpanel" />
+            <div className="tab-content" id="server-detail-tabpanel" role="tabpanel" aria-labelledby={`server-detail-tab-${activeTab}`}>
+                {activeTab === "console" ? (
                     <ServerConsole
-                        logs={logs}
-                        isConnected={isConnected}
-                        isRunning={server.status === "running" || server.status === "starting" || server.status === "auth_required"}
-                        isAuthRequired={isAuthRequired && isBooted}
-                        onSendCommand={sendCommand}
-                        onOpenAuth={() => setShowAuthModal(true)}
+                        logs={events.logs}
+                        isConnected={events.isConnected}
+                        isRunning={running}
+                        onSendCommand={(command) => void events.sendCommand(command)}
                     />
-                )}
-
-                {activeTab === "files" && (
+                ) : activeTab === "files" ? (
                     <ServerFiles
-                        files={files}
-                        currentPath={currentPath}
-                        isLoading={filesLoading}
-                        selectedFile={selectedFile}
-                        fileContent={fileContent}
-                        isSaving={fileSaving}
-                        onNavigate={fetchFiles}
-                        onReadFile={readFile}
-                        onSaveFile={saveFile}
-                        onCloseEditor={() => setSelectedFile(null)}
-                        onRefresh={() => fetchFiles(currentPath)}
-                        onCreateFolder={createFolder}
-                        onCreateFile={createFile}
-                        onUploadFiles={uploadFiles}
-                        onDeleteFile={deleteFile}
-                        onRenameFile={renameFile}
-                        onCopyFile={copyFile}
-                        onMoveFile={moveFile}
+                        instanceId={instance.id}
+                        canWrite={hasPermission("server.files.write")}
+                        isStopped={instance.runtime_state === "stopped"}
+                        refreshSignal={events.operationRevision}
                     />
-                )}
-
-                {activeTab === "logs" && (
-                    <ServerLogs
-                        logFiles={logFiles}
-                        selectedLogFile={selectedLogFile}
-                        logContent={logContent}
-                        onSelectLogFile={readLogFile}
-                        onRefresh={() => {
-                            fetchLogFiles();
-                            if (selectedLogFile) readLogFile(selectedLogFile);
-                        }}
+                ) : activeTab === "backups" ? (
+                    <ServerBackups
+                        instanceId={instance.id}
+                        canManage={hasPermission("server.backup")}
+                        isStopped={instance.runtime_state === "stopped"}
+                        refreshSignal={events.operationRevision}
                     />
-                )}
-
-                {activeTab === "schedule" && (
-                    <ServerSchedule
-                        schedules={schedules}
-                        isLoading={schedulesLoading}
-                        onSave={saveSchedule}
-                        onDelete={deleteSchedule}
-                        onToggle={toggleSchedule}
-                        onRun={runSchedule}
-                    />
-                )}
-
-                {activeTab === "config" && (
-                    <ServerConfig
-                        configFormData={configFormData}
-                        configSaving={configSaving}
-                        configError={configError}
-                        javaVersions={javaVersions}
-                        updateConfigValue={updateConfigValue}
-                        toggleJvmArg={toggleJvmArg}
-                        handleSaveConfig={handleSaveConfig}
-                        onDelete={handleDeleteServer}
-                        onReinstall={handleReinstallServer}
-                        hasChanges={configHasChanges}
-                    />
-                )}
-
-                {activeTab === "mods" && (
-                    <WorkInProgress />
-                )}
-
-                {activeTab === "players" && (
-                    <ServerPlayers
-                        players={onlinePlayers} // Real-time Online players
-                        playerList={playerData} // Whitelist/Ban lists
-                        activeTab={activePlayerTab}
-                        onTabChange={setActivePlayerTab}
-                        isLoading={false}
-                        onAction={handlePlayerAction}
-                        onAddPlayer={handleAddPlayer}
-                        onRemovePlayer={handleRemovePlayer}
-                                        onRefresh={() => {
-                                            fetchServer();
-                                            refreshPlayers();
-                                        }}                    />
-                )}
-
-                {activeTab === "metrics" && (
+                ) : activeTab === "metrics" ? (
                     <ServerMetrics
-                        serverId={id!}
-                        cpuUsage={cpuUsage}
-                        ramUsage={ramUsage}
-                        diskUsage={diskUsage}
-                        maxHeapBytes={memoryLimit ?? server?.max_heap_bytes}
-                        serverStatus={server?.status || "stopped"}
-                        currentPlayers={currentPlayers}
-                        maxPlayers={server?.max_players || 100}
+                        instanceId={instance.id}
+                        isRunning={instance.runtime_state === "running"}
+                        refreshSignal={events.operationRevision}
                     />
-                )}
+                ) : activeTab === "mods" ? (
+                    <ServerMods
+                        instanceId={instance.id}
+                        isInstalled={instance.installation_state === "installed"}
+                        isStopped={instance.runtime_state === "stopped"}
+                        refreshSignal={events.operationRevision}
+                    />
+                ) : activeTab === "schedules" && profile ? (
+                    <ServerSchedules
+                        instanceId={instance.id}
+                        capabilities={profile.capabilities}
+                        refreshSignal={events.scheduleRevision}
+                    />
+                ) : (
+                    <div className="card">
+                        <div className="form-group">
+                            <label htmlFor="instance-name">{t("server_detail.instance_name")}</label>
+                            <input id="instance-name" className="input" value={name} onChange={(event) => setName(event.target.value)} minLength={1} maxLength={80} />
+                        </div>
+                        {profile ? <ProfileSettingsFields
+                            profile={profile}
+                            values={settings}
+                            includeSecrets={false}
+                            onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
+                        /> : <p className="text-muted">{t("server_detail.profile_unavailable")} {instance.profile_id}@{instance.profile_revision}</p>}
 
-                {activeTab === "webhooks" && (
-                    <WorkInProgress />
+                        {profile && Object.entries(profile.settings_schema.properties).filter(([, property]) => property.secret || property.writeOnly).map(([secretName, property]) => {
+                            const configured = secretStatuses.find((item) => item.name === secretName)?.configured ?? false;
+                            return (
+                                <div className="form-group" key={secretName}>
+                                    <label htmlFor={`secret-${secretName}`}>{property.title ?? secretName} <span className={`badge badge--${configured ? "success" : "muted"}`}>{configured ? t("server_detail.configured") : t("server_detail.not_configured")}</span></label>
+                                    <input id={`secret-${secretName}`} className="input" type="password" autoComplete="new-password" value={secretDrafts[secretName] ?? ""} placeholder={configured ? t("server_detail.keep_secret") : t("server_detail.enter_secret")} onChange={(event) => setSecretDrafts((current) => ({ ...current, [secretName]: event.target.value }))} />
+                                </div>
+                            );
+                        })}
+
+                        <label className="form-checkbox"><input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} /><span>{t("server_detail.auto_start")}</span></label>
+                        <label className="form-checkbox"><input type="checkbox" checked={watchdog} onChange={(event) => setWatchdog(event.target.checked)} /><span>{t("server_detail.watchdog")}</span></label>
+                        <div className="form-footer">
+                            {hasPermission("server.delete") && <Button variant="danger" onClick={() => void deleteInstance()} disabled={instance.runtime_state !== "stopped" || instance.desired_state !== "stopped"} icon={<Trash2 size={17} />}>{t("common.delete")}</Button>}
+                            <Button onClick={() => void saveConfiguration()} isLoading={saving} disabled={!hasPermission("server.update")} icon={<Save size={17} />}>{t("common.save")}</Button>
+                        </div>
+                    </div>
                 )}
             </div>
-
-            <AddPlayerModal
-                isOpen={showAddPlayerModal}
-                onClose={() => setShowAddPlayerModal(false)}
-                onAdd={handleConfirmAddPlayer}
-                knownPlayers={server?.players || []}
-                title={
-                    activePlayerTab === "whitelist" ? "Ajouter à la Whitelist" :
-                        activePlayerTab === "ops" ? "Ajouter un Opérateur" :
-                            activePlayerTab === "bans" ? "Bannir un joueur" : undefined
-                }
-            />
         </div>
     );
 }

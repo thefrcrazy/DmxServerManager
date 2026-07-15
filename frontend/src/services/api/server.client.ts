@@ -1,77 +1,101 @@
-import { BaseClient, ApiResponse } from "./base.client";
-import { Server, MetricsHistoryResponse } from "../../schemas/api";
+import { z } from "zod";
+import {
+    Instance,
+    InstanceSchema,
+    Job,
+    JobSchema,
+    SecretStatusListSchema,
+    SecretStatusSchema,
+    SuccessResponseSchema,
+} from "@/schemas/api";
+import { BaseClient, ClientResponse } from "./base.client";
+
+export interface CreateServerInput {
+    name: string;
+    profile_id: string;
+    settings: Record<string, unknown>;
+    secrets?: Record<string, string>;
+    auto_start?: boolean;
+    watchdog_enabled?: boolean;
+}
+
+export interface UpdateServerInput {
+    name?: string;
+    settings?: Record<string, unknown>;
+    auto_start?: boolean;
+    watchdog_enabled?: boolean;
+}
+
+export type ServerAction = "install" | "start" | "stop" | "restart" | "kill";
+
+const ActionResponseSchema = z.union([
+    JobSchema,
+    z.object({ job: JobSchema }).transform(({ job }) => job),
+]);
 
 export class ServerClient extends BaseClient {
-    async getServers(): Promise<ApiResponse<Server[]>> {
-        return this.request<Server[]>("/servers");
+    async getServers(): Promise<ClientResponse<Instance[]>> {
+        return this.request("/servers", z.array(InstanceSchema));
     }
 
-    async getServer(id: string): Promise<ApiResponse<Server>> {
-        return this.request<Server>(`/servers/${id}`);
+    async getServer(id: string): Promise<ClientResponse<Instance>> {
+        return this.request(`/servers/${encodeURIComponent(id)}`, InstanceSchema);
     }
 
-    async createServer(data: Partial<Server>): Promise<ApiResponse<Server>> {
-        return this.request<Server>("/servers", {
+    async createServer(data: CreateServerInput): Promise<ClientResponse<Instance>> {
+        return this.request("/servers", InstanceSchema, {
             method: "POST",
             body: JSON.stringify(data),
         });
     }
 
-    async updateServer(id: string, data: Partial<Server>): Promise<ApiResponse<Server>> {
-        return this.request<Server>(`/servers/${id}`, {
-            method: "PUT",
+    async updateServer(id: string, data: UpdateServerInput, configVersion: number): Promise<ClientResponse<Instance>> {
+        return this.request(`/servers/${encodeURIComponent(id)}`, InstanceSchema, {
+            method: "PATCH",
+            headers: { "If-Match": `"${configVersion}"` },
             body: JSON.stringify(data),
         });
     }
 
-    async deleteServer(id: string): Promise<ApiResponse<{ success: boolean }>> {
-        return this.request<{ success: boolean }>(`/servers/${id}`, {
-            method: "DELETE",
-        });
+    async deleteServer(id: string): Promise<ClientResponse<z.infer<typeof SuccessResponseSchema>>> {
+        return this.request(`/servers/${encodeURIComponent(id)}`, SuccessResponseSchema, { method: "DELETE" });
     }
 
-    async startServer(id: string): Promise<ApiResponse<{ status: string }>> {
-        return this.request<{ status: string }>(`/servers/${id}/start`, {
-            method: "POST",
-        });
+    async runAction(id: string, action: ServerAction): Promise<ClientResponse<Job>> {
+        return this.request(`/servers/${encodeURIComponent(id)}/actions/${action}`, ActionResponseSchema, { method: "POST" });
     }
 
-    async stopServer(id: string): Promise<ApiResponse<{ status: string }>> {
-        return this.request<{ status: string }>(`/servers/${id}/stop`, {
-            method: "POST",
-        });
+    startServer(id: string) { return this.runAction(id, "start"); }
+    stopServer(id: string) { return this.runAction(id, "stop"); }
+    restartServer(id: string) { return this.runAction(id, "restart"); }
+    killServer(id: string) { return this.runAction(id, "kill"); }
+    reinstallServer(id: string) { return this.runAction(id, "install"); }
+
+    async sendCommand(id: string, command: string): Promise<ClientResponse<{ accepted: boolean }>> {
+        return this.request(
+            `/servers/${encodeURIComponent(id)}/console`,
+            z.object({ accepted: z.boolean() }),
+            { method: "POST", body: JSON.stringify({ command }) },
+        );
     }
 
-    async restartServer(id: string): Promise<ApiResponse<{ status: string }>> {
-        return this.request<{ status: string }>(`/servers/${id}/restart`, {
-            method: "POST",
-        });
+    async getSecrets(id: string) {
+        return this.request(`/servers/${encodeURIComponent(id)}/secrets`, SecretStatusListSchema);
     }
 
-    async killServer(id: string): Promise<ApiResponse<{ success: boolean }>> {
-        return this.request<{ success: boolean }>(`/servers/${id}/kill`, {
-            method: "POST",
-        });
+    async setSecret(id: string, name: string, value: string) {
+        return this.request(
+            `/servers/${encodeURIComponent(id)}/secrets/${encodeURIComponent(name)}`,
+            SecretStatusSchema,
+            { method: "PUT", body: JSON.stringify({ value }) },
+        );
     }
 
-    async reinstallServer(id: string): Promise<ApiResponse<{ success: boolean; message: string }>> {
-        return this.request<{ success: boolean; message: string }>(`/servers/${id}/reinstall`, {
-            method: "POST",
-        });
-    }
-
-    async sendCommand(id: string, command: string): Promise<ApiResponse<{ success: boolean }>> {
-        return this.request<{ success: boolean }>(`/servers/${id}/command`, {
-            method: "POST",
-            body: JSON.stringify({ command }),
-        });
-    }
-
-    async getServerMetrics(id: string, period: string = "1d"): Promise<ApiResponse<MetricsHistoryResponse>> {
-        return this.request<MetricsHistoryResponse>(`/servers/${id}/metrics?period=${period}`);
-    }
-
-    async readFile(serverId: string, path: string): Promise<ApiResponse<{ content: string }>> {
-        return this.request<{ content: string }>(`/servers/${serverId}/files/read?path=${encodeURIComponent(path)}`);
+    async deleteSecret(id: string, name: string) {
+        return this.request(
+            `/servers/${encodeURIComponent(id)}/secrets/${encodeURIComponent(name)}`,
+            SecretStatusSchema,
+            { method: "DELETE" },
+        );
     }
 }

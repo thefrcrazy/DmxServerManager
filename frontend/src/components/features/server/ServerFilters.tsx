@@ -29,7 +29,8 @@ export default function ServerFilters({
         <div className="server-filters" style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ flex: 1, minWidth: "200px" }}>
                 <Input
-                    placeholder={t("common.search") || "Search..."}
+                    placeholder={t("common.search")}
+                    aria-label={t("common.search")}
                     value={search}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSearchChange(e.target.value)}
                     icon={<Search size={18} />}
@@ -39,11 +40,13 @@ export default function ServerFilters({
             <div style={{ width: "200px" }}>
                 <Select
                     options={[
-                        { value: "all", label: t("common.all_games") || "All Games" },
+                        { value: "all", label: t("common.all_games") },
                         ...gameTypes.map(type => ({ value: type, label: type.charAt(0).toUpperCase() + type.slice(1) }))
                     ]}
                     value={gameType}
                     onChange={(value: string) => onGameTypeChange(value)}
+                    aria-label={t("common.all_games")}
+                    placeholder={t("common.all_games")}
                 />
             </div>
 
@@ -52,7 +55,9 @@ export default function ServerFilters({
                     onClick={() => onViewModeChange("list")}
                     className={`btn btn--icon btn--ghost ${viewMode === "list" ? "active" : ""}`}
                     style={{ background: viewMode === "list" ? "var(--bg-hover)" : "transparent", color: viewMode === "list" ? "var(--primary)" : "var(--text-muted)" }}
-                    title="List View"
+                    title={t("common.list_view")}
+                    aria-label={t("common.list_view")}
+                    aria-pressed={viewMode === "list"}
                 >
                     <List size={20} />
                 </button>
@@ -60,7 +65,9 @@ export default function ServerFilters({
                     onClick={() => onViewModeChange("grid")}
                     className={`btn btn--icon btn--ghost ${viewMode === "grid" ? "active" : ""}`}
                     style={{ background: viewMode === "grid" ? "var(--bg-hover)" : "transparent", color: viewMode === "grid" ? "var(--primary)" : "var(--text-muted)" }}
-                    title="Grid View"
+                    title={t("common.grid_view")}
+                    aria-label={t("common.grid_view")}
+                    aria-pressed={viewMode === "grid"}
                 >
                     <LayoutGrid size={20} />
                 </button>

@@ -1,0 +1,44 @@
+# Exploitation et dépannage
+
+## Commandes de service
+
+```bash
+sudo systemctl status dmx-server-manager
+sudo journalctl -u dmx-server-manager -f
+sudo systemctl restart dmx-server-manager
+```
+
+```powershell
+Get-Service DmxServerManager
+Restart-Service DmxServerManager
+Get-WinEvent -LogName Application | Where-Object ProviderName -eq 'DmxServerManager'
+```
+
+```bash
+docker compose -f install/linux/docker-compose.yml ps
+docker compose -f install/linux/docker-compose.yml logs -f panel
+```
+
+## Sauvegardes
+
+Une sauvegarde est un job avec progression, archive streaming et SHA-256. Le driver gèle proprement le jeu ou l’arrête. Les binaires, caches, logs et secrets sont exclus. Une restauration crée d’abord une sauvegarde de sécurité, restaure en staging, valide puis bascule atomiquement avec rollback.
+
+Ne copiez pas une base SQLite active avec `cp`. Utilisez l’API de sauvegarde du panneau ou arrêtez le service. Sauvegardez la clé maître séparément : elle ne fait volontairement pas partie des archives.
+
+## Incidents courants
+
+### Le conteneur ne démarre pas
+
+Exécutez `sudo ./install/linux/bootstrap-docker.sh direct`, vérifiez que `secrets/master.key` appartient à `10001:10001` en mode `0400`, que `/imports` est lisible/traversable par ce compte et que le volume `/data` est accessible à l’UID 10001. Consultez `docker compose logs panel`.
+
+### Le panneau refuse l’écoute distante
+
+C’est une protection attendue. Revenez à `127.0.0.1:5500` ou configurez un reverse proxy HTTPS et ses IP dans `DMX_TRUSTED_PROXIES`.
+
+### Une instance ne démarre pas
+
+Consultez le Job et son identifiant de trace. Vérifiez l’espace disque, le conflit réel TCP/UDP, la disponibilité du dépôt anonyme Steam, l’architecture AMD64, l’EULA et la version Java demandée. Ne remplacez pas l’exécutable ou les arguments via une valeur API non prévue.
+
+### Docker Desktop Windows
+
+Vérifiez que le réseau hôte est activé, que les conteneurs Linux sont utilisés et qu’Enhanced Container Isolation est désactivé. Préférez un volume Docker à un bind mount NTFS.

@@ -1,34 +1,43 @@
 [package]
-name = "draveur-manager"
-version = "0.1.0"
-edition = "2021"
-authors = ["Maxim <contact@draveur.dev>"]
-description = "A modern game server manager"
+name = "dmx-server-manager"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.97"
+authors = ["Maxim"]
+description = "Secure multi-game dedicated server manager"
 license = "MIT"
-repository = "https://github.com/thefrcrazy/draveur-manager"
+repository = "https://github.com/thefrcrazy/DmxServerManager"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["multipart", "ws", "macros"] }
-axum-server = { version = "0.7", features = ["tls-rustls"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors", "fs", "trace", "limit", "catch-panic"] }
-mime = "0.3"
+axum = { version = "0.8", features = ["macros"] }
+tower-http = { version = "0.7", features = ["cors", "fs", "trace", "limit"] }
 
 # Async runtime
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "fs", "sync", "time", "process", "io-util", "signal"] }
 futures = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls", "stream"] }
+flate2 = "1.1"
+tar = "0.4"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.9"
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 
 # Authentication
-jsonwebtoken = "9"
-bcrypt = "0.16"
+argon2 = { version = "0.5", features = ["std"] }
+sha2 = "0.10"
+sha1 = "0.10.6"
+md-5 = "0.10.6"
+base64 = "0.22"
+subtle = "2.6"
+chacha20poly1305 = "0.10"
+ed25519-dalek = "2.2.0"
 
 # Logging
 tracing = "0.1"
@@ -37,29 +46,38 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+cron = "0.15"
 dotenvy = "0.15"
 thiserror = "2"
 anyhow = "1.0"
 rand = "0.8"
-rcgen = "0.13" # For self-signed certs
+semver = "1.0.28"
 
-# HTTP client (for Discord webhooks, downloads)
-reqwest = { version = "0.12", features = ["json"] }
-
-# Compression/Archive
-tar = "0.4"
-flate2 = "1.0"
-
-# System info
-sysinfo = "0.33"
 lazy_static = "1.5"
-walkdir = "2.5.0"
 regex = "1.12.2"
-tokio-util = { version = "0.7.18", features = ["io"] }
-cron = "0.15.0"
+zip = { version = "4.6.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Services",
+    "Win32_System_Threading",
+    "Win32_Storage_FileSystem",
+] }
 
 [[bin]]
-name = "draveur"
+name = "dmx-server-manager"
 path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3.24"
+tower = { version = "0.5", features = ["util"] }

@@ -1,40 +1,61 @@
-#!/bin/bash
-set -e
+#!/bin/sh
+set -eu
 
-# ID of the internal user
-USER=draveur
-USER_ID=$(id -u $USER)
+umask 077
 
-echo "🚀 Draveur Manager Entrypoint"
+case "$(uname -m)" in
+    x86_64|amd64) ;;
+    *)
+        echo "DmxServerManager 1.0 supports Linux AMD64 only." >&2
+        exit 64
+        ;;
+esac
 
-# Function to fix permissions
-fix_permissions() {
-    local dir="$1"
-    if [ -d "$dir" ]; then
-        echo "🔧 Checking permissions for $dir..."
-        # Check if the directory is owned by the user
-        if [ "$(stat -c '%u' "$dir")" != "$USER_ID" ]; then
-            echo "   👉 Fixing ownership of $dir to $USER_ID..."
-            chown -R $USER:$USER "$dir"
-        fi
+for directory in "${DMX_DATA_DIR:-/data}" "${HOME:-/data/home}"; do
+    if [ ! -d "$directory" ]; then
+        mkdir -p "$directory"
     fi
-}
+    if [ ! -w "$directory" ]; then
+        echo "Directory is not writable by uid $(id -u): $directory" >&2
+        exit 73
+    fi
+done
 
-# Fix permissions for data directories
-fix_permissions "/data"
-fix_permissions "/servers"
-fix_permissions "/backups"
-
-# If the command starts with '-', assume it's an argument to the app
-if [ "${1:0:1}" = '-' ]; then
-    set -- ./draveur "$@"
+master_key_file="${DMX_MASTER_KEY_FILE:-/run/secrets/dmx_master_key}"
+if [ ! -r "$master_key_file" ]; then
+    echo "Missing readable master key: $master_key_file" >&2
+    echo "Run install/linux/bootstrap-docker.sh before starting Compose." >&2
+    exit 78
 fi
 
-# Drop privileges and execute the command
-if [ "$1" = './draveur' ] || [ "$1" = '/app/draveur' ]; then
-    echo "✅ Starting Draveur Manager as $USER..."
-    exec gosu $USER "$@"
-else
-    # Execute other commands as is (useful for debugging)
-    exec "$@"
+static_dir="${DMX_STATIC_DIR:-/opt/dmx-server-manager/static}"
+if [ ! -r "$static_dir/index.html" ] || [ ! -d "$static_dir/assets" ]; then
+    echo "Missing packaged frontend under: $static_dir" >&2
+    exit 78
 fi
+
+import_roots=${DMX_IMPORT_ROOTS:-}
+while [ -n "$import_roots" ]; do
+    case "$import_roots" in
+        *,*)
+            import_root=${import_roots%%,*}
+            import_roots=${import_roots#*,}
+            ;;
+        *)
+            import_root=$import_roots
+            import_roots=''
+            ;;
+    esac
+    if [ -n "$import_root" ] && { [ ! -d "$import_root" ] || [ ! -r "$import_root" ] || [ ! -x "$import_root" ]; }; then
+        echo "Import root is not readable/traversable by uid $(id -u): $import_root" >&2
+        exit 77
+    fi
+done
+
+if [ "$#" -eq 0 ]; then
+    set -- /opt/dmx-server-manager/dmx-server-manager
+elif [ "${1#-}" != "$1" ]; then
+    set -- /opt/dmx-server-manager/dmx-server-manager "$@"
+fi
+
+exec "$@"

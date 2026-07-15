@@ -1,0 +1,11 @@
+title = "DmxServerManager secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Legacy database unit test with an explicit non-production fixture"
+regexTarget = "line"
+regexes = [
+    '''test_secret_1234567890123456789012345678901234567890123456789012345678901234''',
+]

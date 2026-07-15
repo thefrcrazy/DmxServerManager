@@ -1,0 +1,915 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  quality-gate:
+    name: Full 1.0 quality gate
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  create-draft:
+    name: Create immutable draft release
+    needs: quality-gate
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate tag and create draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DMX_RELEASE_SIGNING_KEY_PEM: ${{ secrets.DMX_RELEASE_SIGNING_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tags must point to a commit already reachable from main." >&2
+            exit 1
+          fi
+          if [[ -z "$DMX_RELEASE_SIGNING_KEY_PEM" ]]; then
+            echo 'DMX_RELEASE_SIGNING_KEY_PEM is required before creating release artifacts.' >&2
+            exit 1
+          fi
+          umask 077
+          signing_key=$(mktemp)
+          trap 'rm -f "$signing_key"' EXIT
+          printf '%s' "$DMX_RELEASE_SIGNING_KEY_PEM" > "$signing_key"
+          key_type=$(openssl pkey -in "$signing_key" -pubout 2>/dev/null \
+            | openssl pkey -pubin -text -noout 2>/dev/null \
+            | sed -n '1p')
+          if [[ "$key_type" != "ED25519 Public-Key:"* ]]; then
+            echo 'DMX_RELEASE_SIGNING_KEY_PEM must contain an Ed25519 private key.' >&2
+            exit 1
+          fi
+          expected_public_key=$(tr -d '\r\n' < backend/release-public-key.b64url)
+          derived_public_key=$(openssl pkey -in "$signing_key" -pubout -outform DER \
+            | tail -c 32 \
+            | base64 -w0 \
+            | tr '+/' '-_' \
+            | tr -d '=')
+          if [[ "$derived_public_key" != "$expected_public_key" ]]; then
+            echo 'DMX_RELEASE_SIGNING_KEY_PEM does not match backend/release-public-key.b64url.' >&2
+            exit 1
+          fi
+          version=${GITHUB_REF_NAME#v}
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tags must use vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          cargo_version=$(awk '/^\[package\]/{in_package=1; next} /^\[/{in_package=0} in_package && /^version = "/{gsub(/"/, "", $3); print $3; exit}' backend/Cargo.toml)
+          frontend_version=$(jq -r '.version' frontend/package.json)
+          if [[ "$cargo_version" != "$version" || "$frontend_version" != "$version" ]]; then
+            echo "Tag $version does not match backend ($cargo_version) and frontend ($frontend_version)."
+            exit 1
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Refusing to mutate an existing release: $GITHUB_REF_NAME"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes \
+            --title "DmxServerManager $version"
+
+  linux-native:
+    name: Linux AMD64 archive
+    needs: create-draft
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      asset: ${{ steps.package.outputs.asset }}
+      archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
+      installer_asset: ${{ steps.package.outputs.installer_asset }}
+      installer_sha256: ${{ steps.package.outputs.installer_sha256 }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust 1.97
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: 1.97.0
+
+      - name: Install Bun 1.3.14
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Build backend
+        working-directory: backend
+        run: cargo build --locked --release --bin dmx-server-manager
+
+      - name: Verify repeatable Linux binary and smoke test
+        working-directory: backend
+        shell: bash
+        run: |
+          cp target/release/dmx-server-manager "$RUNNER_TEMP/dmx-server-manager.first"
+          cargo clean --release
+          cargo build --locked --release --bin dmx-server-manager
+          cmp "$RUNNER_TEMP/dmx-server-manager.first" target/release/dmx-server-manager
+          version=${GITHUB_REF_NAME#v}
+          target/release/dmx-server-manager --print-openapi \
+            | jq -e --arg version "$version" \
+                '.info.title == "DmxServerManager API" and .info.version == $version' >/dev/null
+
+      - name: Assemble reproducible Linux archive
+        id: package
+        shell: bash
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          asset="dmx-server-manager-v${version}-x86_64-unknown-linux-gnu.tar.gz"
+          installer_asset="dmx-server-manager-install-linux.sh"
+          epoch=$(git log -1 --format=%ct)
+          mkdir -p release/linux/payload/static
+          install -m 0755 backend/target/release/dmx-server-manager release/linux/payload/dmx-server-manager
+          cp -R frontend/dist/. release/linux/payload/static/
+          tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
+            -czf "release/linux/${asset}" -C release/linux/payload .
+          cd release/linux
+          install -m 0755 ../../install/linux/install.sh "$installer_asset"
+          sha256sum "$asset" > "$asset.sha256"
+          archive_sha256=$(sha256sum "$asset")
+          archive_sha256=${archive_sha256%% *}
+          installer_sha256=$(sha256sum "$installer_asset")
+          installer_sha256=${installer_sha256%% *}
+          {
+            echo "asset=$asset"
+            echo "archive_sha256=$archive_sha256"
+            echo "installer_asset=$installer_asset"
+            echo "installer_sha256=$installer_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Exercise native Linux install and systemd lifecycle
+        shell: bash
+        env:
+          ASSET: ${{ steps.package.outputs.asset }}
+          ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
+          INSTALLER_ASSET: ${{ steps.package.outputs.installer_asset }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2329
+          cleanup() {
+            sudo systemctl stop dmx-server-manager.service >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          archive="$GITHUB_WORKSPACE/release/linux/$ASSET"
+          installer="$GITHUB_WORKSPACE/release/linux/$INSTALLER_ASSET"
+          version=${GITHUB_REF_NAME#v}
+          sudo env \
+            DMX_VERSION="$version" \
+            DMX_EXPECTED_ARCHIVE_SHA256="$ARCHIVE_SHA256" \
+            DMX_ARCHIVE_FILE="$archive" \
+            DMX_INSTALL_GAME_TOOLCHAINS=0 \
+            DMX_NO_START=1 \
+            sh "$installer"
+          sudo systemctl is-enabled --quiet dmx-server-manager.service
+          if sudo systemctl is-active --quiet dmx-server-manager.service; then
+            echo 'DMX_NO_START=1 left the service running.' >&2
+            exit 1
+          fi
+          test "$(sudo systemctl show dmx-server-manager.service --property=User --value)" = dmx-server-manager
+          test "$(sudo systemctl show dmx-server-manager.service --property=KillMode --value)" = control-group
+          test "$(stat -c '%U:%G:%a' /etc/dmx-server-manager/master.key)" = root:dmx-server-manager:640
+          sudo -u dmx-server-manager test -r /etc/dmx-server-manager/master.key
+          sudo systemctl start dmx-server-manager.service
+          for attempt in $(seq 1 45); do
+            : "$attempt"
+            if curl --fail --silent http://127.0.0.1:5500/api/v1/health >/dev/null; then
+              sudo systemctl stop dmx-server-manager.service
+              sudo systemctl is-active --quiet dmx-server-manager.service && exit 1
+              exit 0
+            fi
+            if ! sudo systemctl is-active --quiet dmx-server-manager.service; then
+              sudo journalctl --unit=dmx-server-manager.service --no-pager || true
+              exit 1
+            fi
+            sleep 2
+          done
+          sudo journalctl --unit=dmx-server-manager.service --no-pager || true
+          exit 1
+
+      - name: Generate Linux SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: release/linux/payload
+          format: spdx-json
+          output-file: release/linux/${{ steps.package.outputs.asset }}.spdx.json
+          syft-version: v1.46.0
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Install Cosign 3.0.6
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign and upload Linux artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.package.outputs.asset }}
+          INSTALLER_ASSET: ${{ steps.package.outputs.installer_asset }}
+        run: |
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}"
+          issuer='https://token.actions.githubusercontent.com'
+          for file in \
+            "release/linux/$ASSET" \
+            "release/linux/$ASSET.sha256" \
+            "release/linux/$ASSET.spdx.json" \
+            "release/linux/$INSTALLER_ASSET"; do
+            cosign sign-blob --yes --bundle "$file.sigstore.json" "$file"
+            cosign verify-blob \
+              --bundle "$file.sigstore.json" \
+              --certificate-identity "$identity" \
+              --certificate-oidc-issuer "$issuer" \
+              "$file" >/dev/null
+          done
+          gh release upload "$GITHUB_REF_NAME" \
+            "release/linux/$ASSET" \
+            "release/linux/$ASSET.sha256" \
+            "release/linux/$ASSET.sha256.sigstore.json" \
+            "release/linux/$ASSET.spdx.json" \
+            "release/linux/$ASSET.spdx.json.sigstore.json" \
+            "release/linux/$ASSET.sigstore.json" \
+            "release/linux/$INSTALLER_ASSET" \
+            "release/linux/$INSTALLER_ASSET.sigstore.json"
+
+  windows-native:
+    name: Windows AMD64 archive
+    needs: create-draft
+    runs-on: windows-2022
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      asset: ${{ steps.package.outputs.asset }}
+      archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
+      installer_asset: ${{ steps.package.outputs.installer_asset }}
+      installer_sha256: ${{ steps.package.outputs.installer_sha256 }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust 1.97
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: 1.97.0
+
+      - name: Install Bun 1.3.14
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Build backend
+        working-directory: backend
+        run: cargo build --locked --release --bin dmx-server-manager
+
+      - name: Verify repeatable Windows binary and smoke test
+        working-directory: backend
+        shell: pwsh
+        run: |
+          $first = Join-Path $env:RUNNER_TEMP 'dmx-server-manager.first.exe'
+          Copy-Item -LiteralPath 'target/release/dmx-server-manager.exe' -Destination $first
+          cargo clean --release
+          cargo build --locked --release --bin dmx-server-manager
+          $firstHash = (Get-FileHash -LiteralPath $first -Algorithm SHA256).Hash
+          $secondHash = (Get-FileHash -LiteralPath 'target/release/dmx-server-manager.exe' -Algorithm SHA256).Hash
+          if ($firstHash -cne $secondHash) {
+            throw 'The Windows release binary is not reproducible in the pinned release environment.'
+          }
+          $openApi = & 'target/release/dmx-server-manager.exe' --print-openapi | ConvertFrom-Json
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          if ($LASTEXITCODE -ne 0 -or $openApi.info.title -cne 'DmxServerManager API' -or $openApi.info.version -cne $version) {
+            throw 'The packaged Windows binary failed its OpenAPI smoke test.'
+          }
+
+      - name: Assemble Windows archive
+        id: package
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $asset = "dmx-server-manager-v$version-x86_64-pc-windows-msvc.zip"
+          $installerAsset = 'dmx-server-manager-install-windows.ps1'
+          $payload = Join-Path $PWD 'release/windows/payload'
+          New-Item -ItemType Directory -Force -Path (Join-Path $payload 'static') | Out-Null
+          Copy-Item backend/target/release/dmx-server-manager.exe (Join-Path $payload 'dmx-server-manager.exe')
+          Copy-Item frontend/dist/* (Join-Path $payload 'static') -Recurse
+          $archive = Join-Path $PWD "release/windows/$asset"
+          $commitTime = [DateTimeOffset]::FromUnixTimeSeconds([long](git log -1 --format=%ct))
+          $files = Get-ChildItem -LiteralPath $payload -File -Recurse | Sort-Object {
+            $_.FullName.Substring($payload.Length + 1).Replace('\', '/')
+          }
+          Add-Type -AssemblyName System.IO.Compression
+          $archiveStream = [System.IO.File]::Open($archive, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+          $zip = [System.IO.Compression.ZipArchive]::new(
+            $archiveStream,
+            [System.IO.Compression.ZipArchiveMode]::Create,
+            $false
+          )
+          try {
+            foreach ($file in $files) {
+              $relativePath = $file.FullName.Substring($payload.Length + 1).Replace('\', '/')
+              $entry = $zip.CreateEntry($relativePath, [System.IO.Compression.CompressionLevel]::Optimal)
+              $entry.LastWriteTime = $commitTime
+              $source = [System.IO.File]::OpenRead($file.FullName)
+              $destination = $entry.Open()
+              try {
+                $source.CopyTo($destination)
+              } finally {
+                $destination.Dispose()
+                $source.Dispose()
+              }
+            }
+          } finally {
+            $zip.Dispose()
+            $archiveStream.Dispose()
+          }
+          $checksum = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText(
+            "$archive.sha256",
+            "$checksum  $asset`n",
+            [System.Text.UTF8Encoding]::new($false)
+          )
+          "asset=$asset" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "archive_sha256=$checksum" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Copy-Item -LiteralPath 'install/windows/install.ps1' -Destination "release/windows/$installerAsset"
+          $installerChecksum = (Get-FileHash -LiteralPath "release/windows/$installerAsset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "installer_asset=$installerAsset" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "installer_sha256=$installerChecksum" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Exercise native Windows install and SCM lifecycle
+        shell: pwsh
+        env:
+          ASSET: ${{ steps.package.outputs.asset }}
+          ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
+          INSTALLER_ASSET: ${{ steps.package.outputs.installer_asset }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $PWD "release/windows/$env:ASSET"
+          $installer = Join-Path $PWD "release/windows/$env:INSTALLER_ASSET"
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          try {
+            & $installer `
+              -Version $version `
+              -ExpectedArchiveSha256 $env:ARCHIVE_SHA256 `
+              -ArchivePath $archive `
+              -SkipSteamCmd `
+              -NoStart
+            $service = Get-CimInstance Win32_Service -Filter "Name='DmxServerManager'"
+            if (-not $service) {
+              throw 'The Windows installer did not create the SCM service.'
+            }
+            if (-not $service.StartName.Equals('NT SERVICE\DmxServerManager', [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Unexpected Windows service account: $($service.StartName)"
+            }
+            if ($service.StartMode -cne 'Auto' -or $service.State -cne 'Stopped') {
+              throw "Unexpected service state after -NoStart: $($service.StartMode)/$($service.State)"
+            }
+            if ($service.PathName -notmatch '(?i)dmx-server-manager\.exe" --service$') {
+              throw "Unexpected SCM binary path: $($service.PathName)"
+            }
+            $environment = [string[]](Get-ItemProperty `
+              -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\DmxServerManager' `
+              -Name Environment).Environment
+            if ($environment -notcontains 'DMX_SERVICE_MODE=windows') {
+              throw 'The SCM service environment does not select Windows service mode.'
+            }
+            Start-Service DmxServerManager
+            (Get-Service DmxServerManager).WaitForStatus('Running', [TimeSpan]::FromSeconds(90))
+            $healthy = $false
+            for ($attempt = 0; $attempt -lt 45; $attempt++) {
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5500/api/v1/health' -TimeoutSec 3
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
+                  $healthy = $true
+                  break
+                }
+              } catch {
+                Start-Sleep -Seconds 2
+              }
+            }
+            if (-not $healthy) {
+              throw 'The restarted Windows service did not pass its health check.'
+            }
+            Stop-Service DmxServerManager
+            (Get-Service DmxServerManager).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(120))
+          } finally {
+            Stop-Service DmxServerManager -Force -ErrorAction SilentlyContinue
+            & "$env:SystemRoot\System32\sc.exe" delete DmxServerManager | Out-Null
+          }
+
+      - name: Generate Windows SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: release/windows/payload
+          format: spdx-json
+          output-file: release/windows/${{ steps.package.outputs.asset }}.spdx.json
+          syft-version: v1.46.0
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Install Cosign 3.0.6
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign and upload Windows artifacts
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.package.outputs.asset }}
+          INSTALLER_ASSET: ${{ steps.package.outputs.installer_asset }}
+        run: |
+          $identity = "https://github.com/$env:GITHUB_REPOSITORY/.github/workflows/release.yml@$env:GITHUB_REF"
+          $issuer = 'https://token.actions.githubusercontent.com'
+          $files = @(
+            "release/windows/$env:ASSET",
+            "release/windows/$env:ASSET.sha256",
+            "release/windows/$env:ASSET.spdx.json",
+            "release/windows/$env:INSTALLER_ASSET"
+          )
+          foreach ($file in $files) {
+            cosign sign-blob --yes --bundle "$file.sigstore.json" $file
+            if ($LASTEXITCODE -ne 0) {
+              throw "Cosign failed to sign $file"
+            }
+            cosign verify-blob `
+              --bundle "$file.sigstore.json" `
+              --certificate-identity $identity `
+              --certificate-oidc-issuer $issuer `
+              $file | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "Cosign failed to verify $file"
+            }
+          }
+          gh release upload $env:GITHUB_REF_NAME `
+            "release/windows/$env:ASSET" `
+            "release/windows/$env:ASSET.sha256" `
+            "release/windows/$env:ASSET.sha256.sigstore.json" `
+            "release/windows/$env:ASSET.spdx.json" `
+            "release/windows/$env:ASSET.spdx.json.sigstore.json" `
+            "release/windows/$env:ASSET.sigstore.json" `
+            "release/windows/$env:INSTALLER_ASSET" `
+            "release/windows/$env:INSTALLER_ASSET.sigstore.json"
+
+  container:
+    name: GHCR Linux AMD64 image
+    needs: create-draft
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.34.1
+          driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
+
+      - name: Build and push untagged AMD64 image by digest
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: install/linux/Dockerfile
+          platforms: linux/amd64
+          outputs: type=image,name=ghcr.io/thefrcrazy/dmx-server-manager,push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+
+      - name: Pull and smoke the exact published digest
+        shell: bash
+        env:
+          IMAGE: ghcr.io/thefrcrazy/dmx-server-manager
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          reference="$IMAGE@$DIGEST"
+          container="dmx-release-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          volume="dmx-release-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          master_key="$RUNNER_TEMP/dmx-release-master-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.key"
+          # shellcheck disable=SC2329
+          cleanup() {
+            docker rm --force "$container" >/dev/null 2>&1 || true
+            docker volume rm --force "$volume" >/dev/null 2>&1 || true
+            rm -f "$master_key"
+          }
+          trap cleanup EXIT
+          trap 'exit 129' HUP
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          docker pull --platform linux/amd64 "$reference"
+          test "$(docker image inspect "$reference" --format '{{.Architecture}}')" = amd64
+          test "$(docker image inspect "$reference" --format '{{.Config.User}}')" = 10001:10001
+          test "$(docker image inspect "$reference" --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" \
+            = "https://github.com/thefrcrazy/DmxServerManager"
+          openssl rand 32 > "$master_key"
+          sudo chown 10001:10001 "$master_key"
+          sudo chmod 0400 "$master_key"
+          docker volume create "$volume" >/dev/null
+          docker run --detach \
+            --name "$container" \
+            --network host \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --pids-limit 4096 \
+            --tmpfs /tmp:size=256m,mode=1777 \
+            --env DMX_IMPORT_ROOTS= \
+            --volume "$volume:/data" \
+            --volume "$master_key:/run/secrets/dmx_master_key:ro" \
+            "$reference" >/dev/null
+          for attempt in $(seq 1 45); do
+            : "$attempt"
+            if curl --fail --silent http://127.0.0.1:5500/api/v1/health >/dev/null; then
+              test "$(docker exec "$container" id -u)" = 10001
+              test "$(docker exec "$container" id -g)" = 10001
+              exit 0
+            fi
+            if ! docker inspect "$container" --format '{{.State.Running}}' | grep -qx true; then
+              docker logs "$container" || true
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs "$container" || true
+          exit 1
+
+      - name: Scan the exact published digest for high vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/thefrcrazy/dmx-server-manager@${{ steps.image.outputs.digest }}
+          version: v0.72.0
+          format: table
+          ignore-unfixed: false
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+      - name: Install Cosign 3.0.6
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign and verify image by digest
+        env:
+          IMAGE: ghcr.io/thefrcrazy/dmx-server-manager
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}"
+          issuer='https://token.actions.githubusercontent.com'
+          cosign sign --yes "$IMAGE@$DIGEST"
+          cosign verify \
+            --certificate-identity "$identity" \
+            --certificate-oidc-issuer "$issuer" \
+            "$IMAGE@$DIGEST" >/dev/null
+
+      - name: Generate downloadable image SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ghcr.io/thefrcrazy/dmx-server-manager@${{ steps.image.outputs.digest }}
+          format: spdx-json
+          output-file: dmx-server-manager-image-amd64.spdx.json
+          syft-version: v1.46.0
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Sign and upload image SBOM
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}"
+          issuer='https://token.actions.githubusercontent.com'
+          cosign sign-blob --yes --bundle dmx-server-manager-image-amd64.spdx.json.sigstore.json \
+            dmx-server-manager-image-amd64.spdx.json
+          cosign verify-blob \
+            --bundle dmx-server-manager-image-amd64.spdx.json.sigstore.json \
+            --certificate-identity "$identity" \
+            --certificate-oidc-issuer "$issuer" \
+            dmx-server-manager-image-amd64.spdx.json >/dev/null
+          gh release upload "$GITHUB_REF_NAME" \
+            dmx-server-manager-image-amd64.spdx.json \
+            dmx-server-manager-image-amd64.spdx.json.sigstore.json
+
+  publish:
+    name: Publish verified release
+    needs:
+      - linux-native
+      - windows-native
+      - container
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build and sign strict release manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DMX_RELEASE_SIGNING_KEY_PEM: ${{ secrets.DMX_RELEASE_SIGNING_KEY_PEM }}
+          LINUX_ASSET: ${{ needs.linux-native.outputs.asset }}
+          LINUX_SHA256: ${{ needs.linux-native.outputs.archive_sha256 }}
+          LINUX_INSTALLER_ASSET: ${{ needs.linux-native.outputs.installer_asset }}
+          LINUX_INSTALLER_SHA256: ${{ needs.linux-native.outputs.installer_sha256 }}
+          WINDOWS_ASSET: ${{ needs.windows-native.outputs.asset }}
+          WINDOWS_SHA256: ${{ needs.windows-native.outputs.archive_sha256 }}
+          WINDOWS_INSTALLER_ASSET: ${{ needs.windows-native.outputs.installer_asset }}
+          WINDOWS_INSTALLER_SHA256: ${{ needs.windows-native.outputs.installer_sha256 }}
+          IMAGE_DIGEST: ${{ needs.container.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DMX_RELEASE_SIGNING_KEY_PEM" ]]; then
+            echo "DMX_RELEASE_SIGNING_KEY_PEM is required to publish a release manifest." >&2
+            exit 1
+          fi
+          umask 077
+          signing_key=$(mktemp)
+          trap 'rm -f "$signing_key" public-key.pem payload.json signature.bin release-manifest.json envelope-payload.bin envelope-signature.bin' EXIT
+          printf '%s' "$DMX_RELEASE_SIGNING_KEY_PEM" > "$signing_key"
+          key_type=$(openssl pkey -in "$signing_key" -pubout 2>/dev/null \
+            | openssl pkey -pubin -text -noout 2>/dev/null \
+            | sed -n '1p')
+          if [[ "$key_type" != "ED25519 Public-Key:"* ]]; then
+            echo "DMX_RELEASE_SIGNING_KEY_PEM must contain an Ed25519 private key." >&2
+            exit 1
+          fi
+          expected_public_key=$(tr -d '\r\n' < backend/release-public-key.b64url)
+          derived_public_key=$(openssl pkey -in "$signing_key" -pubout -outform DER \
+            | tail -c 32 \
+            | base64 -w0 \
+            | tr '+/' '-_' \
+            | tr -d '=')
+          if [[ "$derived_public_key" != "$expected_public_key" ]]; then
+            echo 'DMX_RELEASE_SIGNING_KEY_PEM does not match backend/release-public-key.b64url.' >&2
+            exit 1
+          fi
+          version=${GITHUB_REF_NAME#v}
+          published_at=$(git log -1 --format=%cI)
+          release_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          jq -cS -n \
+            --arg version "$version" \
+            --arg published_at "$published_at" \
+            --arg notes_url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" \
+            --arg linux_archive_url "$release_base/$LINUX_ASSET" \
+            --arg linux_archive_sha256 "$LINUX_SHA256" \
+            --arg linux_installer_url "$release_base/$LINUX_INSTALLER_ASSET" \
+            --arg linux_installer_sha256 "$LINUX_INSTALLER_SHA256" \
+            --arg windows_archive_url "$release_base/$WINDOWS_ASSET" \
+            --arg windows_archive_sha256 "$WINDOWS_SHA256" \
+            --arg windows_installer_url "$release_base/$WINDOWS_INSTALLER_ASSET" \
+            --arg windows_installer_sha256 "$WINDOWS_INSTALLER_SHA256" \
+            --arg image_digest "$IMAGE_DIGEST" \
+            '{
+              schema_version: 1,
+              version: $version,
+              published_at: $published_at,
+              notes_url: $notes_url,
+              native: {
+                linux_amd64: {
+                  archive_url: $linux_archive_url,
+                  archive_sha256: $linux_archive_sha256,
+                  installer_url: $linux_installer_url,
+                  installer_sha256: $linux_installer_sha256
+                },
+                windows_amd64: {
+                  archive_url: $windows_archive_url,
+                  archive_sha256: $windows_archive_sha256,
+                  installer_url: $windows_installer_url,
+                  installer_sha256: $windows_installer_sha256
+                }
+              },
+              docker: {
+                image: "ghcr.io/thefrcrazy/dmx-server-manager",
+                digest: $image_digest
+              }
+            }' > payload.json
+          openssl pkeyutl -sign -rawin -inkey "$signing_key" -in payload.json -out signature.bin
+          payload_b64=$(base64 -w0 payload.json | tr '+/' '-_' | tr -d '=')
+          signature_b64=$(base64 -w0 signature.bin | tr '+/' '-_' | tr -d '=')
+          jq -n --arg payload "$payload_b64" --arg signature "$signature_b64" \
+            '{payload: $payload, signature: $signature}' > release-manifest.json
+
+          decode_base64url() {
+            local encoded=$1
+            local padded
+            case $((${#encoded} % 4)) in
+              0) padded=$encoded ;;
+              2) padded="${encoded}==" ;;
+              3) padded="${encoded}=" ;;
+              *) return 1 ;;
+            esac
+            printf '%s' "$padded" | tr -- '-_' '+/' | base64 --decode
+          }
+          jq -e \
+            'type == "object" and (keys == ["payload", "signature"]) and (.payload | type == "string") and (.signature | type == "string")' \
+            release-manifest.json >/dev/null
+          envelope_payload=$(jq -r '.payload' release-manifest.json)
+          envelope_signature=$(jq -r '.signature' release-manifest.json)
+          decode_base64url "$envelope_payload" > envelope-payload.bin
+          decode_base64url "$envelope_signature" > envelope-signature.bin
+          cmp --silent payload.json envelope-payload.bin
+          test "$(wc -c < envelope-signature.bin)" -eq 64
+          openssl pkey -in "$signing_key" -pubout -out public-key.pem
+          openssl pkeyutl -verify -pubin -inkey public-key.pem -rawin \
+            -in envelope-payload.bin -sigfile envelope-signature.bin
+          gh release upload "$GITHUB_REF_NAME" release-manifest.json
+
+      - name: Log in to GHCR for final promotion
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up pinned Buildx for final promotion
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.34.1
+          driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
+
+      - name: Promote only the verified digest to the release tag
+        shell: bash
+        env:
+          IMAGE: ghcr.io/thefrcrazy/dmx-server-manager
+          DIGEST: ${{ needs.container.outputs.digest }}
+        run: |
+          set -euo pipefail
+          version=${GITHUB_REF_NAME#v}
+          inspect_error="$RUNNER_TEMP/dmx-image-inspect.err"
+          if existing_json=$(docker buildx imagetools inspect "$IMAGE:$version" \
+            --format '{{json .Manifest}}' 2>"$inspect_error"); then
+            existing_digest=$(jq -er '.digest' <<<"$existing_json")
+            if [[ "$existing_digest" != "$DIGEST" ]]; then
+              echo "Existing immutable tag points to $existing_digest, expected $DIGEST" >&2
+              exit 1
+            fi
+            echo 'Release image tag already points to the verified digest; reusing it.'
+          else
+            if ! grep -Eqi '(manifest unknown|not found|404)' "$inspect_error"; then
+              cat "$inspect_error" >&2
+              exit 1
+            fi
+            docker buildx imagetools create \
+              --prefer-index=false \
+              --tag "$IMAGE:$version" \
+              "$IMAGE@$DIGEST"
+          fi
+          remote_digest=$(docker buildx imagetools inspect "$IMAGE:$version" \
+            --format '{{json .Manifest}}' | jq -er '.digest')
+          if [[ "$remote_digest" != "$DIGEST" ]]; then
+            echo "Promoted digest mismatch: expected $DIGEST, received $remote_digest" >&2
+            exit 1
+          fi
+
+      - name: Publish draft only after all artifacts succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+
+  cleanup-failed-draft:
+    name: Remove failed draft release
+    if: ${{ always() && needs.create-draft.result == 'success' && needs.publish.result != 'success' }}
+    needs:
+      - create-draft
+      - linux-native
+      - windows-native
+      - container
+      - publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Roll back the unpublished container version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ needs.container.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$DIGEST" ]]; then
+            exit 0
+          fi
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Refusing cleanup for malformed image digest: $DIGEST" >&2
+            exit 1
+          fi
+          version=${GITHUB_REF_NAME#v}
+          digest_hex=${DIGEST#sha256:}
+          endpoint="users/${GITHUB_REPOSITORY_OWNER}/packages/container/dmx-server-manager/versions?per_page=100"
+          versions_json=$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "$endpoint")
+          tagged_mismatch=$(jq -r \
+            --arg digest "$DIGEST" \
+            --arg digest_hex "$digest_hex" \
+            --arg tag "$version" \
+            '[.[] | select((.metadata.container.tags // [] | index($tag)) != null) | select(.name != $digest and .name != $digest_hex)] | length' \
+            <<<"$versions_json")
+          if [[ "$tagged_mismatch" != 0 ]]; then
+            echo 'The version tag points to another digest; refusing package cleanup.' >&2
+            exit 1
+          fi
+          candidates=$(jq -c \
+            --arg digest "$DIGEST" \
+            --arg digest_hex "$digest_hex" \
+            --arg tag "$version" \
+            '[.[] | select(.name == $digest or .name == $digest_hex) | select(
+              ((.metadata.container.tags // []) | length) == 0 or
+              (((.metadata.container.tags // []) | length) == 1 and
+               ((.metadata.container.tags // [])[0] == $tag))
+            )]' \
+            <<<"$versions_json")
+          candidate_count=$(jq -r 'length' <<<"$candidates")
+          if [[ "$candidate_count" -gt 1 ]]; then
+            echo 'Multiple GHCR versions matched the release digest; refusing cleanup.' >&2
+            exit 1
+          fi
+          if [[ "$candidate_count" -eq 1 ]]; then
+            is_draft=$(gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json isDraft \
+              --jq .isDraft)
+            if [[ "$is_draft" != true ]]; then
+              echo 'The release is already published; refusing package cleanup.' >&2
+              exit 1
+            fi
+            package_version_id=$(jq -er '.[0].id' <<<"$candidates")
+            gh api --method DELETE \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              "users/${GITHUB_REPOSITORY_OWNER}/packages/container/dmx-server-manager/versions/${package_version_id}"
+          fi
+
+      - name: Delete only an unpublished draft
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)
+          if [[ "$is_draft" != true ]]; then
+            echo 'The release is already published; refusing cleanup.' >&2
+            exit 1
+          fi
+          gh release delete "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --yes

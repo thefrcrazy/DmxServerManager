@@ -1,36 +1,64 @@
-version: '3.8'
+name: dmx-server-manager
 
 services:
-  draveur:
-    image: draveur/manager:latest
-    build:
-      context: ../..
-      dockerfile: install/linux/Dockerfile
-    container_name: draveur-manager
+  panel:
+    image: "${DMX_IMAGE:?set DMX_IMAGE to ghcr.io/thefrcrazy/dmx-server-manager@sha256:<signed-digest>}"
+    platform: linux/amd64
     restart: unless-stopped
     network_mode: host
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 2m
+    pids_limit: 4096
     environment:
-      - TZ=Europe/Paris
-      - HOST=0.0.0.0
-      - PORT=5500
-      - IS_DOCKER=true
-      - DATABASE_URL=sqlite:/data/database.db?mode=rwc
-      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
-      - SERVERS_DIR=/servers
-      - BACKUPS_DIR=/backups
-      - UPLOADS_DIR=/data/uploads
-      - RUST_LOG=info
+      TZ: ${DMX_TIMEZONE:-Etc/UTC}
+      DMX_BIND: ${DMX_BIND:-127.0.0.1:5500}
+      DMX_CONFIG_FILE: /data/config.toml
+      DMX_DATA_DIR: /data
+      DMX_DATABASE_URL: sqlite:///data/dmx-server-manager.sqlite?mode=rwc
+      DMX_IMPORT_ROOTS: /imports
+      DMX_LOG: ${DMX_LOG:-info}
+      DMX_MASTER_KEY_FILE: /run/secrets/dmx_master_key
+      DMX_STEAMCMD_PATH: /usr/games/steamcmd
+      DMX_STATIC_DIR: /opt/dmx-server-manager/static
+      DMX_REVERSE_PROXY: ${DMX_REVERSE_PROXY:-false}
+      DMX_SESSION_TTL_HOURS: ${DMX_SESSION_TTL_HOURS:-24}
+      DMX_SETUP_TOKEN: ${DMX_SETUP_TOKEN:-}
+      DMX_TRUSTED_PROXIES: ${DMX_TRUSTED_PROXIES:-}
+      DMX_DEPLOYMENT_MODE: docker
+      # Empty means: use the official URL and public key compiled into the image.
+      # Override both variables together; a partial override is rejected.
+      DMX_RELEASE_MANIFEST_URL: ${DMX_RELEASE_MANIFEST_URL:-}
+      DMX_RELEASE_PUBLIC_KEY: ${DMX_RELEASE_PUBLIC_KEY:-}
+      DMX_RELEASE_CHECK_INTERVAL_SECONDS: ${DMX_RELEASE_CHECK_INTERVAL_SECONDS:-21600}
     volumes:
-      - ../../data:/data
-      - ../../servers:/servers
-      - ../../backups:/backups
+      - dmx_data:/data
+      - type: bind
+        source: ${DMX_IMPORTS_PATH:-./imports}
+        target: /imports
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/master.key
+        target: /run/secrets/dmx_master_key
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /run:size=16m,mode=0755
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5500/api/v1/settings"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:5500/api/v1/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-networks:
-  default:
-    name: draveur-network
+volumes:
+  dmx_data:
+    name: dmx-server-manager-data

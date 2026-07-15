@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import React from "react";
+import { ChevronDown } from "lucide-react";
 
 export interface Option {
     label: string;
@@ -15,6 +15,9 @@ interface SelectProps {
     placeholder?: string;
     disabled?: boolean;
     className?: string;
+    id?: string;
+    name?: string;
+    "aria-label"?: string;
 }
 
 const Select: React.FC<SelectProps> = ({
@@ -23,76 +26,26 @@ const Select: React.FC<SelectProps> = ({
     onChange,
     placeholder = "Sélectionner...",
     disabled = false,
-    className = ""
+    className = "",
+    id,
+    name,
+    "aria-label": ariaLabel,
 }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    const selectedOption = options.find(opt => opt.value === value);
-
-    // Close on click outside
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    const handleSelect = (optionValue: string) => {
-        if (disabled) return;
-        onChange(optionValue);
-        setIsOpen(false);
-    };
-
     return (
-        <div
-            className={`custom-select ${className}`}
-            ref={containerRef}
-        >
-            <div
-                className={`custom-select__trigger ${isOpen ? "custom-select__trigger--open" : ""} ${disabled ? "custom-select__trigger--disabled" : ""}`}
-                onClick={() => !disabled && setIsOpen(!isOpen)}
+        <div className={`custom-select ${className}`}>
+            <select
+                id={id}
+                name={name}
+                className="custom-select__trigger"
+                value={value}
+                disabled={disabled}
+                aria-label={ariaLabel ?? placeholder}
+                onChange={(event) => onChange(event.target.value)}
             >
-                <div className="custom-select__value">
-                    {selectedOption ? (
-                        <>
-                            {selectedOption.icon && <span className="custom-select__icon">{selectedOption.icon}</span>}
-                            {selectedOption.label}
-                        </>
-                    ) : (
-                        <span className="text-muted">{placeholder}</span>
-                    )}
-                </div>
-                <ChevronDown size={16} className="custom-select__arrow" />
-            </div>
-
-            {isOpen && !disabled && (
-                <div className="custom-select__options">
-                    {options.map((option) => (
-                        <div
-                            key={option.value}
-                            className={`custom-select__option ${option.value === value ? "custom-select__option--selected" : ""
-                                } ${option.disabled ? "custom-select__option--disabled" : ""}`}
-                            onClick={() => !option.disabled && handleSelect(option.value)}
-                        >
-                            {option.icon && <span className="custom-select__icon">{option.icon}</span>}
-                            <span>{option.label}</span>
-                            {option.value === value && (
-                                <Check size={16} className="custom-select__option__check" />
-                            )}
-                        </div>
-                    ))}
-                    {options.length === 0 && (
-                        <div className="custom-select__option custom-select__option--disabled">
-                            Aucune option
-                        </div>
-                    )}
-                </div>
-            )}
+                {!options.some((option) => option.value === value) && <option value="">{placeholder}</option>}
+                {options.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
+            </select>
+            <ChevronDown size={16} className="custom-select__arrow" aria-hidden="true" />
         </div>
     );
 };

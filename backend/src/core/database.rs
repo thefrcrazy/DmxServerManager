@@ -1,398 +1,90 @@
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
-use std::io::Error;
+use std::{str::FromStr, time::Duration};
+
+use serde_json::Value;
+use sqlx::{
+    Pool, Sqlite,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
+};
 use tracing::info;
-use chrono::Utc;
+
+use crate::core::error::AppError;
 
 pub type DbPool = Pool<Sqlite>;
 
-/// Upsert a key-value setting in the settings table
-pub async fn upsert_setting(pool: &DbPool, key: &str, value: &str) -> Result<(), crate::core::error::AppError> {
+pub async fn init_pool(database_url: &str) -> anyhow::Result<DbPool> {
+    let options = SqliteConnectOptions::from_str(database_url)?
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(5));
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(8)
+        .acquire_timeout(Duration::from_secs(10))
+        .connect_with(options)
+        .await?;
+    Ok(pool)
+}
+
+pub async fn run_migrations(pool: &DbPool) -> anyhow::Result<()> {
+    info!("running DmxServerManager database migrations");
+    sqlx::migrate!("./migrations").run(pool).await?;
+
+    // Installers are idempotent inside their managed staging directory. Keep the
+    // same job identifier so a complete staging tree can be committed and an
+    // incomplete provider download can resume safely after a panel restart.
     sqlx::query(
-        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+        "UPDATE jobs SET state = 'queued', progress = 0, started_at = NULL, finished_at = NULL, \
+         error_code = NULL, error_message = NULL \
+         WHERE kind = 'install' AND state IN ('running', 'waiting_for_user')",
     )
-    .bind(key)
-    .bind(value)
+    .execute(pool)
+    .await?;
+    // Operations that cannot prove an idempotent recovery contract are never
+    // replayed implicitly after a crash.
+    sqlx::query(
+        "UPDATE jobs SET state = 'interrupted', finished_at = datetime('now'), \
+         error_code = 'manager_restarted' \
+         WHERE kind <> 'install' AND state IN ('queued', 'running', 'waiting_for_user')",
+    )
+    .execute(pool)
+    .await?;
+    // Processes are deliberately never reattached. systemd control groups, Linux
+    // parent-death signals and Windows Job Objects terminate them with the panel.
+    sqlx::query(
+        "UPDATE instances SET runtime_state = 'stopped', updated_at = datetime('now') \
+         WHERE runtime_state IN ('starting', 'running', 'stopping', 'unknown')",
+    )
     .execute(pool)
     .await?;
     Ok(())
 }
 
-/// Generate a secure random JWT secret
-pub fn generate_jwt_secret() -> String {
-    use rand::Rng;
-    use rand::distributions::Alphanumeric;
-    
-    let mut rng = rand::thread_rng();
-    let secret: String = (0..64)
-        .map(|_| rng.sample(Alphanumeric) as char)
-        .collect();
-    secret
-}
-
-/// Get or create JWT secret from database
-pub async fn get_or_create_jwt_secret(pool: &DbPool) -> Result<String, sqlx::Error> {
-    // Try to get existing secret
-    let result = sqlx::query_scalar::<_, String>(
-        "SELECT value FROM app_secrets WHERE key = 'jwt_secret'"
-    )
-    .fetch_optional(pool)
-    .await?;
-    
-    match result {
-        Some(secret) => Ok(secret),
-        None => {
-            // Generate new secret and store it
-            let secret = generate_jwt_secret();
-            let now = Utc::now().to_rfc3339();
-            
-            sqlx::query(
-                "INSERT INTO app_secrets (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)"
-            )
-            .bind("jwt_secret")
-            .bind(&secret)
-            .bind(&now)
-            .bind(&now)
-            .execute(pool)
-            .await?;
-            
-            Ok(secret)
-        }
-    }
-}
-
-pub async fn init_pool(database_url: &str) -> std::io::Result<DbPool> {
-    // Ensure the data directory exists
-    if let Some(path) = database_url.strip_prefix("sqlite:") {
-        if let Some(path) = path.split('?').next() {
-            if let Some(parent) = std::path::Path::new(path).parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-        }
-    }
-
-    SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect(database_url)
-        .await
-        .map_err(|e| Error::other(e.to_string()))
-}
-
-pub async fn run_migrations(pool: &DbPool) -> std::io::Result<()> {
-    info!("📦 Running database migrations...");
-
-    // Create tables
+pub async fn audit(
+    pool: &DbPool,
+    actor_user_id: Option<&str>,
+    action: &str,
+    resource_type: &str,
+    resource_id: Option<&str>,
+    outcome: &str,
+    metadata: Value,
+) -> Result<(), AppError> {
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            username TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            is_active INTEGER NOT NULL DEFAULT 1,
-            language TEXT NOT NULL DEFAULT 'fr',
-            accent_color TEXT NOT NULL DEFAULT '#3A82F6',
-            last_login TEXT,
-            last_ip TEXT,
-            allocated_servers TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            must_change_password INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS roles (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            permissions TEXT NOT NULL, -- JSON array
-            is_system INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS messages (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            content TEXT NOT NULL,
-            type TEXT NOT NULL DEFAULT 'chat', -- 'chat' or 'note'
-            is_deleted INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS servers (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            game_type TEXT NOT NULL,
-            executable_path TEXT NOT NULL,
-            working_dir TEXT NOT NULL,
-            java_path TEXT,
-            min_memory TEXT,
-            max_memory TEXT,
-            extra_args TEXT,
-            config TEXT,
-            auto_start INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            
-            -- New settings (formerly manager.json)
-            backup_enabled INTEGER NOT NULL DEFAULT 1,
-            backup_frequency INTEGER NOT NULL DEFAULT 30,
-            backup_max_backups INTEGER NOT NULL DEFAULT 7,
-            backup_prefix TEXT NOT NULL DEFAULT 'hytale_backup',
-            
-            discord_username TEXT DEFAULT 'Hytale Bot',
-            discord_avatar TEXT DEFAULT '',
-            discord_webhook_url TEXT DEFAULT '',
-            discord_notifications TEXT DEFAULT '{}',
-            
-            logs_retention_days INTEGER NOT NULL DEFAULT 7,
-            watchdog_enabled INTEGER NOT NULL DEFAULT 1,
-            
-            auth_mode TEXT NOT NULL DEFAULT 'authenticated',
-            bind_address TEXT NOT NULL DEFAULT '0.0.0.0',
-            port INTEGER NOT NULL DEFAULT 5520,
-            nice_level INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS backups (
-            id TEXT PRIMARY KEY,
-            server_id TEXT NOT NULL,
-            filename TEXT NOT NULL,
-            size_bytes INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS schedules (
-            id TEXT PRIMARY KEY,
-            server_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            task_type TEXT NOT NULL, -- basic, cron, chain
-            action TEXT NOT NULL, -- start, restart, stop, backup, command
-            interval INTEGER,
-            unit TEXT, -- minutes, hours, days, weeks
-            time TEXT, -- HH:mm
-            cron_expression TEXT,
-            enabled INTEGER NOT NULL DEFAULT 1,
-            delete_after INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS server_players (
-            server_id TEXT NOT NULL,
-            player_name TEXT NOT NULL,
-            player_id TEXT,
-            player_ip TEXT,
-            first_seen TEXT NOT NULL,
-            last_seen TEXT NOT NULL,
-            is_online INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (server_id, player_name),
-            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS server_metrics (
-            id TEXT PRIMARY KEY,
-            server_id TEXT NOT NULL,
-            cpu_usage REAL NOT NULL,
-            memory_bytes INTEGER NOT NULL,
-            disk_bytes INTEGER NOT NULL,
-            player_count INTEGER NOT NULL,
-            recorded_at TEXT NOT NULL,
-            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_metrics_server_recorded ON server_metrics(server_id, recorded_at);
-
-        CREATE TABLE IF NOT EXISTS app_secrets (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
+        INSERT INTO audit_events
+            (actor_user_id, action, resource_type, resource_id, outcome, metadata, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
+    .bind(actor_user_id)
+    .bind(action)
+    .bind(resource_type)
+    .bind(resource_id)
+    .bind(outcome)
+    .bind(metadata.to_string())
+    .bind(chrono::Utc::now().to_rfc3339())
     .execute(pool)
-    .await
-    .map_err(|e| Error::other(e.to_string()))?;
-
-    // Run migrations for existing databases
-    let columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(users)")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| Error::other(e.to_string()))?;
-
-    let column_names: Vec<&str> = columns.iter().map(|c| c.1.as_str()).collect();
-
-    // User table migrations
-    if !column_names.contains(&"is_active") {
-        sqlx::query("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1").execute(pool).await.ok();
-    }
-    if !column_names.contains(&"language") {
-        sqlx::query("ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'fr'").execute(pool).await.ok();
-    }
-    if !column_names.contains(&"accent_color") {
-        sqlx::query("ALTER TABLE users ADD COLUMN accent_color TEXT NOT NULL DEFAULT '#3A82F6'").execute(pool).await.ok();
-    }
-    if !column_names.contains(&"last_login") {
-        sqlx::query("ALTER TABLE users ADD COLUMN last_login TEXT").execute(pool).await.ok();
-    }
-    if !column_names.contains(&"last_ip") {
-        sqlx::query("ALTER TABLE users ADD COLUMN last_ip TEXT").execute(pool).await.ok();
-    }
-    if !column_names.contains(&"allocated_servers") {
-        sqlx::query("ALTER TABLE users ADD COLUMN allocated_servers TEXT").execute(pool).await.ok();
-    }
-    if !column_names.contains(&"must_change_password") {
-        sqlx::query("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
-    }
-
-    // Messages table migrations
-    let message_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(messages)")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| Error::other(e.to_string()))?;
-
-    let message_column_names: Vec<&str> = message_columns.iter().map(|c| c.1.as_str()).collect();
-
-    if !message_column_names.contains(&"is_deleted") {
-        sqlx::query("ALTER TABLE messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
-    }
-
-    // Server table migrations
-    let server_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(servers)")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| Error::other(e.to_string()))?;
-
-    let server_column_names: Vec<&str> = server_columns.iter().map(|c| c.1.as_str()).collect();
-
-    if !server_column_names.contains(&"config") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN config TEXT").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"backup_enabled") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN backup_enabled INTEGER NOT NULL DEFAULT 1").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"backup_frequency") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN backup_frequency INTEGER NOT NULL DEFAULT 30").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"backup_max_backups") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN backup_max_backups INTEGER NOT NULL DEFAULT 7").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"backup_prefix") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN backup_prefix TEXT NOT NULL DEFAULT 'hytale_backup'").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"discord_username") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN discord_username TEXT DEFAULT 'Hytale Bot'").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"discord_avatar") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN discord_avatar TEXT DEFAULT ''").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"discord_webhook_url") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN discord_webhook_url TEXT DEFAULT ''").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"discord_notifications") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN discord_notifications TEXT DEFAULT '{}'").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"logs_retention_days") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN logs_retention_days INTEGER NOT NULL DEFAULT 7").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"watchdog_enabled") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN watchdog_enabled INTEGER NOT NULL DEFAULT 1").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"auth_mode") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'authenticated'").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"bind_address") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN bind_address TEXT NOT NULL DEFAULT '0.0.0.0'").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"port") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN port INTEGER NOT NULL DEFAULT 5520").execute(pool).await.ok();
-    }
-    if !server_column_names.contains(&"nice_level") {
-        sqlx::query("ALTER TABLE servers ADD COLUMN nice_level INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
-    }
-
-    // Server players table migrations
-    let players_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(server_players)")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| Error::other(e.to_string()))?;
-
-    let players_column_names: Vec<&str> = players_columns.iter().map(|c| c.1.as_str()).collect();
-
-    if !players_column_names.contains(&"player_id") {
-        sqlx::query("ALTER TABLE server_players ADD COLUMN player_id TEXT").execute(pool).await.ok();
-    }
-    if !players_column_names.contains(&"player_ip") {
-        sqlx::query("ALTER TABLE server_players ADD COLUMN player_ip TEXT").execute(pool).await.ok();
-    }
-
-    // Schedules table migrations
-    let schedules_columns: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(schedules)")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| Error::other(e.to_string()))?;
-
-    let schedules_column_names: Vec<&str> = schedules_columns.iter().map(|c| c.1.as_str()).collect();
-
-    if !schedules_column_names.contains(&"name") {
-        sqlx::query("ALTER TABLE schedules ADD COLUMN name TEXT NOT NULL DEFAULT 'Task'").execute(pool).await.ok();
-    }
-    if !schedules_column_names.contains(&"action") {
-        sqlx::query("ALTER TABLE schedules ADD COLUMN action TEXT NOT NULL DEFAULT 'restart'").execute(pool).await.ok();
-    }
-    if !schedules_column_names.contains(&"interval") {
-        sqlx::query("ALTER TABLE schedules ADD COLUMN interval INTEGER").execute(pool).await.ok();
-    }
-    if !schedules_column_names.contains(&"unit") {
-        sqlx::query("ALTER TABLE schedules ADD COLUMN unit TEXT").execute(pool).await.ok();
-    }
-    if !schedules_column_names.contains(&"time") {
-        sqlx::query("ALTER TABLE schedules ADD COLUMN time TEXT").execute(pool).await.ok();
-    }
-    if !schedules_column_names.contains(&"delete_after") {
-        sqlx::query("ALTER TABLE schedules ADD COLUMN delete_after INTEGER NOT NULL DEFAULT 0").execute(pool).await.ok();
-    }
-
-    // Initialize Default Roles if empty
-    let roles_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM roles").fetch_one(pool).await.unwrap_or(0);
-    if roles_count == 0 {
-        let now = Utc::now().to_rfc3339();
-        
-        // Admin: All permissions
-        sqlx::query(
-            "INSERT INTO roles (id, name, permissions, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-        )
-        .bind("admin")
-        .bind("Administrateur")
-        .bind("[\"*\"]") // Wildcard for all
-        .bind(1)
-        .bind(&now)
-        .bind(&now)
-        .execute(pool)
-        .await.ok();
-
-        // User: Basic permissions
-        sqlx::query(
-            "INSERT INTO roles (id, name, permissions, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-        )
-        .bind("user")
-        .bind("Utilisateur")
-        .bind("[\"server.read\", \"server.console.read\"]") // Minimal set
-        .bind(1)
-        .bind(&now)
-        .bind(&now)
-        .execute(pool)
-        .await.ok();
-    }
-
-    info!("✅ Migrations completed");
+    .await?;
     Ok(())
 }

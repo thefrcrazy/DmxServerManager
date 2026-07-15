@@ -1,149 +1,134 @@
-# 🎮 Draveur Manager
+# DmxServerManager
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/Backend-Rust-orange.svg)](https://www.rust-lang.org/)
-[![React](https://img.shields.io/badge/Frontend-React-blue.svg)](https://react.dev/)
+[![CI](https://github.com/thefrcrazy/DmxServerManager/actions/workflows/ci.yml/badge.svg)](https://github.com/thefrcrazy/DmxServerManager/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Gestionnaire de serveurs de jeux moderne et performant** — Inspiré de [Crafty Controller](https://craftycontrol.com/), conçu pour Hytale et au-delà.
+Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version 1.0 cible Linux AMD64 natif sur Ubuntu 24.04/glibc 2.39+, Windows AMD64 et les conteneurs Linux AMD64. Elle utilise SQLite, des comptes locaux et des sauvegardes locales.
 
-## 🚧 Statut du projet
+> [!IMPORTANT]
+> Pour une installation de production, utilisez exclusivement une release signée et ses checksums. Une archive construite directement depuis une branche Git n’est pas un artefact de publication.
 
-Ce projet est actuellement **en cours de développement** (WORK IN PROGRESS).
+## Fonctionnalités
 
-Des **fichiers de release** (binaires/archives) seront mis à disposition une fois une version stable finalisée.
+- installation et mise à jour transactionnelles avec staging, validation et rollback ;
+- supervision des groupes de processus, console, watchdog, métriques et journaux en temps réel par SSE ;
+- file de jobs persistante pour les installations, mises à jour, sauvegardes, restaurations et imports ;
+- sessions opaques, CSRF, RBAC, affectation des instances et journal d’audit ;
+- sauvegardes locales vérifiées, gestionnaire de fichiers cloisonné et imports ZIP sécurisés ;
+- tâches planifiées, notifications, chat d’équipe, webhooks Discord et catalogue local `.dmxpack` ;
+- interface React responsive en français et en anglais, pilotée par les capacités de chaque profil.
 
-![Dashboard Preview](docs/assets/dashboard-preview.png)
+## Profils 1.0
 
----
+| Profil | Distribution | Ports par défaut | Particularités |
+|---|---|---|---|
+| Hytale | downloader officiel, Java 25 géré | UDP 5520 | OAuth device par instance et mise à jour atomique |
+| Minecraft Java | Vanilla, Paper, Fabric, Forge, NeoForge, Spigot, Purpur et Quilt | TCP 25565 | version et loader épinglés, EULA explicite |
+| Minecraft Bedrock | archive officielle Linux ou Windows | UDP 19132 et 19133 | mondes, allowlist, permissions et packs |
+| Valheim | SteamCMD anonyme, AppID `896660` | UDP `N` et `N+1` | Crossplay optionnel et sauvegardes isolées |
+| Palworld | SteamCMD anonyme, AppID `2394010` | UDP 8211 | paramètres INI sûrs, REST/RCON désactivés par défaut |
+| Steam personnalisé | dépôt anonyme natif | déclarés par le profil | AppID numérique, exécutable relatif, aucun shell |
 
-## ✨ Fonctionnalités
+Les binaires de jeux ne sont jamais inclus dans l’image ou les releases. Les installateurs officiels et SteamCMD les téléchargent à la demande, selon leurs licences.
 
-- 🖥️ **Interface Web Premium** — Dashboard moderne avec SCSS, animations fluides
-- 🎮 **Multi-Serveurs** — Gérez plusieurs serveurs depuis une interface unique
-- 📺 **Console Live** — WebSocket temps réel pour les logs et commandes
-- 💾 **Backups Automatiques** — Sauvegardes planifiées avec compression
-- 🔔 **Discord Webhooks** — Notifications enrichies
-- ⏰ **Tâches Planifiées** — Redémarrages, mises à jour automatiques
-- 🔐 **Authentification JWT** — Sécurisé avec gestion des rôles
-- 🐳 **Docker Ready** — Déploiement simplifié
+Un AppID Steam personnalisé n’est pas automatiquement compatible. Le dépôt doit autoriser la connexion anonyme, fournir un exécutable natif AMD64 pour l’OS hôte et réussir la validation du profil. Les comptes Steam privés, Wine et Proton ne sont pas pris en charge en 1.0.
 
----
+Les builds officiels surveillent par défaut un manifeste de release Ed25519 avec checksums complets, à partir d’une URL et d’une clé publique intégrées au binaire. Le panneau affiche une procédure native ou une image Docker épinglée par digest uniquement pour une version strictement plus récente ; il n’exécute jamais la mise à niveau et ne se remplace pas lui-même.
 
-## 🚀 Installation
+## Architecture du dépôt
 
-### Linux (Docker)
+| Répertoire | Contenu |
+|---|---|
+| `backend/` | API Axum `/api/v1`, SQLite/SQLx, profils, jobs, sécurité et supervision |
+| `frontend/` | SPA React 19, Vite 8, TypeScript 6, client API généré depuis OpenAPI |
+| `install/` | image Docker, Compose, service systemd et installateur Windows |
+| `docs/` | installation, configuration, sécurité, profils et exploitation |
+| `.github/workflows/` | CI, artefacts signés, SBOM, image GHCR et publication |
 
-Plusieurs variantes de déploiement sont disponibles selon vos besoins.
+## Installation rapide avec Docker
 
-#### 1. Standard (HTTPS Auto-signé) — Rapide
-Idéal pour un usage sur serveur distant via IP directe. Par défaut, l'installation Docker utilise le HTTPS auto-signé pour chiffrer les communications.
-
-```bash
-docker compose -f install/linux/docker-compose.yml up -d
-```
-*Note : Le navigateur affichera une alerte de sécurité au premier accès, c'est normal.*
-
-**Accès HTTP (Désactiver HTTPS) :**
-Si vous préférez le HTTP simple, ajoutez `USE_HTTPS=false` dans votre `.env`.
-
-#### 2. Traefik (HTTPS Automatique) — Recommandé
-Gère automatiquement vos certificats SSL via Let's Encrypt.
-**Prérequis :** Créer un fichier `.env` avec vos infos :
-```bash
-DOMAIN_NAME=panel.votre-domaine.com
-ACME_EMAIL=votre@email.com
-```
-Lancer l'installation :
-```bash
-docker compose -f install/linux/docker-compose.traefik.yml up -d
-```
-
-### Linux (Sans Docker)
+Le réseau hôte est obligatoire : les instances réservent des ports TCP/UDP dynamiques. Le panneau reste sur loopback tant qu’aucun reverse proxy HTTPS n’est déclaré. Le bootstrap exige `cosign` 3 afin d’authentifier le digest GHCR avant toute écriture locale.
 
 ```bash
-git clone https://github.com/thefrcrazy/draveur-manager.git
-cd draveur-manager
-./install/linux/install.sh
+cd install/linux
+export DMX_VERSION='1.0.0'
+export DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>'
+sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct
+docker compose pull
+docker compose up -d
 ```
 
-### Windows
+Accès local : `http://localhost:5500`. Depuis un autre poste, utilisez temporairement un tunnel SSH :
 
-```powershell
-# Exécuter PowerShell en Administrateur
-irm https://raw.githubusercontent.com/thefrcrazy/draveur-manager/main/install/windows/install.ps1 | iex
+```bash
+ssh -L 5500:127.0.0.1:5500 user@server
 ```
 
----
+Pour une exposition publique avec Let's Encrypt :
 
-## 📖 Documentation
+```bash
+cd install/linux
+DMX_DOMAIN=panel.example.com \
+DMX_ACME_EMAIL=admin@example.com \
+DMX_VERSION='1.0.0' \
+DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>' \
+sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh traefik
+docker compose -f docker-compose.traefik.yml up -d
+```
 
-- [Guide d'Installation Complet](docs/INSTALL.md)
-- [Configuration des Serveurs](docs/SERVERS.md)
-- [API Reference](docs/API.md)
+L’image est `ghcr.io/thefrcrazy/dmx-server-manager`. Un volume nommé conserve `/data`; `/imports` est monté en lecture seule. Conservez `install/linux/secrets/master.key` hors des sauvegardes de données.
 
----
+## Installations natives
 
-## 🛠️ Stack Technique
+- Linux : [guide Linux et Docker](docs/INSTALLATION.md#linux-natif)
+- Windows : [guide Windows](docs/INSTALLATION.md#windows-natif)
+- Docker Desktop Windows : [contraintes spécifiques](docs/INSTALLATION.md#docker-desktop-windows)
 
-| Composant            | Technologie                      |
-| -------------------- | -------------------------------- |
-| **Frontend**         | React + Vite + TypeScript + SCSS |
-| **Backend**          | Rust + Axum                 |
-| **Base de données**  | SQLite                           |
-| **Runtime**          | Bun (frontend), Tokio (backend)  |
-| **Containerisation** | Docker + Docker Compose          |
+Emplacements par défaut :
 
----
+| Plateforme | Configuration | Données |
+|---|---|---|
+| Linux | `/etc/dmx-server-manager/config.toml` | `/var/lib/dmx-server-manager` |
+| Windows | `%PROGRAMDATA%\DmxServerManager\config\config.toml` | `%PROGRAMDATA%\DmxServerManager\data` |
+| Docker | `/data/config.toml` | `/data` |
 
-## 🎯 Roadmap
+## Sécurité
 
-### Core & V1
-- [x] **Project Architecture** : Initialisation de la structure modulaire et socle technique
-- [x] **Containerization** : Orchestration via Docker Compose pour un déploiement simplifié
-- [x] **RESTful API** : Développement de l'API backend robuste (Rust & Axum)
-- [x] **Real-time Console** : Flux de logs et commandes via WebSockets bidirectionnels
-- [x] **Premium UI/UX** : Dashboard réactif et interface utilisateur moderne
-- [x] **Centralized Configuration** : Système de gestion des paramètres du panel et des serveurs
-- [ ] **Audit Logs** : Journalisation complète des actions utilisateurs
-- [ ] **Lifecycle Management** : Système de mises à jour automatisées et manuelles
-- [ ] **RBAC & Permissions** : Gestion granulaire des accès serveurs et limitations d'interface
-- [ ] **Collaboration Hub** : Messagerie interne partagée et prise de notes d'équipe
-- [ ] **Extensibility Engine** : Injection de scripts/CSS personnalisés et documentation SDK
-- [ ] **Community Marketplace** : Plateforme de thèmes, plugins et annuaire de serveurs
+Une écoute non-loopback est refusée sans TLS ou reverse proxy explicitement déclaré. La clé maître XChaCha20-Poly1305 n’est stockée ni dans SQLite ni dans les sauvegardes. Les sessions utilisent des cookies opaques `HttpOnly`, `Secure` et `SameSite=Strict`; toutes les mutations exigent un jeton CSRF lié à la session.
 
-### Intégration Jeux
-- [ ] **Hytale (v1)**
-    - [x] **Lifecycle Management** : Installation, modification et suppression automatisées
-    - [x] **Live Console** : Interaction directe et exécution de commandes
-    - [x] **Log Streaming** : Analyse et affichage des journaux en temps réel
-    - [ ] **Disaster Recovery** : Système de sauvegardes et restaurations intégrées
-    - [ ] **Automated Tasks** : Planification avancée d'actions serveur
-    - [x] **Advanced File Manager** : Explorateur de fichiers haute performance (FTP-like)
-    - [ ] **Dynamic Configuration** : Édition temps réel des fichiers de configuration
-    - [ ] **Mod Management** : Gestion des mods via l'intégration [CurseForge](https://www.curseforge.com/hytale/search?class=mods)
-    - [x] **Player Insights** : Affichage détaillé et monitoring des joueurs connectés
-    - [x] **Performance Metrics** : Suivi des ressources (CPU, RAM, Disque)
-    - [ ] **Webhook Integration** : Alertes et notifications d'événements
-- [ ] **Minecraft** (Vanilla, Forge, Fabric, Spigot)
-- [ ] **Palworld**
-- [ ] **Valheim**
-- [ ] **Generic Steam Server** (Intégration SteamCMD)
+Console, fichiers, mods et profils Steam sont des capacités à haut risque réservées à des opérateurs de confiance. Consultez le [modèle de sécurité](docs/SECURITY.md) avant toute exposition réseau.
 
----
+## Documentation
 
-## 🤝 Contribution
+- [Installation](docs/INSTALLATION.md)
+- [Configuration](docs/CONFIGURATION.md)
+- [Profils et ports](docs/GAME_PROFILES.md)
+- [Exploitation, sauvegardes et dépannage](docs/OPERATIONS.md)
+- [Tâches planifiées](docs/SCHEDULES.md)
+- [Sécurité](docs/SECURITY.md)
+- [Mises à niveau et rollback](docs/UPGRADING.md)
 
-Les contributions sont les bienvenues ! Voir [CONTRIBUTING.md](CONTRIBUTING.md).
+L’API stable est préfixée par `/api/v1`; sa description OpenAPI est fournie avec chaque release. Il n’existe aucun endpoint de compatibilité avec les versions antérieures.
 
----
+## Développement
 
-## 📜 Licence
+Prérequis : Rust 1.97.0 et Bun 1.3.14. Le verrou Cargo et `frontend/bun.lock` sont obligatoires.
 
-Ce projet est sous licence [MIT](LICENSE).
+```bash
+cd backend
+cargo test --locked --all-targets --all-features
 
----
+cd ../frontend
+bun install --frozen-lockfile
+bun run lint
+bun run test
+bun run build
+```
 
-## 🙏 Crédits
+La CI contrôle aussi Clippy sans warning, les licences/advisories, l’audit Bun, les tests Playwright, le build Docker AMD64, le smoke test, Trivy et le SBOM SPDX. La configuration et les suites Playwright 1.0 sont obligatoires : leur absence ou un test en échec bloque la CI.
 
-- Inspiré par [Crafty Controller](https://craftycontrol.com/)
-- Basé sur [hytale-server](https://github.com/thefrcrazy/hytale-server)
+Les contributions doivent partir d’une branche dédiée et passer par une pull request. La publication est déclenchée uniquement par un tag `vX.Y.Z` correspondant à la version du crate et produit les binaires Linux/Windows, l’image GHCR, les checksums, le manifeste Ed25519, les signatures Sigstore et le SBOM.
+
+## Licence
+
+[MIT](LICENSE)
