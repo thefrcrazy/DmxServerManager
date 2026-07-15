@@ -15,7 +15,7 @@ Utilisez l’asset d’installateur dont le SHA-256 est inclus dans le manifeste
 ```bash
 sudo systemctl stop dmx-server-manager
 ls -1 /usr/lib/dmx-server-manager/releases
-sudo ln -sfn /usr/lib/dmx-server-manager/releases/1.0.0-<sha256> /usr/lib/dmx-server-manager/current
+sudo ln -sfn /usr/lib/dmx-server-manager/releases/1.0.1-<sha256> /usr/lib/dmx-server-manager/current
 sudo systemctl start dmx-server-manager
 ```
 
@@ -70,13 +70,13 @@ Chaque tag `v*` publie les archives Linux/Windows, les installateurs natifs, leu
 
 ```bash
 cosign verify-blob \
-  --bundle dmx-server-manager-v1.0.0-x86_64-unknown-linux-gnu.tar.gz.sha256.sigstore.json \
-  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.0 \
+  --bundle dmx-server-manager-v1.0.1-x86_64-unknown-linux-gnu.tar.gz.sha256.sigstore.json \
+  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  dmx-server-manager-v1.0.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+  dmx-server-manager-v1.0.1-x86_64-unknown-linux-gnu.tar.gz.sha256
 cosign verify-blob \
   --bundle dmx-server-manager-install-linux.sh.sigstore.json \
-  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.0 \
+  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   dmx-server-manager-install-linux.sh
 ```

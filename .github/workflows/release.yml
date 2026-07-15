@@ -199,7 +199,7 @@ jobs:
           fi
           test "$(sudo systemctl show dmx-server-manager.service --property=User --value)" = dmx-server-manager
           test "$(sudo systemctl show dmx-server-manager.service --property=KillMode --value)" = control-group
-          test "$(stat -c '%U:%G:%a' /etc/dmx-server-manager/master.key)" = root:dmx-server-manager:640
+          test "$(sudo stat -c '%U:%G:%a' /etc/dmx-server-manager/master.key)" = root:dmx-server-manager:640
           sudo -u dmx-server-manager test -r /etc/dmx-server-manager/master.key
           sudo systemctl start dmx-server-manager.service
           for attempt in $(seq 1 45); do
