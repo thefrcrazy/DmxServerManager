@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { v4 as uuidv4 } from "uuid";
 import { useLanguage } from "./LanguageContext";
 
 export type DialogType = "alert" | "confirm" | "prompt";
@@ -46,7 +45,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     const openDialog = useCallback((type: DialogType, message: string, options: Partial<DialogOptions> = {}): Promise<any> => {
         return new Promise((resolve) => {
             setActiveDialog({
-                id: uuidv4(),
+                id: crypto.randomUUID(),
                 type,
                 message,
                 resolve,

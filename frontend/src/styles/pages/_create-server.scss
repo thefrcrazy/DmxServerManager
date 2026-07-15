@@ -2,7 +2,8 @@
 
 .create-server-page {
     .creation-mode-tabs {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
         gap: 0.5rem;
         margin-bottom: 1.5rem;
         max-width: 800px;
@@ -23,6 +24,27 @@
         color: var(--color-text-primary);
         transition: all 0.2s ease;
 
+        small {
+            color: var(--color-text-muted);
+            font-size: var(--font-size-xs);
+            line-height: 1.35;
+        }
+
+        &:hover:not(:disabled) {
+            border-color: var(--color-border-hover);
+            background: var(--color-bg-elevated);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--color-accent);
+            outline-offset: 2px;
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         span {
             font-weight: 600;
             font-size: 0.875rem;
@@ -32,7 +54,19 @@
             background: var(--color-accent);
             border-color: var(--color-accent);
             color: white;
+
+            small { color: rgba(255, 255, 255, 0.82); }
         }
+    }
+
+    .server-creation-fieldset {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-4);
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
     }
 
     .server-config-card {
@@ -77,12 +111,24 @@
     }
 
     .zip-upload-zone {
+        display: flex;
+        width: 100%;
+        min-height: 9rem;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-2);
         border: 2px dashed var(--color-border);
         border-radius: 8px;
         padding: 2rem;
         text-align: center;
         cursor: pointer;
         background: var(--color-bg-secondary);
+        color: var(--color-text-primary);
+
+        &:hover:not(:disabled) { border-color: var(--color-accent); }
+        &:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+        &:disabled { opacity: 0.65; cursor: not-allowed; }
 
         &--active {
             background: rgba(16, 185, 129, 0.1);
@@ -135,6 +181,34 @@
         }
     }
 
+    .server-import-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-4);
+        margin-top: var(--spacing-6);
+        padding-top: var(--spacing-6);
+        border-top: 1px solid var(--color-border);
+
+        h3 {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-2);
+            font-size: var(--font-size-base);
+
+            svg { color: var(--color-accent); }
+        }
+    }
+
+    .server-import-progress {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: var(--spacing-3);
+
+        progress { width: 100%; accent-color: var(--color-accent); }
+        span { font-variant-numeric: tabular-nums; }
+    }
+
     .error-banner {
         margin-top: 1.5rem;
         padding: 0.75rem 1rem;
@@ -152,12 +226,15 @@
         gap: 1rem;
     }
 
-    .hidden-input {
-        display: none;
-    }
-
     .server-config-item--disabled {
         opacity: 0.7;
         cursor: not-allowed;
+    }
+
+    @include mobile {
+        .creation-mode-tabs { grid-template-columns: minmax(0, 1fr); }
+        .form-footer { align-items: stretch; flex-direction: column-reverse; }
+        .server-import-progress { grid-template-columns: minmax(0, 1fr) auto; }
+        .server-import-progress .btn { grid-column: 1 / -1; }
     }
 }

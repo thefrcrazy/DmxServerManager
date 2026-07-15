@@ -20,11 +20,14 @@ target/
 
 # OS
 .DS_Store
+*.DS_Store
+.syncthing.*
 Thumbs.db
 
 # Logs
 logs/
 *.log
+*_logs.txt
 
 # Database
 *.db
@@ -35,14 +38,20 @@ logs/
 /data/
 /servers/
 /backups/
+**/backups/
+backend/data/
 
 # Rust
-Cargo.lock
 **/*.rs.bk
 
 # Frontend
 frontend/.cache/
 frontend/node_modules/
+frontend/test-results/
+frontend/test-results-real/
+frontend/playwright-report/
+frontend/playwright-report-real/
+frontend/blob-report/
 
 # Help
 help/

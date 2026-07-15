@@ -11,27 +11,23 @@
 @use "components/console";
 @use "components/badge";
 @use "components/table";
-@use "components/directory-picker";
 @use "components/select";
 @use "components/form";
-@use "components/range";
-@use "components/installation-progress";
 @use "components/tabs";
 @use "components/server-list";
-@use "components/server-metrics";
 @use "components/feedback";
-@use "components/team-chat";
 @use "components/tooltip";
 
 
 // Pages
 @use "pages/login";
+@use "pages/mandatory-password";
 @use "pages/dashboard";
-@use "pages/settings";
 @use "pages/user-settings";
 @use "pages/servers";
 @use "pages/setup";
-@use "pages/users";
 @use "pages/server-detail";
 @use "pages/create-server";
-@use "pages/edit-user";
+@use "pages/administration";
+@use "pages/catalog";
+@use "pages/operations";

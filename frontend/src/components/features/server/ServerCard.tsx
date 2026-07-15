@@ -1,141 +1,102 @@
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
-import {
-    Play, Square, RotateCw, Skull, Server as ServerIcon, AlertTriangle, Users
-} from "lucide-react";
-import { Server } from "@/schemas/api";
-import { formatGB } from "@/utils/formatters";
+import { AlertTriangle, Download, Play, RotateCw, Server as ServerIcon, Skull, Square } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import type { Instance } from "@/schemas/api";
+import type { ServerAction } from "@/services/api/server.client";
+import { Button, Card, Tooltip } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Tooltip, Card, Button } from "@/components/ui";
-import { getGameLogo } from "@/utils/gameConfig";
+import { usePermission } from "@/hooks";
 
 interface ServerCardProps {
-    server: Server;
-    onAction: (id: string, action: "start" | "stop" | "restart" | "kill") => void;
+    server: Instance;
+    capabilities: ReadonlySet<string>;
+    onAction: (id: string, action: ServerAction) => void;
 }
 
-export default function ServerCard({ server, onAction }: ServerCardProps) {
+function stateLabel(server: Instance, t: (key: string) => string): string {
+    if (server.installation_state !== "installed") return t(`servers.installation_states.${server.installation_state}`);
+    return t(`servers.runtime_states.${server.runtime_state}`);
+}
+
+export default function ServerCard({ server, capabilities, onAction }: ServerCardProps) {
     const { t } = useLanguage();
+    const { hasPermission } = usePermission();
     const navigate = useNavigate();
+    const running = server.runtime_state === "running";
+    const transitioning = ["starting", "stopping"].includes(server.runtime_state)
+        || ["installing", "updating"].includes(server.installation_state);
+    const needsInstall = ["not_installed", "failed"].includes(server.installation_state);
+    const installed = server.installation_state === "installed";
+    const canInstall = capabilities.has("install") && hasPermission("server.update_game");
+    const canStartStop = capabilities.has("lifecycle");
 
-    const isRunning = server.status === "running";
-    const isMissing = server.status === "missing";
-    const isInstalling = server.status === "installing";
-    const isAuthRequired = server.status === "auth_required";
-
-    const handleCardClick = (e: React.MouseEvent) => {
-        // Prevent navigation if clicking on buttons
-        if ((e.target as HTMLElement).closest("button") || (e.target as HTMLElement).closest("a.btn")) {
-            return;
-        }
-        navigate(`/servers/${server.id}`);
+    const handleCardClick = (event: React.MouseEvent) => {
+        if (!(event.target as HTMLElement).closest("button")) navigate(`/servers/${server.id}`);
     };
-
-    const handleActionClick = (e: React.MouseEvent, action: "start" | "stop" | "restart" | "kill") => {
-        e.stopPropagation();
-        onAction(server.id, action);
+    const action = (event: React.MouseEvent, value: ServerAction) => {
+        event.stopPropagation();
+        onAction(server.id, value);
     };
 
     return (
-        <Card className={`server-card ${isRunning ? "server-card--running" : ""} ${isMissing ? "server-card--missing" : ""}`} onClick={(e: React.MouseEvent) => handleCardClick(e)}>
+        <Card
+            className={`server-card ${running ? "server-card--running" : ""}`}
+            onClick={handleCardClick}
+            role="link"
+            tabIndex={0}
+            aria-label={`${t("servers.open_server")} ${server.name}`}
+            onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigate(`/servers/${server.id}`);
+                }
+            }}
+        >
             <div className="server-card__header">
-                <div className={`server-card__icon ${isRunning ? "server-card__icon--running" : ""} ${isMissing ? "server-card__icon--missing" : ""} ${isInstalling ? "server-card__icon--installing" : ""}`}>
-                    {getGameLogo(server.game_type) ? (
-                        <img src={getGameLogo(server.game_type)} alt={server.game_type} />
-                    ) : isMissing ? (
-                        <AlertTriangle size={20} />
-                    ) : isAuthRequired ? (
-                        <AlertTriangle size={20} className="text-warning" />
-                    ) : isInstalling ? (
-                        <RotateCw size={20} className="spin" />
-                    ) : (
-                        <ServerIcon size={20} />
-                    )}
+                <div className={`server-card__icon ${running ? "server-card__icon--running" : ""}`}>
+                    {server.runtime_state === "crashed" || server.installation_state === "failed"
+                        ? <AlertTriangle size={20} />
+                        : transitioning ? <RotateCw size={20} className="spin" /> : <ServerIcon size={20} />}
                 </div>
                 <div>
                     <h3 className="server-card__title">{server.name}</h3>
                     <div className="server-card__meta">
-                        <span>{server.game_type.charAt(0).toUpperCase() + server.game_type.slice(1)}</span>
-                        <span>•</span>
-                        <span className={`badge badge--${isMissing ? "warning" : isAuthRequired ? "warning" : isInstalling ? "info" : isRunning ? "success" : "danger"}`}>
-                            {isMissing ? t("servers.missing") :
-                                isAuthRequired ? t("servers.auth_required") :
-                                    isInstalling ? t("servers.installing").replace("...", "") :
-                                        isRunning ? t("servers.online") : t("servers.offline")}
+                        <span>{server.profile_id}</span><span>•</span>
+                        <span className={`badge badge--${running ? "success" : needsInstall ? "warning" : "info"}`}>
+                            {stateLabel(server, t)}
                         </span>
                     </div>
                 </div>
             </div>
 
             <div className="server-card__stats">
-                <div className="server-card__stat-row">
-                    <span className="server-card__stat-label">
-                        <Users size={14} /> {t("servers.players")}
-                    </span>
-                    <span>{server.players?.length || 0} / {server.max_players || "?"}</span>
-                </div>
-
-                <div className="usage-bar-container">
-                    <div className="server-card__progress">
-                        <span className="text-muted">CPU</span>
-                        <span>{server.cpu_usage.toFixed(1)}%</span>
-                    </div>
-                    <div className="server-card__track">
-                        <div className="server-card__fill server-card__fill--cpu" style={{ width: `${Math.min(100, server.cpu_usage)}%` }} />
-                    </div>
-                </div>
-
-                <div className="usage-bar-container">
-                    <div className="server-card__progress">
-                        <span className="text-muted">RAM</span>
-                        <span>{formatGB(server.memory_usage_bytes)} / {formatGB(server.max_memory_bytes)}</span>
-                    </div>
-                    <div className="server-card__track">
-                        <div
-                            className={`server-card__fill ${server.memory_usage_bytes > server.max_memory_bytes ? "server-card__fill--danger" : "server-card__fill--mem"}`}
-                            style={{ width: `${Math.min(100, (server.memory_usage_bytes / (server.max_memory_bytes || 1)) * 100)}%` }}
-                        />
-                    </div>
-                </div>
+                <div className="server-card__stat-row"><span>{t("servers.profile")}</span><span>r{server.profile_revision}</span></div>
+                <div className="server-card__stat-row"><span>{t("servers.configuration")}</span><span>v{server.config_version}</span></div>
+                {server.installed_version && <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version}{server.installed_build ? ` · ${server.installed_build}` : ""}</span></div>}
+                <div className="server-card__stat-row"><span>{t("servers.watchdog")}</span><span>{server.watchdog_enabled ? t("common.active") : t("common.inactive")}</span></div>
             </div>
 
             <div className="server-card__actions">
-                {isMissing ? (
-                    <div className="text-danger flex items-center gap-2 text-sm">
-                        <AlertTriangle size={16} /> {t("servers.corrupt")}
-                    </div>
-                ) : isInstalling ? (
-                    <div className="text-info flex items-center gap-2 text-sm">
-                        <RotateCw size={16} className="spin" /> {t("servers.installing")}
-                    </div>
-                ) : isAuthRequired ? (
-                    <Link to={`/servers/${server.id}`} className="btn btn--sm btn--warning w-full justify-center">
-                        {t("servers.authenticate")}
-                    </Link>
-                ) : isRunning ? (
-                    <>
-                        <Tooltip content={t("servers.restart")} position="top">
-                            <Button variant="ghost" size="icon" className="text-info" onClick={(e) => handleActionClick(e, "restart")}>
-                                <RotateCw size={18} />
-                            </Button>
-                        </Tooltip>
-                        <Tooltip content={t("servers.stop")} position="top">
-                            <Button variant="ghost" size="icon" className="text-danger" onClick={(e) => handleActionClick(e, "stop")}>
-                                <Square size={18} />
-                            </Button>
-                        </Tooltip>
-                        <Tooltip content={t("servers.kill")} position="top">
-                            <Button variant="ghost" size="icon" className="text-danger" onClick={(e) => handleActionClick(e, "kill")}>
-                                <Skull size={18} />
-                            </Button>
-                        </Tooltip>
-                    </>
-                ) : (
-                    <Button variant="success" size="sm" fullWidth onClick={(e) => handleActionClick(e, "start")}>
-                        <Play size={16} />
-                        {t("servers.start")}
+                {needsInstall && canInstall ? (
+                    <Button variant="success" size="sm" fullWidth onClick={(event) => action(event, "install")}>
+                        <Download size={16} aria-hidden="true" />{t("servers.install")}
                     </Button>
-                )}
+                ) : running && canStartStop ? (
+                    <>
+                        {hasPermission("server.start") && hasPermission("server.stop") && <Tooltip content={t("servers.restart")} position="top">
+                            <Button aria-label={t("servers.restart")} variant="ghost" size="icon" onClick={(event) => action(event, "restart")}><RotateCw size={18} /></Button>
+                        </Tooltip>}
+                        {hasPermission("server.stop") && <Tooltip content={t("servers.stop")} position="top">
+                            <Button aria-label={t("servers.stop")} variant="ghost" size="icon" onClick={(event) => action(event, "stop")}><Square size={18} /></Button>
+                        </Tooltip>}
+                        {hasPermission("server.kill") && <Tooltip content={t("servers.kill")} position="top">
+                            <Button aria-label={t("servers.kill")} variant="ghost" size="icon" onClick={(event) => action(event, "kill")}><Skull size={18} /></Button>
+                        </Tooltip>}
+                    </>
+                ) : !running && canStartStop && installed && hasPermission("server.start") ? (
+                    <Button variant="success" size="sm" fullWidth disabled={transitioning} onClick={(event) => action(event, "start")}>
+                        <Play size={16} />{t("servers.start")}
+                    </Button>
+                ) : null}
             </div>
         </Card>
     );

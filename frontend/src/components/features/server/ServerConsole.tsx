@@ -1,28 +1,21 @@
 import React, { useEffect, useRef } from "react";
-import Ansi from "ansi-to-react";
-import { Terminal, Send, AlertTriangle, ExternalLink } from "lucide-react";
+import SafeAnsi from "@/components/shared/SafeAnsi";
+import { Terminal, Send } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Tooltip, Button } from "@/components/ui";
-import { enhanceLogContent } from "@/utils/logUtils";
 
 interface ServerConsoleProps {
     logs: string[];
     isConnected: boolean;
     isRunning: boolean;
-    isAuthRequired?: boolean;
-    serverType?: string;
     onSendCommand: (command: string) => void;
-    onOpenAuth?: () => void;
 }
 
 export default function ServerConsole({
     logs,
     isConnected,
     isRunning,
-    isAuthRequired = false,
-    serverType = "hytale",
     onSendCommand,
-    onOpenAuth,
 }: ServerConsoleProps) {
     const { t } = useLanguage();
     const consoleContentRef = useRef<HTMLDivElement>(null);
@@ -76,22 +69,6 @@ export default function ServerConsole({
                     ref={consoleContentRef}
                     onScroll={handleScroll}
                 >
-                    {isAuthRequired && (
-                        <div className="auth-alert-banner">
-                            <div className="auth-alert-banner__content">
-                                <AlertTriangle size={18} className="text-warning" />
-                                <span>{t("installation.auth_required")}</span>
-                            </div>
-                            <Button 
-                                variant="secondary" 
-                                size="sm" 
-                                onClick={onOpenAuth}
-                                icon={<ExternalLink size={14} />}
-                            >
-                                {t("installation.action_required")}
-                            </Button>
-                        </div>
-                    )}
                     {logs.length === 0 ? (
                         <div className="console-output__empty">
                             <Terminal size={48} />
@@ -106,21 +83,6 @@ export default function ServerConsole({
                         </div>
                     ) : (
                         logs.map((log, i) => {
-                            // Auto-translate known Hytale keys logic preserved
-                            let displayLog = log;
-                            if (log.includes("server.commands.auth.login.device.success")) {
-                                displayLog = displayLog.replace(
-                                    "server.commands.auth.login.device.success",
-                                    t("hytale.server.commands.auth.login.device.success"),
-                                );
-                            }
-                            if (log.includes("server.commands.auth.login.persistence.saved")) {
-                                displayLog = displayLog.replace(
-                                    /server\.commands\.auth\.login\.persistence\.saved(?:\{.*?\})?/,
-                                    t("hytale.server.commands.auth.login.persistence.saved"),
-                                );
-                            }
-
                             const isError = log.includes("[ERROR]") || log.includes("ERROR") || log.includes("Exception");
                             const isWarn = log.includes("[WARN]") || log.includes("WARN");
                             const isInfo = log.includes("[INFO]") || log.includes("INFO");
@@ -136,9 +98,9 @@ export default function ServerConsole({
                                         ${isCommand ? "console-line--command" : ""}
                                     `}
                                 >
-                                    <Ansi useClasses={false}>
-                                        {enhanceLogContent(displayLog, serverType)}
-                                    </Ansi>
+                                    <SafeAnsi useClasses={false}>
+                                        {log}
+                                    </SafeAnsi>
                                 </div>
                             );
                         })
@@ -164,6 +126,7 @@ export default function ServerConsole({
                             type="submit"
                             variant="primary"
                             size="icon"
+                            aria-label={t("common.send")}
                             disabled={!isConnected || !isRunning || !command.trim()}
                         >
                             <Send size={16} />

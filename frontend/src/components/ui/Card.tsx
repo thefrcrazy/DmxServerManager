@@ -1,11 +1,10 @@
 import React from "react";
 
-interface CardProps {
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
     title?: string;
     icon?: React.ReactNode;
     children: React.ReactNode;
     className?: string;
-    onClick?: (e: React.MouseEvent) => void;
     footer?: React.ReactNode;
     headerAction?: React.ReactNode;
 }
@@ -17,12 +16,14 @@ const Card: React.FC<CardProps> = ({
     className = "",
     onClick,
     footer,
-    headerAction
+    headerAction,
+    ...props
 }) => {
     return (
         <div 
             className={`card ${onClick ? "card--clickable" : ""} ${className}`}
             onClick={onClick}
+            {...props}
         >
             {(title || icon) && (
                 <div className="card__header">

@@ -5,7 +5,10 @@
 # rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "linker=clang", "-C", "link-arg=-fuse-ld=lld"]
+# Keep the Linux release linker explicit and available in the pinned official
+# Rust image; this avoids an undeclared Clang/LLD dependency in clean builders.
+linker = "gcc"
+rustflags = ["-C", "link-arg=-fuse-ld=bfd"]
 
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "linker=lld-link.exe"]

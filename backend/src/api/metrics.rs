@@ -1,132 +1,97 @@
 use axum::{
-    routing::get,
-    extract::{Path, Query, State},
     Json, Router,
+    extract::{Path, Query, State},
+    routing::get,
 };
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::debug;
-use uuid::Uuid;
+use sqlx::FromRow;
 
-use crate::core::AppState;
-use crate::core::error::AppError;
+use crate::{
+    api::auth::{AuthUser, authorize_instance},
+    core::{AppState, error::AppError},
+};
 
-/// A single metric data point
-#[derive(Debug, Serialize, sqlx::FromRow)]
-pub struct MetricDataPoint {
+const MAX_POINTS: i64 = 10_000;
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MetricsQuery {
+    #[serde(default = "default_period")]
+    period: String,
+}
+
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct MetricPoint {
     pub id: String,
-    pub server_id: String,
     pub cpu_usage: f64,
     pub memory_bytes: i64,
     pub disk_bytes: i64,
-    pub player_count: i32,
+    pub uptime_seconds: i64,
     pub recorded_at: String,
 }
 
-/// Response for metrics history
 #[derive(Debug, Serialize)]
-pub struct MetricsHistoryResponse {
-    pub server_id: String,
-    pub period: String,
-    pub data: Vec<MetricDataPoint>,
-}
-
-/// Query parameters for metrics endpoint
-#[derive(Debug, Deserialize)]
-pub struct MetricsQuery {
-    /// Period: 1h, 6h, 1d, 7d (default: 1d)
-    pub period: Option<String>,
+struct MetricsHistory {
+    server_id: String,
+    period: String,
+    points: Vec<MetricPoint>,
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/:id/metrics", get(get_server_metrics))
+    Router::new().route("/servers/{id}/metrics", get(history))
 }
 
-/// GET /api/v1/servers/:id/metrics?period=1d
-/// Returns historical metrics for a server
-async fn get_server_metrics(
+async fn history(
     State(state): State<AppState>,
+    auth: AuthUser,
     Path(server_id): Path<String>,
     Query(query): Query<MetricsQuery>,
-) -> Result<Json<MetricsHistoryResponse>, AppError> {
-    let period = query.period.unwrap_or_else(|| "1d".to_string());
-    
-    // Calculate time threshold based on period
-    let hours = match period.as_str() {
+) -> Result<Json<MetricsHistory>, AppError> {
+    uuid::Uuid::parse_str(&server_id)
+        .map_err(|_| AppError::BadRequest("servers.invalid_id".into()))?;
+    authorize_instance(&state, &auth, &server_id, "server.read").await?;
+    let hours = match query.period.as_str() {
         "1h" => 1,
         "6h" => 6,
         "1d" => 24,
         "7d" => 24 * 7,
-        _ => 24, // Default to 1 day
+        _ => return Err(AppError::BadRequest("metrics.invalid_period".into())),
     };
-    
-    let threshold = Utc::now() - Duration::hours(hours);
-    let threshold_str = threshold.to_rfc3339();
-    
-    debug!(server_id = %server_id, period = %period, threshold = %threshold_str, "Fetching metrics history");
-    
-    // Fetch metrics from database
-    let metrics: Vec<MetricDataPoint> = sqlx::query_as(
+    let threshold = (Utc::now() - Duration::hours(hours)).to_rfc3339();
+    let mut points: Vec<MetricPoint> = sqlx::query_as(
         r#"
-        SELECT id, server_id, cpu_usage, memory_bytes, disk_bytes, player_count, recorded_at
+        SELECT id, cpu_usage, memory_bytes, disk_bytes, uptime_seconds, recorded_at
         FROM server_metrics
         WHERE server_id = ? AND recorded_at >= ?
-        ORDER BY recorded_at ASC
-        "#
+        ORDER BY recorded_at DESC
+        LIMIT ?
+        "#,
     )
     .bind(&server_id)
-    .bind(&threshold_str)
+    .bind(threshold)
+    .bind(MAX_POINTS)
     .fetch_all(&state.pool)
     .await?;
-    
-    Ok(Json(MetricsHistoryResponse {
+    points.reverse();
+    Ok(Json(MetricsHistory {
         server_id,
-        period,
-        data: metrics,
+        period: query.period,
+        points,
     }))
 }
 
-/// Insert a new metric data point (called from process manager)
-pub async fn insert_metric(
-    pool: &crate::core::database::DbPool,
-    server_id: &str,
-    cpu_usage: f64,
-    memory_bytes: i64,
-    disk_bytes: i64,
-    player_count: i32,
-) -> Result<(), sqlx::Error> {
-    let id = Uuid::new_v4().to_string();
-    let now = Utc::now().to_rfc3339();
-    
-    sqlx::query(
-        r#"
-        INSERT INTO server_metrics (id, server_id, cpu_usage, memory_bytes, disk_bytes, player_count, recorded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        "#
-    )
-    .bind(&id)
-    .bind(server_id)
-    .bind(cpu_usage)
-    .bind(memory_bytes)
-    .bind(disk_bytes)
-    .bind(player_count)
-    .bind(&now)
-    .execute(pool)
-    .await?;
-    
-    Ok(())
+fn default_period() -> String {
+    "1d".into()
 }
 
-/// Cleanup old metrics (called periodically)
-pub async fn cleanup_old_metrics(pool: &crate::core::database::DbPool, retention_days: i64) -> Result<u64, sqlx::Error> {
-    let threshold = Utc::now() - Duration::days(retention_days);
-    let threshold_str = threshold.to_rfc3339();
-    
-    let result = sqlx::query("DELETE FROM server_metrics WHERE recorded_at < ?")
-        .bind(&threshold_str)
-        .execute(pool)
-        .await?;
-    
-    Ok(result.rows_affected())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_metrics_period_is_bounded() {
+        assert_eq!(default_period(), "1d");
+        assert_eq!(MAX_POINTS, 10_000);
+    }
 }

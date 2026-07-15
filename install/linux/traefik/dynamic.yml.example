@@ -1,0 +1,28 @@
+http:
+  routers:
+    dmx-server-manager:
+      rule: Host(`panel.example.com`)
+      entryPoints:
+        - websecure
+      service: dmx-server-manager
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - dmx-security-headers
+
+  services:
+    dmx-server-manager:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:5500
+
+  middlewares:
+    dmx-security-headers:
+      headers:
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000

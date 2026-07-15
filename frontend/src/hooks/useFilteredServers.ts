@@ -1,79 +1,51 @@
-import { useState, useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { ServerAction } from "@/services/api/server.client";
 import { useServers } from "./useServers";
 
 interface UseFilteredServersOptions {
     initialSearch?: string;
-    initialGameType?: string;
+    initialProfile?: string;
     initialViewMode?: "grid" | "list";
 }
 
 export function useFilteredServers(options: UseFilteredServersOptions = {}) {
-    const {
-        servers,
-        loading,
-        error,
-        refresh,
-        startServer,
-        stopServer,
-        restartServer,
-        killServer,
-    } = useServers();
+    const serverState = useServers();
+    const [search, setSearch] = useState(options.initialSearch ?? "");
+    const [profileId, setProfileId] = useState(options.initialProfile ?? "all");
+    const [viewMode, setViewMode] = useState<"grid" | "list">(options.initialViewMode ?? "grid");
 
-    const [search, setSearch] = useState(options.initialSearch || "");
-    const [gameType, setGameType] = useState(options.initialGameType || "all");
-    const [viewMode, setViewMode] = useState<"grid" | "list">(options.initialViewMode || "grid");
+    const servers = useMemo(() => serverState.servers.filter((server) => (
+        server.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())
+        && (profileId === "all" || server.profile_id === profileId)
+    )), [profileId, search, serverState.servers]);
 
-    const filteredServers = useMemo(() => {
-        return servers.filter(server => {
-            const matchesSearch = server.name.toLowerCase().includes(search.toLowerCase());
-            const matchesGameType = gameType === "all" || server.game_type === gameType;
-            return matchesSearch && matchesGameType;
-        });
-    }, [servers, search, gameType]);
-
-    const gameTypes = useMemo(() => {
-        const types = new Set(servers.map(s => s.game_type));
-        return Array.from(types);
-    }, [servers]);
+    const profileIds = useMemo(
+        () => [...new Set(serverState.servers.map((server) => server.profile_id))].sort(),
+        [serverState.servers],
+    );
 
     const stats = useMemo(() => ({
-        total: servers.length,
-        online: servers.filter(s => s.status === "running").length,
-        offline: servers.filter(s => s.status === "stopped" || s.status === "offline").length,
-    }), [servers]);
+        total: serverState.servers.length,
+        online: serverState.onlineCount,
+        offline: serverState.offlineCount,
+    }), [serverState.offlineCount, serverState.onlineCount, serverState.servers.length]);
 
-    const handleServerAction = useCallback(async (action: "start" | "stop" | "restart" | "kill", serverId: string) => {
-        switch (action) {
-            case "start":
-                return await startServer(serverId);
-            case "stop":
-                return await stopServer(serverId);
-            case "restart":
-                return await restartServer(serverId);
-            case "kill":
-                return await killServer(serverId);
-        }
-    }, [startServer, stopServer, restartServer, killServer]);
+    const handleServerAction = useCallback(
+        (action: ServerAction, serverId: string) => serverState.runAction(serverId, action),
+        [serverState],
+    );
 
     return {
-        // Data
-        servers: filteredServers,
-        allServers: servers,
-        loading,
-        error,
+        ...serverState,
+        servers,
         stats,
-        gameTypes,
-
-        // Filters
+        profileIds,
         search,
         setSearch,
-        gameType,
-        setGameType,
+        gameType: profileId,
+        setGameType: setProfileId,
         viewMode,
         setViewMode,
-
-        // Actions
-        refresh,
         handleServerAction,
     };
 }

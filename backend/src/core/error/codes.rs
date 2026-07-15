@@ -15,7 +15,8 @@ pub enum ErrorCode {
     AuthUserNotFound,
     AuthPasswordTooWeak,
     AuthRateLimited,
-    
+    AuthPasswordChangeRequired,
+
     // Server errors (SRV_xxx)
     ServerNotFound,
     ServerAlreadyRunning,
@@ -24,7 +25,7 @@ pub enum ErrorCode {
     ServerStopFailed,
     ServerDirMissing,
     ServerInstalling,
-    
+
     // File system errors (FS_xxx)
     FileNotFound,
     FileReadError,
@@ -33,23 +34,23 @@ pub enum ErrorCode {
     FileMoveError,
     FilePathInvalid,
     FileAccessDenied,
-    
+
     // Database errors (DB_xxx)
     DatabaseConnection,
     DatabaseQuery,
     DatabaseMigration,
-    
+
     // Backup errors (BKP_xxx)
     BackupNotFound,
     BackupCreateFailed,
     BackupRestoreFailed,
     BackupDeleteFailed,
-    
+
     // Validation errors (VAL_xxx)
     ValidationFailed,
     InvalidInput,
     MissingRequiredField,
-    
+
     // System errors (SYS_xxx)
     InternalError,
     ServiceUnavailable,
@@ -68,7 +69,8 @@ impl ErrorCode {
             ErrorCode::AuthUserNotFound => "AUTH_006",
             ErrorCode::AuthPasswordTooWeak => "AUTH_007",
             ErrorCode::AuthRateLimited => "AUTH_008",
-            
+            ErrorCode::AuthPasswordChangeRequired => "AUTH_009",
+
             // Server
             ErrorCode::ServerNotFound => "SRV_001",
             ErrorCode::ServerAlreadyRunning => "SRV_002",
@@ -77,7 +79,7 @@ impl ErrorCode {
             ErrorCode::ServerStopFailed => "SRV_005",
             ErrorCode::ServerDirMissing => "SRV_006",
             ErrorCode::ServerInstalling => "SRV_007",
-            
+
             // File system
             ErrorCode::FileNotFound => "FS_001",
             ErrorCode::FileReadError => "FS_002",
@@ -86,23 +88,23 @@ impl ErrorCode {
             ErrorCode::FileMoveError => "FS_005",
             ErrorCode::FilePathInvalid => "FS_006",
             ErrorCode::FileAccessDenied => "FS_007",
-            
+
             // Database
             ErrorCode::DatabaseConnection => "DB_001",
             ErrorCode::DatabaseQuery => "DB_002",
             ErrorCode::DatabaseMigration => "DB_003",
-            
+
             // Backup
             ErrorCode::BackupNotFound => "BKP_001",
             ErrorCode::BackupCreateFailed => "BKP_002",
             ErrorCode::BackupRestoreFailed => "BKP_003",
             ErrorCode::BackupDeleteFailed => "BKP_004",
-            
+
             // Validation
             ErrorCode::ValidationFailed => "VAL_001",
             ErrorCode::InvalidInput => "VAL_002",
             ErrorCode::MissingRequiredField => "VAL_003",
-            
+
             // System
             ErrorCode::InternalError => "SYS_001",
             ErrorCode::ServiceUnavailable => "SYS_002",

@@ -1,3 +1,3 @@
 // Services centralisés
 export { apiService, default } from "./api";
-export type { ApiResponse, ApiError } from "./api/base.client";
+export type { ApiResponse, ClientResponse } from "./api/base.client";

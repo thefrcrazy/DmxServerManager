@@ -1,137 +1,79 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import apiService from "../services/api";
-import { Server } from "../schemas/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { GameProfile, Instance } from "@/schemas/api";
+import apiService from "@/services/api";
+import { CreateServerInput, ServerAction } from "@/services/api/server.client";
 
-interface UseServersReturn {
-    servers: Server[];
-    loading: boolean;
-    error: string | null;
-    refresh: () => Promise<void>;
-    startServer: (id: string) => Promise<boolean>;
-    stopServer: (id: string) => Promise<boolean>;
-    restartServer: (id: string) => Promise<boolean>;
-    reinstallServer: (id: string) => Promise<boolean>;
-    deleteServer: (id: string) => Promise<boolean>;
-    killServer: (id: string) => Promise<boolean>;
-    createServer: (data: Omit<Server, "id" | "status" | "created_at" | "updated_at">) => Promise<string | null>;
-    // Computed values
-    onlineCount: number;
-    offlineCount: number;
-}
-
-export function useServers(): UseServersReturn {
-    const [servers, setServers] = useState<Server[]>([]);
+export function useServers() {
+    const [servers, setServers] = useState<Instance[]>([]);
+    const [profiles, setProfiles] = useState<GameProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
         setLoading(true);
-        setError(null);
-        try {
-            const response = await apiService.servers.getServers();
-            setServers(response.data || []);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Erreur de chargement");
-        } finally {
-            setLoading(false);
+        const [response, profilesResponse] = await Promise.all([
+            apiService.servers.getServers(),
+            apiService.profiles.getProfiles(),
+        ]);
+        if (response.success) {
+            setServers(response.data);
+            setError(null);
+        } else {
+            setError(response.error.message);
         }
+        if (profilesResponse.success) setProfiles(profilesResponse.data);
+        setLoading(false);
     }, []);
 
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
+    useEffect(() => { void refresh(); }, [refresh]);
 
-    const startServer = useCallback(async (id: string): Promise<boolean> => {
-        try {
-            await apiService.servers.startServer(id);
-            await refresh();
-            return true;
-        } catch {
+    const runAction = useCallback(async (id: string, action: ServerAction): Promise<boolean> => {
+        const response = await apiService.servers.runAction(id, action);
+        if (!response.success) {
+            setError(response.error.message);
             return false;
         }
-    }, [refresh]);
-
-    const stopServer = useCallback(async (id: string): Promise<boolean> => {
-        try {
-            await apiService.servers.stopServer(id);
-            await refresh();
-            return true;
-        } catch {
-            return false;
-        }
-    }, [refresh]);
-
-    const restartServer = useCallback(async (id: string): Promise<boolean> => {
-        try {
-            await apiService.servers.restartServer(id);
-            await refresh();
-            return true;
-        } catch {
-            return false;
-        }
+        await refresh();
+        return true;
     }, [refresh]);
 
     const deleteServer = useCallback(async (id: string): Promise<boolean> => {
-        try {
-            await apiService.servers.deleteServer(id);
-            setServers(prev => prev.filter(s => s.id !== id));
-            return true;
-        } catch {
+        const response = await apiService.servers.deleteServer(id);
+        if (!response.success) {
+            setError(response.error.message);
             return false;
         }
+        setServers((current) => current.filter((server) => server.id !== id));
+        return true;
     }, []);
 
-    const killServer = useCallback(async (id: string): Promise<boolean> => {
-        try {
-            await apiService.servers.killServer(id);
-            await refresh();
-            return true;
-        } catch {
-            return false;
-        }
-    }, [refresh]);
-
-    const reinstallServer = useCallback(async (id: string): Promise<boolean> => {
-        try {
-            await apiService.servers.reinstallServer(id);
-            // Status might need update but usually it stays 'running' or 'stopped' until process manager picks it up
-            return true;
-        } catch {
-            return false;
-        }
-    }, []);
-
-    const createServer = useCallback(async (data: any): Promise<string | null> => {
-        try {
-            const response = await apiService.servers.createServer(data);
-            await refresh();
-            return response.data?.id || null;
-        } catch {
+    const createServer = useCallback(async (data: CreateServerInput): Promise<string | null> => {
+        const response = await apiService.servers.createServer(data);
+        if (!response.success) {
+            setError(response.error.message);
             return null;
         }
-    }, [refresh]);
+        setServers((current) => [response.data, ...current]);
+        return response.data.id;
+    }, []);
 
-    const onlineCount = useMemo(() =>
-        servers.filter(s => s.status === "running").length,
-        [servers]
+    const onlineCount = useMemo(
+        () => servers.filter((server) => server.runtime_state === "running").length,
+        [servers],
     );
-
-    const offlineCount = useMemo(() =>
-        servers.filter(s => s.status === "stopped").length,
-        [servers]
+    const offlineCount = useMemo(
+        () => servers.filter((server) => server.runtime_state !== "running").length,
+        [servers],
     );
 
     return {
         servers,
+        profiles,
         loading,
         error,
         refresh,
-        startServer,
-        stopServer,
-        restartServer,
-        reinstallServer,
+        runAction,
         deleteServer,
-        killServer,
         createServer,
         onlineCount,
         offlineCount,

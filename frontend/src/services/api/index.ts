@@ -1,36 +1,39 @@
+import { AdminClient } from "./admin.client";
 import { AuthClient } from "./auth.client";
+import { BackupsClient } from "./backups.client";
+import { ChatClient } from "./chat.client";
+import { CatalogClient } from "./catalog.client";
+import { FilesClient } from "./files.client";
+import { ImportsClient } from "./imports.client";
+import { JobsClient } from "./jobs.client";
+import { MetricsClient } from "./metrics.client";
+import { ModsClient } from "./mods.client";
+import { NotificationsClient } from "./notifications.client";
+import { ProfileClient } from "./profile.client";
+import { ReleasesClient } from "./releases.client";
 import { ServerClient } from "./server.client";
-import { BackupClient } from "./backup.client";
+import { SchedulesClient } from "./schedules.client";
 import { SystemClient } from "./system.client";
+import { WebhooksClient } from "./webhooks.client";
 
 class ApiService {
-    public auth = new AuthClient();
-    public servers = new ServerClient();
-    public backups = new BackupClient();
-    public system = new SystemClient();
-
-    // Compatibilité descendante (Legacy support)
-    // On redirige les méthodes courantes vers les nouveaux clients
-    async login(u: string, p: string) { return this.auth.login(u, p); }
-    async getServers() { return this.servers.getServers(); }
-    async getServer(id: string) { return this.servers.getServer(id); }
-    async createServer(d: any) { return this.servers.createServer(d); }
-    async updateServer(id: string, d: any) { return this.servers.updateServer(id, d); }
-    async deleteServer(id: string) { return this.servers.deleteServer(id); }
-    async startServer(id: string) { return this.servers.startServer(id); }
-    async stopServer(id: string) { return this.servers.stopServer(id); }
-    async restartServer(id: string) { return this.servers.restartServer(id); }
-    async killServer(id: string) { return this.servers.killServer(id); }
-    async reinstallServer(id: string) { return this.servers.reinstallServer(id); }
-    async sendCommand(id: string, c: string) { return this.servers.sendCommand(id, c); }
-    async getServerMetrics(id: string, p?: string) { return this.servers.getServerMetrics(id, p); }
-    async readFile(id: string, path: string) { return this.servers.readFile(id, path); }
-    async getBackups(sid?: string) { return this.backups.getBackups(sid); }
-    async createBackup(sid: string) { return this.backups.createBackup(sid); }
-    async deleteBackup(id: string) { return this.backups.deleteBackup(id); }
-    async restoreBackup(id: string) { return this.backups.restoreBackup(id); }
-    async getSettings() { return this.system.getSettings(); }
-    async updateSettings(d: any) { return this.system.updateSettings(d); }
+    readonly admin = new AdminClient();
+    readonly auth = new AuthClient();
+    readonly backups = new BackupsClient();
+    readonly chat = new ChatClient();
+    readonly catalog = new CatalogClient();
+    readonly files = new FilesClient();
+    readonly imports = new ImportsClient();
+    readonly jobs = new JobsClient();
+    readonly metrics = new MetricsClient();
+    readonly mods = new ModsClient();
+    readonly notifications = new NotificationsClient();
+    readonly profiles = new ProfileClient();
+    readonly releases = new ReleasesClient();
+    readonly servers = new ServerClient();
+    readonly schedules = new SchedulesClient();
+    readonly system = new SystemClient();
+    readonly webhooks = new WebhooksClient();
 }
 
 export const apiService = new ApiService();

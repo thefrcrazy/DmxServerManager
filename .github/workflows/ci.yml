@@ -1,0 +1,356 @@
+name: CI
+
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2022
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust 1.97
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: 1.97.0
+          components: clippy,rustfmt
+
+      - name: Cache Cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            backend/target
+          key: rust-${{ runner.os }}-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: rust-${{ runner.os }}-
+
+      - name: Check formatting
+        working-directory: backend
+        run: cargo fmt --all --check
+
+      - name: Lint
+        working-directory: backend
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Test
+        working-directory: backend
+        run: cargo test --locked --all-targets --all-features
+
+  rust-supply-chain:
+    name: Rust advisories and licences
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Audit dependency policy
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check
+          command-arguments: advisories bans licenses sources
+          arguments: --all-features
+          manifest-path: backend/Cargo.toml
+          rust-version: 1.97.0
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Bun 1.3.14
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Report all frontend advisories
+        continue-on-error: true
+        working-directory: frontend
+        run: bun audit
+
+      - name: Block high and critical frontend advisories
+        working-directory: frontend
+        run: bun audit --audit-level=high
+
+      - name: Lint
+        working-directory: frontend
+        run: bun run lint
+
+      - name: Verify generated OpenAPI types
+        working-directory: frontend
+        run: bun run check:api
+
+      - name: Type-check
+        working-directory: frontend
+        run: bun run typecheck
+
+      - name: Run unit tests
+        working-directory: frontend
+        run: bun run test
+
+      - name: Build Vite application
+        working-directory: frontend
+        run: bun run build
+
+      - name: Require and run Playwright end-to-end tests
+        working-directory: frontend
+        shell: bash
+        run: |
+          if ! compgen -G 'playwright.config.*' > /dev/null; then
+            echo "BLOCKING: the 1.0 release requires a Playwright configuration."
+            exit 1
+          fi
+          bun -e 'const p = await Bun.file("package.json").json(); process.exit(p.scripts?.["test:e2e"] && p.devDependencies?.["@playwright/test"] ? 0 : 1)' || {
+            echo "BLOCKING: add the pinned @playwright/test dependency and test:e2e script."
+            exit 1
+          }
+          bunx playwright install --with-deps chromium
+          bun run test:e2e
+
+  real-e2e:
+    name: Real Axum + SQLite + SPA smoke
+    needs:
+      - rust
+      - frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust 1.97
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: 1.97.0
+
+      - name: Restore Cargo build cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            backend/target
+          key: rust-${{ runner.os }}-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: rust-${{ runner.os }}-
+
+      - name: Install Bun 1.3.14
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run real-stack smoke without game downloads
+        working-directory: frontend
+        env:
+          DMX_REAL_E2E_PORT: "4287"
+        run: bun run test:e2e:real
+
+  distribution-syntax:
+    name: Distribution syntax
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned distribution linters
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools_dir="$RUNNER_TEMP/dmx-distribution-tools"
+          mkdir -p "$tools_dir"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$tools_dir/actionlint.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          actionlint_sha256=$(sha256sum "$tools_dir/actionlint.tar.gz")
+          actionlint_sha256=${actionlint_sha256%% *}
+          test "$actionlint_sha256" = 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          tar -xzf "$tools_dir/actionlint.tar.gz" -C "$tools_dir" actionlint
+          sudo install -m 0755 "$tools_dir/actionlint" /usr/local/bin/actionlint
+
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$tools_dir/shellcheck.tar.gz" \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.gz
+          shellcheck_sha256=$(sha256sum "$tools_dir/shellcheck.tar.gz")
+          shellcheck_sha256=${shellcheck_sha256%% *}
+          test "$shellcheck_sha256" = b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+          tar -xzf "$tools_dir/shellcheck.tar.gz" -C "$tools_dir"
+          sudo install -m 0755 "$tools_dir/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
+
+      - name: Check workflow semantics
+        run: actionlint
+
+      - name: Check shell scripts
+        run: shellcheck install/linux/*.sh install/linux/tests/*.sh
+
+      - name: Install deterministic Cosign verifier fixture
+        run: sudo install -m 0755 install/linux/tests/fake-cosign.sh /usr/local/bin/cosign
+
+      - name: Bootstrap Compose fixtures
+        env:
+          DMX_DOMAIN: panel.example.com
+          DMX_ACME_EMAIL: admin@example.com
+          DMX_IMAGE: ghcr.io/thefrcrazy/dmx-server-manager@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          DMX_VERSION: 1.0.0
+        run: |
+          set +e
+          DMX_COSIGN_TEST_FAIL_AFTER_VERIFY=1 \
+            sudo --preserve-env=DMX_COSIGN_TEST_FAIL_AFTER_VERIFY,DMX_DOMAIN,DMX_ACME_EMAIL,DMX_IMAGE,DMX_VERSION \
+            install/linux/bootstrap-docker.sh traefik
+          verification_status=$?
+          set -e
+          test "$verification_status" -eq 42
+          test ! -e install/linux/.env
+          test ! -e install/linux/secrets/master.key
+          sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_IMAGE,DMX_VERSION install/linux/bootstrap-docker.sh traefik
+
+      - name: Validate direct Compose
+        run: docker compose -f install/linux/docker-compose.yml config --quiet
+
+      - name: Validate Traefik Compose
+        run: docker compose -f install/linux/docker-compose.traefik.yml config --quiet
+
+      - name: Parse PowerShell installer
+        shell: pwsh
+        run: '[void][scriptblock]::Create((Get-Content -Raw install/windows/install.ps1))'
+
+  docker:
+    name: Docker AMD64 smoke and supply chain
+    needs:
+      - rust
+      - frontend
+      - distribution-syntax
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.34.1
+          driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
+
+      - name: Build AMD64 image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: install/linux/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: dmx-server-manager:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify non-root image metadata
+        shell: bash
+        run: |
+          test "$(docker image inspect dmx-server-manager:ci --format '{{.Config.User}}')" = "10001:10001"
+          test "$(docker image inspect dmx-server-manager:ci --format '{{.Architecture}}')" = "amd64"
+          test "$(docker image inspect dmx-server-manager:ci --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" \
+            = "https://github.com/thefrcrazy/DmxServerManager"
+
+      - name: Smoke test health endpoint
+        shell: bash
+        run: |
+          sudo install -m 0755 install/linux/tests/fake-cosign.sh /usr/local/bin/cosign
+          DMX_VERSION=1.0.0 \
+            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+            sudo --preserve-env=DMX_IMAGE,DMX_VERSION install/linux/bootstrap-docker.sh direct
+          test "$(stat -c '%u:%g:%a' install/linux/secrets/master.key)" = "10001:10001:400"
+          docker tag dmx-server-manager:ci ghcr.io/thefrcrazy/dmx-server-manager:ci
+          # shellcheck disable=SC2329
+          cleanup() {
+            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml logs panel || true
+            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml down --volumes --remove-orphans || true
+          }
+          trap cleanup EXIT
+          DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml up \
+            --detach --no-build --pull never panel
+          for attempt in $(seq 1 30); do
+            : "$attempt"
+            if curl --fail --silent http://127.0.0.1:5500/api/v1/health >/dev/null; then
+              exit 0
+            fi
+            if ! DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml ps \
+              --status running --services | grep -qx panel; then
+              exit 1
+            fi
+            sleep 2
+          done
+          exit 1
+
+      - name: Scan image for high vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: dmx-server-manager:ci
+          version: v0.72.0
+          format: table
+          ignore-unfixed: false
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: dmx-server-manager:ci
+          format: spdx-json
+          output-file: dmx-server-manager.spdx.json
+          syft-version: v1.46.0
+          artifact-name: dmx-server-manager-sbom
+          upload-artifact: true
+          upload-release-assets: false

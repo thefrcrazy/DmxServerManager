@@ -41,6 +41,17 @@
     flex-direction: row;
 }
 
+.server-version {
+    display: block;
+    max-width: 22rem;
+    margin-top: var(--spacing-1);
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .server-icon {
     width: 36px;
     height: 36px;
