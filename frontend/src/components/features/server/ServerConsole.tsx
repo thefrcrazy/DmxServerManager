@@ -8,6 +8,7 @@ interface ServerConsoleProps {
     logs: string[];
     isConnected: boolean;
     isRunning: boolean;
+    isInstalling?: boolean;
     onSendCommand: (command: string) => void;
 }
 
@@ -15,6 +16,7 @@ export default function ServerConsole({
     logs,
     isConnected,
     isRunning,
+    isInstalling = false,
     onSendCommand,
 }: ServerConsoleProps) {
     const { t } = useLanguage();
@@ -58,7 +60,7 @@ export default function ServerConsole({
                 <div className="console-header">
                     <div className="console-header__title">
                         <Terminal size={14} />
-                        <span>server@local:~/console</span>
+                        <span>{isInstalling ? "installer@local:~/install" : "server@local:~/console"}</span>
                     </div>
 
                 </div>
@@ -74,11 +76,15 @@ export default function ServerConsole({
                             <Terminal size={48} />
                             <div className="center-text">
                                 <p className="font-medium">
-                                    {isRunning
+                                    {isInstalling
+                                        ? t("server_detail.console.installation_running")
+                                        : isRunning
                                         ? t("server_detail.console.waiting_logs")
                                         : t("server_detail.console.server_offline")}
                                 </p>
-                                {!isRunning && <p className="text-small">{t("server_detail.console.start_server_hint")}</p>}
+                                {isInstalling
+                                    ? <p className="text-small">{t("server_detail.console.installation_hint")}</p>
+                                    : !isRunning && <p className="text-small">{t("server_detail.console.start_server_hint")}</p>}
                             </div>
                         </div>
                     ) : (

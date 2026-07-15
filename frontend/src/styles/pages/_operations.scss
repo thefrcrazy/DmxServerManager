@@ -115,6 +115,12 @@
         overflow-wrap: anywhere;
     }
 
+    &__interaction {
+        min-width: 0;
+
+        .bedrock-archive-upload { margin-bottom: 0; }
+    }
+
     &__actions {
         display: flex;
         justify-content: flex-end;

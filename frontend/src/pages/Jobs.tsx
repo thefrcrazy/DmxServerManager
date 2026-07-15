@@ -1,7 +1,9 @@
-import { Ban, ExternalLink, ListChecks, LoaderCircle, RefreshCw } from "lucide-react";
+import { Ban, ExternalLink, ListChecks, LoaderCircle, RefreshCw, Terminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice } from "@/components/features/server";
 import { Button } from "@/components/ui";
+import { useAuth } from "@/contexts/AuthContext";
 import { useDialog } from "@/contexts/DialogContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -9,6 +11,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useGlobalEvents, usePermission } from "@/hooks";
 import { JobSchema } from "@/schemas/api";
 import type { Instance, Job } from "@/schemas/api";
+import { BedrockArchiveAuthorizationSchema, HytaleDeviceAuthorizationSchema } from "@/schemas/operations";
 import { apiService } from "@/services";
 
 const JOB_EVENTS = ["job.updated", "job.waiting_for_user"] as const;
@@ -38,6 +41,7 @@ function translatedOrValue(t: (key: string) => string, key: string, fallback: st
 
 export default function Jobs() {
     const { t, language } = useLanguage();
+    const { user } = useAuth();
     const { setPageTitle } = usePageTitle();
     const { hasPermission } = usePermission();
     const { confirm } = useDialog();
@@ -50,6 +54,7 @@ export default function Jobs() {
     const [cancellingId, setCancellingId] = useState<string | null>(null);
     const canRead = hasPermission("job.read");
     const canCancel = hasPermission("server.update_game");
+    const canUploadBedrockArchive = user?.role === "owner" && hasPermission("server.files.write");
     const stateFilter = searchParams.get("state") ?? "all";
     const instanceFilter = searchParams.get("instance") ?? "all";
     const focusedJobId = searchParams.get("focus");
@@ -177,6 +182,9 @@ export default function Jobs() {
                 {filteredJobs.map((job) => {
                     const instanceName = job.instance_id ? instanceNames.get(job.instance_id) : undefined;
                     const cancellable = canCancel && job.kind === "install" && ACTIVE_STATES.has(job.state);
+                    const interactionEnvelope = job.interaction ? { job_id: job.id, interaction: job.interaction } : null;
+                    const hytaleAuthorization = HytaleDeviceAuthorizationSchema.safeParse(interactionEnvelope);
+                    const bedrockAuthorization = BedrockArchiveAuthorizationSchema.safeParse(interactionEnvelope);
                     return (
                         <article id={`job-${job.id}`} key={job.id} className={`job-card card ${focusedJobId === job.id ? "job-card--focused" : ""}`}>
                             <header className="job-card__header">
@@ -197,6 +205,20 @@ export default function Jobs() {
                                 <div><span>{t("jobs.progress")}</span><strong>{job.progress} %</strong></div>
                                 <progress max={100} value={job.progress} aria-label={`${t("jobs.progress")} ${job.progress} %`} />
                             </div>
+                            {hytaleAuthorization.success && (
+                                <div className="job-card__interaction">
+                                    <HytaleDeviceAuthorizationNotice authorization={hytaleAuthorization.data} />
+                                </div>
+                            )}
+                            {bedrockAuthorization.success && (
+                                <div className="job-card__interaction">
+                                    <BedrockArchiveUploadNotice
+                                        authorization={bedrockAuthorization.data}
+                                        canUpload={canUploadBedrockArchive}
+                                        onAccepted={(updated) => setJobs((current) => current.map((item) => item.id === updated.id ? updated : item))}
+                                    />
+                                </div>
+                            )}
                             {(job.error_code || job.error_message) && (
                                 <div className="job-card__error" role="alert">
                                     <strong>{job.error_code ?? t("jobs.error")}</strong>
@@ -204,6 +226,7 @@ export default function Jobs() {
                                 </div>
                             )}
                             <footer className="job-card__actions">
+                                {job.instance_id && instanceName && job.kind === "install" && <Button as="link" to={`/servers/${job.instance_id}?tab=console`} variant="secondary" size="sm" icon={<Terminal size={15} aria-hidden="true" />}>{t("jobs.view_install_terminal")}</Button>}
                                 {job.instance_id && instanceName && <Button as="link" to={`/servers/${job.instance_id}`} variant="ghost" size="sm" icon={<ExternalLink size={15} aria-hidden="true" />}>{t("jobs.view_instance")}</Button>}
                                 {cancellable && <Button type="button" variant="danger" size="sm" isLoading={cancellingId === job.id} icon={<Ban size={15} aria-hidden="true" />} onClick={() => void cancelJob(job)}>{t("jobs.cancel")}</Button>}
                             </footer>

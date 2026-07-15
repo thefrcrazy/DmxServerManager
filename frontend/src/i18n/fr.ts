@@ -141,6 +141,7 @@ export const fr = {
         cancelled: "Job annulé.",
         realtime: "Actualisation temps réel",
         view_instance: "Voir l’instance",
+        view_install_terminal: "Voir le terminal d’installation",
         states: {
             queued: "En file",
             running: "En cours",
@@ -924,6 +925,8 @@ export const fr = {
             waiting_logs: "En attente des logs...",
             server_offline: "Le serveur est hors ligne.",
             start_server_hint: "Démarrez le serveur pour voir la console.",
+            installation_running: "Installation en cours…",
+            installation_hint: "Les sorties de l’installateur apparaissent ici. Toute action humaine requise est affichée au-dessus et dans la page Jobs.",
             command_placeholder: "Entrez une commande..."
         },
         config: {

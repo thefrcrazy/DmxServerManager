@@ -143,6 +143,7 @@ export const en: TranslationType = {
         cancelled: "Job cancelled.",
         realtime: "Live refresh",
         view_instance: "View instance",
+        view_install_terminal: "View installation terminal",
         states: {
             queued: "Queued",
             running: "Running",
@@ -955,6 +956,8 @@ export const en: TranslationType = {
             waiting_logs: "Waiting for logs...",
             server_offline: "Server is offline.",
             start_server_hint: "Start the server to see the console.",
+            installation_running: "Installation in progress…",
+            installation_hint: "Installer output appears here. Any required human action is shown above and on the Jobs page.",
             command_placeholder: "Enter a command..."
         },
         config: {

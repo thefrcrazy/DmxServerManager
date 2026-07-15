@@ -31,6 +31,8 @@ Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version
 
 Les binaires de jeux ne sont jamais inclus dans l’image ou les releases. Les installateurs officiels et SteamCMD les téléchargent à la demande, selon leurs licences.
 
+Pendant une installation ou une mise à jour, la page de l’instance bascule sur l’onglet Terminal et affiche les sorties de l’installateur en temps réel. Lorsqu’une action humaine est nécessaire, le job passe à `waiting_for_user` et conserve une action explicite dans la page Jobs et sur l’instance (par exemple le code OAuth Hytale ou l’archive Bedrock attendue). Les installateurs n’acceptent jamais de saisie shell arbitraire.
+
 Un AppID Steam personnalisé n’est pas automatiquement compatible. Le dépôt doit autoriser la connexion anonyme, fournir un exécutable natif AMD64 pour l’OS hôte et réussir la validation du profil. Les comptes Steam privés, Wine et Proton ne sont pas pris en charge en 1.0.
 
 Les builds officiels surveillent par défaut un manifeste de release Ed25519 avec checksums complets, à partir d’une URL et d’une clé publique intégrées au binaire. Le panneau affiche une procédure native ou une image Docker épinglée par digest uniquement pour une version strictement plus récente ; il n’exécute jamais la mise à niveau et ne se remplace pas lui-même.
@@ -51,7 +53,7 @@ Le réseau hôte est obligatoire : les instances réservent des ports TCP/UDP dy
 
 ```bash
 cd install/linux
-export DMX_VERSION='1.0.6'
+export DMX_VERSION='1.0.7'
 export DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>'
 sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct
 docker compose pull
@@ -70,7 +72,7 @@ Pour une exposition publique avec Let's Encrypt :
 cd install/linux
 DMX_DOMAIN=panel.example.com \
 DMX_ACME_EMAIL=admin@example.com \
-DMX_VERSION='1.0.6' \
+DMX_VERSION='1.0.7' \
 DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>' \
 sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh traefik
 docker compose -f docker-compose.traefik.yml up -d

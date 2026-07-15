@@ -1,6 +1,6 @@
 import { Activity, Archive, CalendarClock, Download, FolderOpen, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Shield, Skull, Square, Terminal, Trash2, Wrench } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileSettingsFields, ServerBackups, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerSchedules } from "@/components/features/server";
 import { EmptyState, LoadingScreen } from "@/components/shared";
 import { Button, StatPill, Tabs } from "@/components/ui";
@@ -23,6 +23,7 @@ type TabId = "configuration" | "console" | "files" | "backups" | "metrics" | "mo
 export default function ServerDetail() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { t } = useLanguage();
     const { setPageTitle } = usePageTitle();
     const toast = useToast();
@@ -146,6 +147,13 @@ export default function ServerDetail() {
         if (!tabs.some((tab) => tab.id === activeTab)) setActiveTab("configuration");
     }, [activeTab, tabs]);
 
+    useEffect(() => {
+        const requestedTab = searchParams.get("tab");
+        if (requestedTab && tabs.some((tab) => tab.id === requestedTab)) {
+            setActiveTab(requestedTab as TabId);
+        }
+    }, [searchParams, tabs]);
+
     const runAction = async (nextAction: ServerAction) => {
         if (!id) return;
         setAction(nextAction);
@@ -156,8 +164,15 @@ export default function ServerDetail() {
             return;
         }
         toast.success(t("server_detail.job_queued"));
-        if (nextAction === "install" && hasPermission("job.read")) {
-            navigate(`/jobs?focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(id)}`);
+        if (nextAction === "install") {
+            if (profile?.capabilities.includes("console") && hasPermission("server.console.read")) {
+                setActiveTab("console");
+                const next = new URLSearchParams(searchParams);
+                next.set("tab", "console");
+                next.set("job", response.data.id);
+                setSearchParams(next, { replace: true });
+            }
+            await loadInstance();
             return;
         }
         await loadInstance();
@@ -256,13 +271,19 @@ export default function ServerDetail() {
                 </>}
             </div>
 
-            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={(tab: TabId) => setActiveTab(tab)} idPrefix="server-detail" panelId="server-detail-tabpanel" />
+            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={(tab: TabId) => {
+                setActiveTab(tab);
+                const next = new URLSearchParams(searchParams);
+                next.set("tab", tab);
+                setSearchParams(next, { replace: true });
+            }} idPrefix="server-detail" panelId="server-detail-tabpanel" />
             <div className="tab-content" id="server-detail-tabpanel" role="tabpanel" aria-labelledby={`server-detail-tab-${activeTab}`}>
                 {activeTab === "console" ? (
                     <ServerConsole
                         logs={events.logs}
                         isConnected={events.isConnected}
                         isRunning={running}
+                        isInstalling={["installing", "updating"].includes(instance.installation_state)}
                         onSendCommand={(command) => void events.sendCommand(command)}
                     />
                 ) : activeTab === "files" ? (
