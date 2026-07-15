@@ -1039,7 +1039,7 @@ fn copy_directory_blocking(source: &Path, destination: &Path) -> Result<(), AppE
                 create_private_directory(&destination_path)?;
                 pending.push((source_path, destination_path));
             } else if metadata.is_file() {
-                reject_hardlink(&metadata)?;
+                reject_hardlink(&source_path, &metadata)?;
                 total = total
                     .checked_add(metadata.len())
                     .ok_or_else(|| AppError::BadRequest("imports.quota_exceeded".into()))?;
@@ -1082,7 +1082,7 @@ fn copy_regular_file(source: &Path, destination: &Path, expected: u64) -> Result
     if !input_metadata.is_file() || input_metadata.len() != expected {
         return Err(AppError::BadRequest("imports.source_changed".into()));
     }
-    reject_hardlink(&input_metadata)?;
+    reject_hardlink(source, &input_metadata)?;
     let mut output = destination_options.open(destination)?;
     let copied = io::copy(&mut input, &mut output)?;
     if copied != expected {
@@ -1253,7 +1253,10 @@ async fn remove_tree(path: &Path) -> Result<(), AppError> {
 }
 
 fn create_private_directory(path: &Path) -> Result<(), AppError> {
+    #[cfg(unix)]
     let mut builder = fs::DirBuilder::new();
+    #[cfg(not(unix))]
+    let builder = fs::DirBuilder::new();
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -1282,29 +1285,12 @@ fn metadata_is_link_like(metadata: &fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
-#[cfg(unix)]
-fn reject_hardlink(metadata: &fs::Metadata) -> Result<(), AppError> {
-    use std::os::unix::fs::MetadataExt;
-    if metadata.nlink() > 1 {
+fn reject_hardlink(path: &Path, metadata: &fs::Metadata) -> Result<(), AppError> {
+    if crate::services::secure_fs::file_has_multiple_links(path, metadata)? {
         Err(AppError::BadRequest("imports.hardlinks_forbidden".into()))
     } else {
         Ok(())
     }
-}
-
-#[cfg(windows)]
-fn reject_hardlink(metadata: &fs::Metadata) -> Result<(), AppError> {
-    use std::os::windows::fs::MetadataExt;
-    if metadata.number_of_links() > 1 {
-        Err(AppError::BadRequest("imports.hardlinks_forbidden".into()))
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn reject_hardlink(_metadata: &fs::Metadata) -> Result<(), AppError> {
-    Ok(())
 }
 
 #[cfg(test)]

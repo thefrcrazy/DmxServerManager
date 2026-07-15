@@ -1094,7 +1094,7 @@ async fn validate_regular_file(path: &Path, max_bytes: u64) -> Result<u64, Insta
         || metadata.file_type().is_symlink()
         || metadata.len() == 0
         || metadata.len() > max_bytes
-        || link_count_is_unsafe(&metadata)
+        || link_count_is_unsafe(path, &metadata)?
     {
         return Err(InstallerError::new(
             "loader_runtime_invalid",
@@ -1142,9 +1142,10 @@ async fn validate_install_tree(root: &Path) -> Result<(), InstallerError> {
                 .file_type()
                 .await
                 .map_err(|error| InstallerError::internal("install_tree_invalid", error))?;
+            let entry_path = entry.path();
             if file_type.is_symlink()
                 || (!file_type.is_file() && !file_type.is_dir())
-                || (file_type.is_file() && link_count_is_unsafe(&metadata))
+                || (file_type.is_file() && link_count_is_unsafe(&entry_path, &metadata)?)
             {
                 return Err(InstallerError::new(
                     "install_tree_unsafe",
@@ -1152,7 +1153,7 @@ async fn validate_install_tree(root: &Path) -> Result<(), InstallerError> {
                 ));
             }
             if file_type.is_dir() {
-                pending.push(entry.path());
+                pending.push(entry_path);
             }
         }
     }
@@ -1416,22 +1417,9 @@ fn validate_hex(value: &str, length: usize) -> Result<(), InstallerError> {
     }
 }
 
-#[cfg(unix)]
-fn link_count_is_unsafe(metadata: &std::fs::Metadata) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    metadata.nlink() > 1
-}
-
-#[cfg(windows)]
-fn link_count_is_unsafe(metadata: &std::fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt;
-    use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
-    metadata.number_of_links() > 1 || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-}
-
-#[cfg(not(any(unix, windows)))]
-fn link_count_is_unsafe(_metadata: &std::fs::Metadata) -> bool {
-    false
+fn link_count_is_unsafe(path: &Path, metadata: &std::fs::Metadata) -> Result<bool, InstallerError> {
+    crate::services::secure_fs::file_has_multiple_links(path, metadata)
+        .map_err(|error| InstallerError::internal("install_tree_invalid", error))
 }
 
 struct ToolOutput {

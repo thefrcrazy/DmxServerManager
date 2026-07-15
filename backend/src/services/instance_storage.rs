@@ -228,7 +228,7 @@ fn validate_tree_blocking(
             if metadata.is_dir() {
                 pending.push((path, relative));
             } else if metadata.is_file() {
-                reject_hardlink(&metadata)?;
+                reject_hardlink(&path, &metadata)?;
                 bytes = bytes
                     .checked_add(metadata.len())
                     .ok_or_else(|| AppError::BadRequest("imports.quota_exceeded".into()))?;
@@ -310,29 +310,12 @@ fn is_link_like(metadata: &fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
-#[cfg(unix)]
-fn reject_hardlink(metadata: &fs::Metadata) -> Result<(), AppError> {
-    use std::os::unix::fs::MetadataExt;
-    if metadata.nlink() > 1 {
+fn reject_hardlink(path: &Path, metadata: &fs::Metadata) -> Result<(), AppError> {
+    if crate::services::secure_fs::file_has_multiple_links(path, metadata)? {
         Err(AppError::BadRequest("imports.hardlinks_forbidden".into()))
     } else {
         Ok(())
     }
-}
-
-#[cfg(windows)]
-fn reject_hardlink(metadata: &fs::Metadata) -> Result<(), AppError> {
-    use std::os::windows::fs::MetadataExt;
-    if metadata.number_of_links() > 1 {
-        Err(AppError::BadRequest("imports.hardlinks_forbidden".into()))
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn reject_hardlink(_metadata: &fs::Metadata) -> Result<(), AppError> {
-    Ok(())
 }
 
 #[cfg(test)]

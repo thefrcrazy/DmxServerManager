@@ -728,7 +728,7 @@ async fn verify_marked_artifact(
                 "servers.artifact_integrity_failed",
             ));
         }
-        reject_marker_hardlink(&metadata)?;
+        reject_marker_hardlink(&path, &metadata)?;
         let mut options = fs::OpenOptions::new();
         options.read(true);
         #[cfg(unix)]
@@ -754,7 +754,7 @@ async fn verify_marked_artifact(
                 "servers.artifact_integrity_failed",
             ));
         }
-        reject_marker_hardlink(&opened)?;
+        reject_marker_hardlink(&path, &opened)?;
         let mut digest = Sha256::new();
         let copied = std::io::copy(&mut file.take(expected.size + 1), &mut digest)
             .map_err(|error| InstallerError::internal("install_artifact_read_failed", error))?;
@@ -801,7 +801,8 @@ pub async fn validate_resumable_staging_tree(root: &Path) -> Result<(), Installe
                         "servers.installation_failed",
                     ));
                 }
-                let metadata = fs::symlink_metadata(entry.path())
+                let entry_path = entry.path();
+                let metadata = fs::symlink_metadata(&entry_path)
                     .map_err(|error| InstallerError::internal("install_tree_invalid", error))?;
                 if marker_is_link_like(&metadata) || (!metadata.is_file() && !metadata.is_dir()) {
                     return Err(InstallerError::new(
@@ -810,9 +811,9 @@ pub async fn validate_resumable_staging_tree(root: &Path) -> Result<(), Installe
                     ));
                 }
                 if metadata.is_file() {
-                    reject_marker_hardlink(&metadata)?;
+                    reject_marker_hardlink(&entry_path, &metadata)?;
                 } else {
-                    pending.push(entry.path());
+                    pending.push(entry_path);
                 }
             }
         }
@@ -1314,7 +1315,7 @@ fn read_marker_no_follow(path: &Path) -> Result<Vec<u8>, InstallerError> {
             "servers.install_metadata_invalid",
         ));
     }
-    reject_marker_hardlink(&metadata)?;
+    reject_marker_hardlink(path, &metadata)?;
     let mut options = fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -1343,7 +1344,7 @@ fn read_marker_no_follow(path: &Path) -> Result<Vec<u8>, InstallerError> {
             "servers.install_metadata_invalid",
         ));
     }
-    reject_marker_hardlink(&opened_metadata)?;
+    reject_marker_hardlink(path, &opened_metadata)?;
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     file.take(MAX_MARKER_BYTES + 1)
         .read_to_end(&mut bytes)
@@ -1375,10 +1376,10 @@ fn marker_is_link_like(metadata: &fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
-#[cfg(unix)]
-fn reject_marker_hardlink(metadata: &fs::Metadata) -> Result<(), InstallerError> {
-    use std::os::unix::fs::MetadataExt;
-    if metadata.nlink() > 1 {
+fn reject_marker_hardlink(path: &Path, metadata: &fs::Metadata) -> Result<(), InstallerError> {
+    if crate::services::secure_fs::file_has_multiple_links(path, metadata)
+        .map_err(|error| InstallerError::internal("install_metadata_invalid", error))?
+    {
         Err(InstallerError::new(
             "install_metadata_hardlink",
             "servers.install_metadata_invalid",
@@ -1386,24 +1387,6 @@ fn reject_marker_hardlink(metadata: &fs::Metadata) -> Result<(), InstallerError>
     } else {
         Ok(())
     }
-}
-
-#[cfg(windows)]
-fn reject_marker_hardlink(metadata: &fs::Metadata) -> Result<(), InstallerError> {
-    use std::os::windows::fs::MetadataExt;
-    if metadata.number_of_links() > 1 {
-        Err(InstallerError::new(
-            "install_metadata_hardlink",
-            "servers.install_metadata_invalid",
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn reject_marker_hardlink(_metadata: &fs::Metadata) -> Result<(), InstallerError> {
-    Ok(())
 }
 
 #[cfg(test)]

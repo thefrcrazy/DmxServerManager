@@ -410,7 +410,10 @@ async fn create_private_upload_directory(
 }
 
 async fn create_private_directory_async(path: &Path) -> Result<(), InstallerError> {
+    #[cfg(unix)]
     let mut builder = tokio::fs::DirBuilder::new();
+    #[cfg(not(unix))]
+    let builder = tokio::fs::DirBuilder::new();
     #[cfg(unix)]
     {
         builder.mode(0o700);
@@ -470,7 +473,6 @@ async fn open_private_new(path: &Path) -> Result<tokio::fs::File, InstallerError
     }
     #[cfg(windows)]
     {
-        use std::os::windows::fs::OpenOptionsExt;
         use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
         options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
@@ -487,7 +489,7 @@ async fn open_regular_read(
     let metadata = tokio::fs::symlink_metadata(path)
         .await
         .map_err(|error| InstallerError::internal("bedrock_upload_read_failed", error))?;
-    reject_unsafe_metadata(&metadata)?;
+    reject_unsafe_metadata(path, &metadata)?;
     if !metadata.is_file() || metadata.len() == 0 || metadata.len() > maximum {
         return Err(InstallerError::new(
             "bedrock_upload_file_invalid",
@@ -502,7 +504,6 @@ async fn open_regular_read(
     }
     #[cfg(windows)]
     {
-        use std::os::windows::fs::OpenOptionsExt;
         use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
         options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
@@ -514,7 +515,7 @@ async fn open_regular_read(
         .metadata()
         .await
         .map_err(|error| InstallerError::internal("bedrock_upload_read_failed", error))?;
-    reject_unsafe_metadata(&opened)?;
+    reject_unsafe_metadata(path, &opened)?;
     if !opened.is_file() || opened.len() != metadata.len() {
         return Err(InstallerError::new(
             "bedrock_upload_file_changed",
@@ -810,7 +811,7 @@ async fn preserve_bedrock_data(instance_root: &Path, staging: &Path) -> Result<(
     ] {
         let source = current.join(relative);
         match tokio::fs::symlink_metadata(&source).await {
-            Ok(metadata) => reject_unsafe_metadata(&metadata)?,
+            Ok(metadata) => reject_unsafe_metadata(&source, &metadata)?,
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => {
                 return Err(InstallerError::internal("preserve_data_failed", error));
@@ -853,7 +854,7 @@ fn copy_bedrock_data_blocking(source: &Path, destination: &Path) -> Result<(), I
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(InstallerError::internal("preserve_data_failed", error)),
     };
-    reject_unsafe_metadata(&metadata)?;
+    reject_unsafe_metadata(source, &metadata)?;
     if metadata.is_file() {
         copy_bedrock_file(source, destination, metadata.len())?;
         return Ok(());
@@ -865,7 +866,7 @@ fn copy_bedrock_data_blocking(source: &Path, destination: &Path) -> Result<(), I
     while let Some((source_directory, target_directory)) = pending.pop() {
         let directory_metadata = fs::symlink_metadata(&source_directory)
             .map_err(|error| InstallerError::internal("preserve_data_failed", error))?;
-        reject_unsafe_metadata(&directory_metadata)?;
+        reject_unsafe_metadata(&source_directory, &directory_metadata)?;
         if !directory_metadata.is_dir() {
             return Err(InstallerError::new(
                 "preserve_data_changed",
@@ -890,7 +891,7 @@ fn copy_bedrock_data_blocking(source: &Path, destination: &Path) -> Result<(), I
             let target_path = target_directory.join(entry.file_name());
             let metadata = fs::symlink_metadata(&source_path)
                 .map_err(|error| InstallerError::internal("preserve_data_failed", error))?;
-            reject_unsafe_metadata(&metadata)?;
+            reject_unsafe_metadata(&source_path, &metadata)?;
             if metadata.is_dir() {
                 create_private_directory(&target_path)?;
                 pending.push((source_path, target_path));
@@ -945,7 +946,7 @@ fn copy_bedrock_file(
     let metadata = input
         .metadata()
         .map_err(|error| InstallerError::internal("preserve_data_failed", error))?;
-    reject_unsafe_metadata(&metadata)?;
+    reject_unsafe_metadata(source, &metadata)?;
     if !metadata.is_file() || metadata.len() != expected_size {
         return Err(InstallerError::new(
             "preserve_data_changed",
@@ -969,7 +970,10 @@ fn copy_bedrock_file(
 }
 
 fn create_private_directory(path: &Path) -> Result<(), InstallerError> {
+    #[cfg(unix)]
     let mut builder = fs::DirBuilder::new();
+    #[cfg(not(unix))]
+    let builder = fs::DirBuilder::new();
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -980,32 +984,20 @@ fn create_private_directory(path: &Path) -> Result<(), InstallerError> {
         .map_err(|error| InstallerError::internal("preserve_data_failed", error))
 }
 
-fn reject_unsafe_metadata(metadata: &fs::Metadata) -> Result<(), InstallerError> {
+fn reject_unsafe_metadata(path: &Path, metadata: &fs::Metadata) -> Result<(), InstallerError> {
     if metadata_is_link_like(metadata) || (!metadata.is_file() && !metadata.is_dir()) {
         return Err(InstallerError::new(
             "preserve_data_unsafe",
             "servers.instance_data_unsafe",
         ));
     }
-    #[cfg(unix)]
+    if crate::services::secure_fs::file_has_multiple_links(path, metadata)
+        .map_err(|error| InstallerError::internal("preserve_data_failed", error))?
     {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.is_file() && metadata.nlink() > 1 {
-            return Err(InstallerError::new(
-                "preserve_data_unsafe",
-                "servers.instance_data_unsafe",
-            ));
-        }
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        if metadata.is_file() && metadata.number_of_links() > 1 {
-            return Err(InstallerError::new(
-                "preserve_data_unsafe",
-                "servers.instance_data_unsafe",
-            ));
-        }
+        return Err(InstallerError::new(
+            "preserve_data_unsafe",
+            "servers.instance_data_unsafe",
+        ));
     }
     Ok(())
 }

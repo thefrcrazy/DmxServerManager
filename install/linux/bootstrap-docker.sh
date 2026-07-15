@@ -178,7 +178,7 @@ write_env() {
     value="$2"
     temporary="$script_dir/.env.tmp.$$"
     if grep -q "^${key}=" "$script_dir/.env"; then
-        sed "s/^${key}=.*/${key}=${value}/" "$script_dir/.env" > "$temporary"
+        sed "s|^${key}=.*|${key}=${value}|" "$script_dir/.env" > "$temporary"
         mv "$temporary" "$script_dir/.env"
     else
         printf '%s=%s\n' "$key" "$value" >> "$script_dir/.env"

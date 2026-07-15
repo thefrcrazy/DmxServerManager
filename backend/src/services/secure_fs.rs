@@ -218,7 +218,10 @@ pub async fn create_directory(root: &Path, relative: &str) -> Result<(), AppErro
     let relative = RelativePath::parse(relative, false)?;
     tokio::task::spawn_blocking(move || {
         let destination = resolve_for_create(&root, &relative)?;
+        #[cfg(unix)]
         let mut builder = fs::DirBuilder::new();
+        #[cfg(not(unix))]
+        let builder = fs::DirBuilder::new();
         #[cfg(unix)]
         {
             use std::os::unix::fs::DirBuilderExt;
@@ -370,7 +373,7 @@ fn list_directory_blocking(
         let metadata = fs::symlink_metadata(item.path())?;
         if is_link_like(&metadata)
             || (!metadata.is_file() && !metadata.is_dir())
-            || (metadata.is_file() && is_hardlinked_file(&item.path(), &metadata)?)
+            || (metadata.is_file() && file_has_multiple_links(&item.path(), &metadata)?)
         {
             continue;
         }
@@ -608,7 +611,7 @@ fn map_not_found(error: io::Error) -> AppError {
     }
 }
 
-fn open_read_no_follow(path: &Path) -> Result<File, AppError> {
+fn open_read_no_follow(path: &Path) -> io::Result<File> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -622,41 +625,44 @@ fn open_read_no_follow(path: &Path) -> Result<File, AppError> {
         use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
         options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
-    options.open(path).map_err(Into::into)
+    options.open(path)
 }
 
 fn reject_hardlinked_file(path: &Path, metadata: &fs::Metadata) -> Result<(), AppError> {
-    if is_hardlinked_file(path, metadata)? {
+    if file_has_multiple_links(path, metadata)? {
         Err(AppError::Forbidden("files.hardlinks_forbidden".into()))
     } else {
         Ok(())
     }
 }
 
-#[cfg(unix)]
-fn is_hardlinked_file(_path: &Path, metadata: &fs::Metadata) -> Result<bool, AppError> {
-    use std::os::unix::fs::MetadataExt;
-    Ok(metadata.is_file() && metadata.nlink() > 1)
-}
-
-#[cfg(windows)]
-fn is_hardlinked_file(path: &Path, metadata: &fs::Metadata) -> Result<bool, AppError> {
+pub(crate) fn file_has_multiple_links(path: &Path, metadata: &fs::Metadata) -> io::Result<bool> {
     if !metadata.is_file() {
         return Ok(false);
     }
-    let file = open_read_no_follow(path)?;
-    windows_file_is_linked(&file)
-}
-
-#[cfg(not(any(unix, windows)))]
-fn is_hardlinked_file(_path: &Path, _metadata: &fs::Metadata) -> Result<bool, AppError> {
-    Err(AppError::Internal(
-        "hard-link detection is unavailable on this platform".into(),
-    ))
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let _ = path;
+        Ok(metadata.nlink() > 1)
+    }
+    #[cfg(windows)]
+    {
+        let file = open_read_no_follow(path)?;
+        windows_file_is_linked(&file)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "hard-link detection is unavailable on this platform",
+        ))
+    }
 }
 
 #[cfg(windows)]
-fn windows_file_is_linked(file: &File) -> Result<bool, AppError> {
+fn windows_file_is_linked(file: &File) -> io::Result<bool> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::{
         Foundation::HANDLE,

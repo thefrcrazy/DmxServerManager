@@ -65,7 +65,10 @@ jobs:
 
       - name: Test
         working-directory: backend
-        run: cargo test --locked --all-targets --all-features
+        # The suite owns process groups, ports and SQLite files. Running cases in
+        # parallel makes those isolation tests contend and can exhaust Tokio's
+        # worker stack nondeterministically on hosted runners.
+        run: cargo test --locked --all-targets --all-features -- --test-threads=1
 
   rust-supply-chain:
     name: Rust advisories and licences
