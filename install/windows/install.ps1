@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[0-9A-Za-z.+-]+$')]
-    [string]$Version = $(if ($env:DMX_VERSION) { $env:DMX_VERSION } else { '1.0.3' }),
+    [string]$Version = $(if ($env:DMX_VERSION) { $env:DMX_VERSION } else { '1.0.4' }),
 
     [string]$ExpectedArchiveSha256 = $(if ($env:DMX_EXPECTED_ARCHIVE_SHA256) { $env:DMX_EXPECTED_ARCHIVE_SHA256 } else { '' }),
 
@@ -311,17 +311,17 @@ try {
         }
     }
 
-    $archivePath = Join-Path $tempDir $Asset
+    $workingArchivePath = Join-Path $tempDir $Asset
 
     if ($ArchivePath) {
         Write-Host "Installing DmxServerManager $Version from a local verified archive..."
-        Copy-Item -LiteralPath $ArchivePath -Destination $archivePath
+        Copy-Item -LiteralPath $ArchivePath -Destination $workingArchivePath
     } else {
         Write-Host "Downloading DmxServerManager $Version..."
-        Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Asset" -OutFile $archivePath
+        Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Asset" -OutFile $workingArchivePath
     }
     $expectedChecksum = $ExpectedArchiveSha256.ToLowerInvariant()
-    $actualChecksum = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualChecksum = (Get-FileHash -LiteralPath $workingArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
     if (-not $actualChecksum.Equals($expectedChecksum, [System.StringComparison]::Ordinal)) {
         throw 'Release checksum verification failed.'
     }
@@ -331,7 +331,7 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $payloadRoot = [System.IO.Path]::GetFullPath($payloadDir + [System.IO.Path]::DirectorySeparatorChar)
     $entryNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($workingArchivePath)
     try {
         foreach ($entry in $zip.Entries) {
             $normalizedName = $entry.FullName.Replace('\', '/')
@@ -361,7 +361,7 @@ try {
     } finally {
         $zip.Dispose()
     }
-    Expand-Archive -LiteralPath $archivePath -DestinationPath $payloadDir
+    Expand-Archive -LiteralPath $workingArchivePath -DestinationPath $payloadDir
 
     $payloadBinary = Join-Path $payloadDir 'dmx-server-manager.exe'
     $staticSource = Join-Path $payloadDir 'static'

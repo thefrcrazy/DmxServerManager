@@ -9,7 +9,7 @@ La version 1.0 supporte exclusivement Linux AMD64, Windows AMD64 et les conteneu
 Téléchargez l’installateur et le checksum d’archive depuis les assets de la release, puis vérifiez séparément leurs bundles Sigstore produits par GitHub Actions. Ne lancez jamais directement un script distant via un pipe. `cosign` 3 est requis pour cette vérification initiale.
 
 ```bash
-version=1.0.3
+version=1.0.4
 asset="dmx-server-manager-v${version}-x86_64-unknown-linux-gnu.tar.gz"
 installer="dmx-server-manager-install-linux.sh"
 base="https://github.com/thefrcrazy/DmxServerManager/releases/download/v${version}"
@@ -48,7 +48,7 @@ Le panneau écoute par défaut sur `127.0.0.1:5500`; ouvrez-le via `http://local
 Dans PowerShell 5.1 ou 7 lancé en administrateur :
 
 ```powershell
-$Version = '1.0.3'
+$Version = '1.0.4'
 $Asset = "dmx-server-manager-v$Version-x86_64-pc-windows-msvc.zip"
 $Installer = 'dmx-server-manager-install-windows.ps1'
 $Base = "https://github.com/thefrcrazy/DmxServerManager/releases/download/v$Version"
@@ -79,7 +79,7 @@ L’installateur place le bootstrap SteamCMD officiel sous `%PROGRAMDATA%\DmxSer
 
 ```bash
 cd install/linux
-export DMX_VERSION='1.0.3'
+export DMX_VERSION='1.0.4'
 export DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>'
 sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct
 docker compose pull
@@ -95,7 +95,7 @@ Pour Traefik HTTPS, renseignez un DNS public pointant sur l’hôte, ouvrez TCP 
 ```bash
 DMX_DOMAIN=panel.example.com \
 DMX_ACME_EMAIL=admin@example.com \
-DMX_VERSION='1.0.3' \
+DMX_VERSION='1.0.4' \
 DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>' \
 sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh traefik
 docker compose -f docker-compose.traefik.yml up -d
