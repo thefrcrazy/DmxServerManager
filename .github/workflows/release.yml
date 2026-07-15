@@ -268,6 +268,8 @@ jobs:
     name: Windows AMD64 archive
     needs: create-draft
     runs-on: windows-2022
+    env:
+      RUSTFLAGS: -C link-arg=/Brepro
     permissions:
       contents: write
       id-token: write
