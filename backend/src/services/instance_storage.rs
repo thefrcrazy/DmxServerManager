@@ -252,7 +252,7 @@ fn invalid_import_path(relative: &Path) -> bool {
     if value.len() > 4_096
         || value
             .chars()
-            .any(|character| matches!(character, ':' | '\\' | '\0') || character.is_control())
+            .any(|character| matches!(character, ':' | '\0') || character.is_control())
     {
         return true;
     }
@@ -263,7 +263,11 @@ fn invalid_import_path(relative: &Path) -> bool {
         let Some(value) = component.to_str() else {
             return true;
         };
-        value.is_empty() || value == "." || value == ".." || value.len() > 255
+        value.is_empty()
+            || value == "."
+            || value == ".."
+            || value.len() > 255
+            || value.contains('\\')
     })
 }
 
@@ -364,7 +368,11 @@ mod tests {
     fn imported_names_are_cross_platform_safe() {
         assert!(!invalid_import_path(Path::new("game/world/level.dat")));
         assert!(invalid_import_path(Path::new("game/server.jar:stream")));
-        assert!(invalid_import_path(Path::new("game/bad\\name")));
+        if cfg!(windows) {
+            assert!(!invalid_import_path(Path::new("game/bad\\name")));
+        } else {
+            assert!(invalid_import_path(Path::new("game/bad\\name")));
+        }
         assert!(invalid_import_path(Path::new("game/bad\nname")));
     }
 
