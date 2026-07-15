@@ -546,6 +546,7 @@ mod tests {
         let release = verify_envelope(&body, key, DeploymentMode::Native).unwrap();
         assert_eq!(release.version, "1.0.1");
         let ReleaseTarget::Native {
+            platform,
             installer_sha256,
             upgrade_command,
             ..
@@ -553,11 +554,19 @@ mod tests {
         else {
             panic!("expected native target");
         };
-        assert_eq!(installer_sha256, "b".repeat(64));
-        assert!(upgrade_command.contains("mktemp /tmp/dmx-server-manager-install.XXXXXX"));
-        assert!(upgrade_command.contains("trap 'rm -f \"$p\"'"));
-        assert!(upgrade_command.contains("sha256sum --check --status"));
-        assert!(upgrade_command.contains("DMX_EXPECTED_ARCHIVE_SHA256='aaaaaaaa"));
+        if cfg!(windows) {
+            assert_eq!(platform, NativePlatform::WindowsAmd64);
+            assert_eq!(installer_sha256, "d".repeat(64));
+            assert!(upgrade_command.contains("Get-FileHash -Algorithm SHA256"));
+            assert!(upgrade_command.contains("-ExpectedArchiveSha256 'cccccccc"));
+        } else {
+            assert_eq!(platform, NativePlatform::LinuxAmd64);
+            assert_eq!(installer_sha256, "b".repeat(64));
+            assert!(upgrade_command.contains("mktemp /tmp/dmx-server-manager-install.XXXXXX"));
+            assert!(upgrade_command.contains("trap 'rm -f \"$p\"'"));
+            assert!(upgrade_command.contains("sha256sum --check --status"));
+            assert!(upgrade_command.contains("DMX_EXPECTED_ARCHIVE_SHA256='aaaaaaaa"));
+        }
         assert!(!upgrade_command.contains("latest"));
     }
 

@@ -249,7 +249,11 @@ fn invalid_import_path(relative: &Path) -> bool {
     let Some(value) = relative.to_str() else {
         return true;
     };
-    if value.len() > 4_096 {
+    if value.len() > 4_096
+        || value
+            .chars()
+            .any(|character| matches!(character, ':' | '\\' | '\0') || character.is_control())
+    {
         return true;
     }
     relative.components().any(|component| {
@@ -259,13 +263,7 @@ fn invalid_import_path(relative: &Path) -> bool {
         let Some(value) = component.to_str() else {
             return true;
         };
-        value.is_empty()
-            || value == "."
-            || value == ".."
-            || value.len() > 255
-            || value
-                .chars()
-                .any(|character| matches!(character, ':' | '\\' | '\0') || character.is_control())
+        value.is_empty() || value == "." || value == ".." || value.len() > 255
     })
 }
 
