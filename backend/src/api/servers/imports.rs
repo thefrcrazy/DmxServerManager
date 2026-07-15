@@ -1931,42 +1931,51 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn valid_bedrock_archive_requeues_the_same_job_and_audits_only_verified_metadata() {
+    #[test]
+    fn valid_bedrock_archive_requeues_the_same_job_and_audits_only_verified_metadata() {
         use axum::body::to_bytes;
 
-        let (state, _import_root, owner_session, owner_csrf) = test_state().await;
-        let owner_id: String = sqlx::query_scalar("SELECT id FROM users WHERE role_id = 'owner'")
-            .fetch_one(&state.pool)
-            .await
-            .unwrap();
-        let (instance_id, waiting_job) = insert_waiting_bedrock_install(&state, &owner_id).await;
-        let cursor = std::io::Cursor::new(Vec::new());
-        let mut writer = ZipWriter::new(cursor);
-        writer
-            .start_file("bedrock_server", SimpleFileOptions::default())
-            .unwrap();
-        writer.write_all(b"fixture").unwrap();
-        let archive = writer.finish().unwrap().into_inner();
-        let sha256 = format!("{:x}", Sha256::digest(&archive));
-        let response = router(state.clone())
-            .oneshot(
-                Request::post(format!("/api/v1/servers/{instance_id}/imports/zip"))
-                    .header(header::COOKIE, format!("dmx_session={owner_session}"))
-                    .header("x-csrf-token", owner_csrf)
-                    .header("x-dmx-archive-sha256", &sha256)
-                    .header(header::CONTENT_TYPE, "application/zip")
-                    .body(Body::from(archive.clone()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::ACCEPTED);
-        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
-        let resumed: Job = serde_json::from_slice(&body).unwrap();
-        assert_eq!(resumed.id, waiting_job.id);
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_stack_size(crate::TOKIO_WORKER_STACK_BYTES)
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let (state, _import_root, owner_session, owner_csrf) = test_state().await;
+                let owner_id: String =
+                    sqlx::query_scalar("SELECT id FROM users WHERE role_id = 'owner'")
+                        .fetch_one(&state.pool)
+                        .await
+                        .unwrap();
+                let (instance_id, waiting_job) =
+                    insert_waiting_bedrock_install(&state, &owner_id).await;
+                let cursor = std::io::Cursor::new(Vec::new());
+                let mut writer = ZipWriter::new(cursor);
+                writer
+                    .start_file("bedrock_server", SimpleFileOptions::default())
+                    .unwrap();
+                writer.write_all(b"fixture").unwrap();
+                let archive = writer.finish().unwrap().into_inner();
+                let sha256 = format!("{:x}", Sha256::digest(&archive));
+                let response = router(state.clone())
+                    .oneshot(
+                        Request::post(format!("/api/v1/servers/{instance_id}/imports/zip"))
+                            .header(header::COOKIE, format!("dmx_session={owner_session}"))
+                            .header("x-csrf-token", owner_csrf)
+                            .header("x-dmx-archive-sha256", &sha256)
+                            .header(header::CONTENT_TYPE, "application/zip")
+                            .body(Body::from(archive.clone()))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::ACCEPTED);
+                let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+                let resumed: Job = serde_json::from_slice(&body).unwrap();
+                assert_eq!(resumed.id, waiting_job.id);
 
-        let audit_metadata: String = sqlx::query_scalar(
+                let audit_metadata: String = sqlx::query_scalar(
             "SELECT metadata FROM audit_events WHERE action = 'server.bedrock_archive_uploaded' \
              AND resource_id = ? ORDER BY id DESC LIMIT 1",
         )
@@ -1974,33 +1983,35 @@ mod tests {
         .fetch_one(&state.pool)
         .await
         .unwrap();
-        let audit_metadata: serde_json::Value = serde_json::from_str(&audit_metadata).unwrap();
-        assert_eq!(
-            audit_metadata
-                .get("sha256")
-                .and_then(serde_json::Value::as_str),
-            Some(sha256.as_str())
-        );
-        assert_eq!(
-            audit_metadata
-                .get("size_bytes")
-                .and_then(serde_json::Value::as_u64),
-            Some(archive.len() as u64)
-        );
-        assert_eq!(
-            audit_metadata.get("eula_accepted"),
-            Some(&serde_json::Value::Bool(true))
-        );
-        assert!(audit_metadata.get("url").is_none());
+                let audit_metadata: serde_json::Value =
+                    serde_json::from_str(&audit_metadata).unwrap();
+                assert_eq!(
+                    audit_metadata
+                        .get("sha256")
+                        .and_then(serde_json::Value::as_str),
+                    Some(sha256.as_str())
+                );
+                assert_eq!(
+                    audit_metadata
+                        .get("size_bytes")
+                        .and_then(serde_json::Value::as_u64),
+                    Some(archive.len() as u64)
+                );
+                assert_eq!(
+                    audit_metadata.get("eula_accepted"),
+                    Some(&serde_json::Value::Bool(true))
+                );
+                assert!(audit_metadata.get("url").is_none());
 
-        // The endpoint only requeues the persistent install job. Wait for the actor to
-        // leave its install future, then shut it down explicitly: dropping a Tokio runtime
-        // while that large future is being polled makes this test teardown timing-dependent.
-        assert!(matches!(
-            wait_for_job(&state, &waiting_job.id).await.as_str(),
-            "succeeded" | "failed"
-        ));
-        state.runtime.shutdown().await;
+                // The endpoint only requeues the persistent install job. Wait for the actor to
+                // leave its install future, then shut it down explicitly: dropping a Tokio runtime
+                // while that large future is being polled makes this test teardown timing-dependent.
+                assert!(matches!(
+                    wait_for_job(&state, &waiting_job.id).await.as_str(),
+                    "succeeded" | "failed"
+                ));
+                state.runtime.shutdown().await;
+            });
     }
 
     #[tokio::test]

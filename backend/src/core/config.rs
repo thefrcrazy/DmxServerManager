@@ -695,7 +695,7 @@ fn default_config_file() -> PathBuf {
         let base = std::env::var_os("PROGRAMDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\\ProgramData"));
-        return base.join("DmxServerManager").join("config.toml");
+        base.join("DmxServerManager").join("config.toml")
     }
     #[cfg(not(windows))]
     {
@@ -712,7 +712,7 @@ fn default_data_dir() -> PathBuf {
         let base = std::env::var_os("PROGRAMDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\\ProgramData"));
-        return base.join("DmxServerManager");
+        base.join("DmxServerManager")
     }
     #[cfg(not(windows))]
     {

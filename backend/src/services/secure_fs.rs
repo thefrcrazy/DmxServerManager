@@ -676,7 +676,7 @@ fn windows_file_is_linked(file: &File) -> io::Result<bool> {
     let success =
         unsafe { GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &mut information) };
     if success == 0 {
-        return Err(io::Error::last_os_error().into());
+        return Err(io::Error::last_os_error());
     }
     Ok(information.nNumberOfLinks > 1
         || information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0)

@@ -1,4 +1,7 @@
-use std::{fs::OpenOptions, io::Write, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
+
+#[cfg(any(not(windows), test))]
+use std::{fs::OpenOptions, io::Write};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chacha20poly1305::{
@@ -245,6 +248,7 @@ fn decode_key(bytes: &[u8]) -> anyhow::Result<[u8; 32]> {
         .map_err(|_| anyhow::anyhow!("master key must contain exactly 32 bytes"))
 }
 
+#[cfg(any(not(windows), test))]
 fn create_key_file(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);

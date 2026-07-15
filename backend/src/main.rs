@@ -39,6 +39,7 @@ use services::{
 };
 
 const HTTP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+const TOKIO_WORKER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StartupMode {
@@ -67,6 +68,7 @@ fn startup_mode(args: impl IntoIterator<Item = OsString>) -> anyhow::Result<Star
 
 fn runtime() -> anyhow::Result<tokio::runtime::Runtime> {
     Ok(tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(TOKIO_WORKER_STACK_BYTES)
         .enable_all()
         .build()?)
 }
