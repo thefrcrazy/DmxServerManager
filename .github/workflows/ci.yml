@@ -247,8 +247,8 @@ jobs:
             DMX_NO_START=1 \
             sh install/linux/install-docker.sh
           cmp install/linux/docker-compose.yml "$INSTALL_DIR/docker-compose.yml"
-          cmp install/linux/config.docker.example.toml "$INSTALL_DIR/config/config.toml"
-          test "$(stat -c '%u:%g:%a' "$INSTALL_DIR/config/master.key")" = "10001:10001:400"
+          sudo cmp install/linux/config.docker.example.toml "$INSTALL_DIR/config/config.toml"
+          test "$(sudo stat -c '%u:%g:%a' "$INSTALL_DIR/config/master.key")" = "10001:10001:400"
           test "$(stat -c '%a' "$INSTALL_DIR/.env")" = "600"
           docker compose --project-directory "$INSTALL_DIR" \
             -f "$INSTALL_DIR/docker-compose.yml" config --quiet
