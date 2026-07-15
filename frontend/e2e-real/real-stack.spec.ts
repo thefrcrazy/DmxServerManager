@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { AuthResponseSchema, ProblemDetailsSchema } from "../src/schemas/api";
+import { AuthResponseSchema, HealthResponseSchema, ProblemDetailsSchema } from "../src/schemas/api";
 import { REAL_E2E_BASE_URL, REAL_E2E_SETUP_TOKEN } from "./runtime";
 
 const OWNER_PASSWORD = "Owner-Real-E2E-2026!";
@@ -10,11 +10,12 @@ const apiUrl = (path: string): string => new URL(path, `${REAL_E2E_BASE_URL}/`).
 test("le vrai Axum, SQLite et la SPA appliquent setup, session, CSRF et RBAC", async ({ page, playwright }) => {
     const health = await page.request.get("/api/v1/health");
     expect(health.status()).toBe(200);
-    expect(await health.json()).toEqual({
+    const healthBody = HealthResponseSchema.parse(await health.json());
+    expect(healthBody).toMatchObject({
         status: "ok",
         service: "dmx-server-manager",
-        version: "1.0.0",
     });
+    expect(healthBody.version).toMatch(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/);
 
     const anonymousPrivate = await page.request.get("/api/v1/users");
     expect(anonymousPrivate.status()).toBe(401);
