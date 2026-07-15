@@ -8,7 +8,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 env:
@@ -542,12 +542,13 @@ jobs:
           reference="$IMAGE@$DIGEST"
           container="dmx-release-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           volume="dmx-release-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          master_key="$RUNNER_TEMP/dmx-release-master-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.key"
+          config_dir="$RUNNER_TEMP/dmx-release-config-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          master_key="$config_dir/master.key"
           # shellcheck disable=SC2329
           cleanup() {
             docker rm --force "$container" >/dev/null 2>&1 || true
             docker volume rm --force "$volume" >/dev/null 2>&1 || true
-            rm -f "$master_key"
+            rm -rf "$config_dir"
           }
           trap cleanup EXIT
           trap 'exit 129' HUP
@@ -558,7 +559,10 @@ jobs:
           test "$(docker image inspect "$reference" --format '{{.Config.User}}')" = 10001:10001
           test "$(docker image inspect "$reference" --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" \
             = "https://github.com/thefrcrazy/DmxServerManager"
+          mkdir -p "$config_dir"
           openssl rand 32 > "$master_key"
+          install -m 0640 install/linux/config.docker.example.toml "$config_dir/config.toml"
+          sudo chown root:10001 "$config_dir/config.toml"
           sudo chown 10001:10001 "$master_key"
           sudo chmod 0400 "$master_key"
           docker volume create "$volume" >/dev/null
@@ -572,7 +576,7 @@ jobs:
             --tmpfs /tmp:size=256m,mode=1777 \
             --env DMX_IMPORT_ROOTS= \
             --volume "$volume:/data" \
-            --volume "$master_key:/run/secrets/dmx_master_key:ro" \
+            --volume "$config_dir:/config:ro" \
             "$reference" >/dev/null
           for attempt in $(seq 1 45); do
             : "$attempt"
@@ -628,22 +632,26 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
 
-      - name: Sign and upload image SBOM
+      - name: Sign and upload Docker assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}"
           issuer='https://token.actions.githubusercontent.com'
-          cosign sign-blob --yes --bundle dmx-server-manager-image-amd64.spdx.json.sigstore.json \
-            dmx-server-manager-image-amd64.spdx.json
-          cosign verify-blob \
-            --bundle dmx-server-manager-image-amd64.spdx.json.sigstore.json \
-            --certificate-identity "$identity" \
-            --certificate-oidc-issuer "$issuer" \
-            dmx-server-manager-image-amd64.spdx.json >/dev/null
+          install -m 0755 install/linux/install-docker.sh dmx-server-manager-install-docker.sh
+          for file in dmx-server-manager-image-amd64.spdx.json dmx-server-manager-install-docker.sh; do
+            cosign sign-blob --yes --bundle "$file.sigstore.json" "$file"
+            cosign verify-blob \
+              --bundle "$file.sigstore.json" \
+              --certificate-identity "$identity" \
+              --certificate-oidc-issuer "$issuer" \
+              "$file" >/dev/null
+          done
           gh release upload "$GITHUB_REF_NAME" \
             dmx-server-manager-image-amd64.spdx.json \
-            dmx-server-manager-image-amd64.spdx.json.sigstore.json
+            dmx-server-manager-image-amd64.spdx.json.sigstore.json \
+            dmx-server-manager-install-docker.sh \
+            dmx-server-manager-install-docker.sh.sigstore.json
 
   publish:
     name: Publish verified release
@@ -787,7 +795,7 @@ jobs:
           version: v0.34.1
           driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
 
-      - name: Promote only the verified digest to the release tag
+      - name: Promote only the verified digest to the immutable release tag
         shell: bash
         env:
           IMAGE: ghcr.io/thefrcrazy/dmx-server-manager
@@ -825,6 +833,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+
+      - name: Promote the published release to latest
+        shell: bash
+        env:
+          IMAGE: ghcr.io/thefrcrazy/dmx-server-manager
+          DIGEST: ${{ needs.container.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --prefer-index=false \
+            --tag "$IMAGE:latest" \
+            "$IMAGE@$DIGEST"
+          latest_digest=$(docker buildx imagetools inspect "$IMAGE:latest" \
+            --format '{{json .Manifest}}' | jq -er '.digest')
+          if [[ "$latest_digest" != "$DIGEST" ]]; then
+            echo "Latest digest mismatch: expected $DIGEST, received $latest_digest" >&2
+            exit 1
+          fi
 
   cleanup-failed-draft:
     name: Remove failed draft release

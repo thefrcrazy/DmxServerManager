@@ -1437,8 +1437,8 @@ fn release_schemas() -> Value {
             "properties": {
                 "kind": {"const": "docker"}, "image": {"const": "ghcr.io/thefrcrazy/dmx-server-manager"},
                 "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-                "pull_command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Display-only authenticated Docker bootstrap and compose pull command pinned by digest."},
-                "apply_command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Display-only authenticated Docker bootstrap and compose up command pinned by digest."}
+                "pull_command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Display-only docker pull command pinned by the signed image digest."},
+                "apply_command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Display-only Compose recreate command pinned by the signed image digest."}
             }
         },
         "ReleaseTarget": {

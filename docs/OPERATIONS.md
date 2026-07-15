@@ -15,8 +15,9 @@ Get-WinEvent -LogName Application | Where-Object ProviderName -eq 'DmxServerMana
 ```
 
 ```bash
-docker compose -f install/linux/docker-compose.yml ps
-docker compose -f install/linux/docker-compose.yml logs -f panel
+cd /opt/dmx-server-manager
+docker compose ps
+docker compose logs -f panel
 ```
 
 ## Sauvegardes
@@ -29,7 +30,7 @@ Ne copiez pas une base SQLite active avec `cp`. Utilisez l’API de sauvegarde d
 
 ### Le conteneur ne démarre pas
 
-Exécutez `sudo ./install/linux/bootstrap-docker.sh direct`, vérifiez que `secrets/master.key` appartient à `10001:10001` en mode `0400`, que `/imports` est lisible/traversable par ce compte et que le volume `/data` est accessible à l’UID 10001. Consultez `docker compose logs panel`.
+Vérifiez que `config/master.key` appartient à `10001:10001` en mode `0400`, que `config/config.toml` est lisible par le groupe `10001` et que `data/` est accessible à l’UID 10001. Consultez `docker compose logs panel`.
 
 ### Le panneau refuse l’écoute distante
 

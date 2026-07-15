@@ -49,36 +49,33 @@ Les builds officiels surveillent par défaut un manifeste de release Ed25519 ave
 
 ## Installation rapide avec Docker
 
-Le réseau hôte est obligatoire : les instances réservent des ports TCP/UDP dynamiques. Le panneau reste sur loopback tant qu’aucun reverse proxy HTTPS n’est déclaré. Le bootstrap exige `cosign` 3 afin d’authentifier le digest GHCR avant toute écriture locale.
+Docker Engine, Docker Compose v2 et Linux AMD64 sont requis. Aucun clone Git n’est nécessaire : l’installateur autonome crée `/opt/dmx-server-manager/docker-compose.yml`, `config/` et `data/`, puis démarre le panneau.
 
 ```bash
-cd install/linux
-export DMX_VERSION='1.0.7'
-export DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>'
-sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct
-docker compose pull
-docker compose up -d
+curl -fsSLo /tmp/dmx-server-manager-install-docker.sh \
+  https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/dmx-server-manager-install-docker.sh \
+  && sudo sh /tmp/dmx-server-manager-install-docker.sh
 ```
 
-Accès local : `http://localhost:5500`. Depuis un autre poste, utilisez temporairement un tunnel SSH :
+Accès local : `http://localhost:5500`. Le réseau hôte reste obligatoire pour les ports TCP/UDP dynamiques des jeux. Depuis un autre poste, utilisez temporairement un tunnel SSH :
 
 ```bash
 ssh -L 5500:127.0.0.1:5500 user@server
 ```
 
-Pour une exposition publique avec Let's Encrypt :
+Pour mettre à jour l’image et recréer le conteneur :
 
 ```bash
-cd install/linux
-DMX_DOMAIN=panel.example.com \
-DMX_ACME_EMAIL=admin@example.com \
-DMX_VERSION='1.0.7' \
-DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>' \
-sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh traefik
-docker compose -f docker-compose.traefik.yml up -d
+cd /opt/dmx-server-manager
+docker compose pull panel
+docker compose up -d --force-recreate panel
 ```
 
-L’image est `ghcr.io/thefrcrazy/dmx-server-manager`. Un volume nommé conserve `/data`; `/imports` est monté en lecture seule. Conservez `install/linux/secrets/master.key` hors des sauvegardes de données.
+L’image suivie par défaut est `ghcr.io/thefrcrazy/dmx-server-manager:latest`; chaque release conserve aussi son tag versionné pour le rollback. Un simple `docker pull` ne remplace pas un conteneur déjà lancé, d’où la seconde commande Compose. Le projet ne fournit aucun Traefik : branchez votre reverse proxy HTTPS externe sur le panneau après avoir configuré précisément `bind`, `reverse_proxy` et `trusted_proxies` dans `config/config.toml`.
+
+L’équivalent avec `docker pull` explicite est `docker pull ghcr.io/thefrcrazy/dmx-server-manager:latest && docker compose up -d --force-recreate panel`, depuis `/opt/dmx-server-manager`.
+
+Sauvegardez séparément `config/master.key` et `data/`. La clé ne doit jamais être placée dans une archive de données ni publiée.
 
 ## Installations natives
 
@@ -92,7 +89,7 @@ Emplacements par défaut :
 |---|---|---|
 | Linux | `/etc/dmx-server-manager/config.toml` | `/var/lib/dmx-server-manager` |
 | Windows | `%PROGRAMDATA%\DmxServerManager\config\config.toml` | `%PROGRAMDATA%\DmxServerManager\data` |
-| Docker | `/data/config.toml` | `/data` |
+| Docker | `/config/config.toml` | `/data` |
 
 ## Sécurité
 

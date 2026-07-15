@@ -235,34 +235,23 @@ jobs:
         run: actionlint
 
       - name: Check shell scripts
-        run: shellcheck install/linux/*.sh install/linux/tests/*.sh
+        run: shellcheck install/linux/*.sh
 
-      - name: Install deterministic Cosign verifier fixture
-        run: sudo install -m 0755 install/linux/tests/fake-cosign.sh /usr/local/bin/cosign
-
-      - name: Bootstrap Compose fixtures
+      - name: Generate standalone Docker installation
         env:
-          DMX_DOMAIN: panel.example.com
-          DMX_ACME_EMAIL: admin@example.com
-          DMX_IMAGE: ghcr.io/thefrcrazy/dmx-server-manager@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          DMX_VERSION: 1.0.0
+          INSTALL_DIR: ${{ runner.temp }}/dmx-standalone-install
         run: |
-          set +e
-          DMX_COSIGN_TEST_FAIL_AFTER_VERIFY=1 \
-            sudo --preserve-env=DMX_COSIGN_TEST_FAIL_AFTER_VERIFY,DMX_DOMAIN,DMX_ACME_EMAIL,DMX_IMAGE,DMX_VERSION \
-            install/linux/bootstrap-docker.sh traefik
-          verification_status=$?
-          set -e
-          test "$verification_status" -eq 42
-          test ! -e install/linux/.env
-          test ! -e install/linux/secrets/master.key
-          sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_IMAGE,DMX_VERSION install/linux/bootstrap-docker.sh traefik
-
-      - name: Validate direct Compose
-        run: docker compose -f install/linux/docker-compose.yml config --quiet
-
-      - name: Validate Traefik Compose
-        run: docker compose -f install/linux/docker-compose.traefik.yml config --quiet
+          sudo env \
+            DMX_INSTALL_DIR="$INSTALL_DIR" \
+            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:latest \
+            DMX_NO_START=1 \
+            sh install/linux/install-docker.sh
+          cmp install/linux/docker-compose.yml "$INSTALL_DIR/docker-compose.yml"
+          cmp install/linux/config.docker.example.toml "$INSTALL_DIR/config/config.toml"
+          test "$(stat -c '%u:%g:%a' "$INSTALL_DIR/config/master.key")" = "10001:10001:400"
+          test "$(stat -c '%a' "$INSTALL_DIR/.env")" = "600"
+          docker compose --project-directory "$INSTALL_DIR" \
+            -f "$INSTALL_DIR/docker-compose.yml" config --quiet
 
       - name: Parse PowerShell installer
         shell: pwsh
@@ -310,26 +299,28 @@ jobs:
       - name: Smoke test health endpoint
         shell: bash
         run: |
-          sudo install -m 0755 install/linux/tests/fake-cosign.sh /usr/local/bin/cosign
-          DMX_VERSION=1.0.0 \
-            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
-            sudo --preserve-env=DMX_IMAGE,DMX_VERSION install/linux/bootstrap-docker.sh direct
-          test "$(stat -c '%u:%g:%a' install/linux/secrets/master.key)" = "10001:10001:400"
+          install_dir="$RUNNER_TEMP/dmx-compose-smoke"
+          sudo env \
+            DMX_INSTALL_DIR="$install_dir" \
+            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci \
+            DMX_NO_START=1 \
+            sh install/linux/install-docker.sh
+          test "$(stat -c '%u:%g:%a' "$install_dir/config/master.key")" = "10001:10001:400"
           docker tag dmx-server-manager:ci ghcr.io/thefrcrazy/dmx-server-manager:ci
           # shellcheck disable=SC2329
           cleanup() {
-            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml logs panel || true
-            DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml down --volumes --remove-orphans || true
+            docker compose --project-directory "$install_dir" -f "$install_dir/docker-compose.yml" logs panel || true
+            docker compose --project-directory "$install_dir" -f "$install_dir/docker-compose.yml" down --remove-orphans || true
           }
           trap cleanup EXIT
-          DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml up \
+          docker compose --project-directory "$install_dir" -f "$install_dir/docker-compose.yml" up \
             --detach --no-build --pull never panel
           for attempt in $(seq 1 30); do
             : "$attempt"
             if curl --fail --silent http://127.0.0.1:5500/api/v1/health >/dev/null; then
               exit 0
             fi
-            if ! DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci docker compose -f install/linux/docker-compose.yml ps \
+            if ! docker compose --project-directory "$install_dir" -f "$install_dir/docker-compose.yml" ps \
               --status running --services | grep -qx panel; then
               exit 1
             fi

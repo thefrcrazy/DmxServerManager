@@ -99,6 +99,6 @@ Le processus refuse une adresse non-loopback si aucun certificat TLS n’est con
 
 ## Secrets
 
-La clé maître doit contenir exactement 32 octets aléatoires. Sur Docker, elle est montée dans `/run/secrets/dmx_master_key`; elle n’est jamais passée dans l’environnement. Sauvegardez cette clé séparément de `/data`, avec accès restreint. Sa perte rend les secrets chiffrés irrécupérables.
+La clé maître doit contenir exactement 32 octets aléatoires. Sur Docker, elle est montée en lecture seule dans `/config/master.key`; elle n’est jamais passée dans l’environnement. Sauvegardez cette clé séparément de `/data`, avec accès restreint. Sa perte rend les secrets chiffrés irrécupérables.
 
 Les clés CurseForge, mots de passe de jeux et URLs Discord sont configurés via l’API protégée. Les réponses exposent uniquement `configured: true|false`.

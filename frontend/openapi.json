@@ -1034,7 +1034,7 @@
         "additionalProperties": false,
         "properties": {
           "apply_command": {
-            "description": "Display-only authenticated Docker bootstrap and compose up command pinned by digest.",
+            "description": "Display-only Compose recreate command pinned by the signed image digest.",
             "maxLength": 8192,
             "minLength": 1,
             "type": "string"
@@ -1050,7 +1050,7 @@
             "const": "docker"
           },
           "pull_command": {
-            "description": "Display-only authenticated Docker bootstrap and compose pull command pinned by digest.",
+            "description": "Display-only docker pull command pinned by the signed image digest.",
             "maxLength": 8192,
             "minLength": 1,
             "type": "string"
@@ -3422,7 +3422,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.7"
+    "version": "1.0.8"
   },
   "openapi": "3.1.0",
   "paths": {

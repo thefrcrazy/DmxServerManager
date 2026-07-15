@@ -5,7 +5,7 @@ Le panneau détecte un manifeste de release signé mais ne se remplace jamais pe
 ## Linux natif
 
 ```bash
-sudo DMX_VERSION=1.0.7 \
+sudo DMX_VERSION=1.0.8 \
   DMX_EXPECTED_ARCHIVE_SHA256='<checksum-archive-du-manifeste-signé>' \
   sh ./dmx-server-manager-install-linux.sh
 ```
@@ -15,7 +15,7 @@ Utilisez l’asset d’installateur dont le SHA-256 est inclus dans le manifeste
 ```bash
 sudo systemctl stop dmx-server-manager
 ls -1 /usr/lib/dmx-server-manager/releases
-sudo ln -sfn /usr/lib/dmx-server-manager/releases/1.0.7-<sha256> /usr/lib/dmx-server-manager/current
+sudo ln -sfn /usr/lib/dmx-server-manager/releases/1.0.8-<sha256> /usr/lib/dmx-server-manager/current
 sudo systemctl start dmx-server-manager
 ```
 
@@ -23,20 +23,19 @@ Ne rétrogradez pas après une migration de schéma déclarée irréversible; re
 
 ## Windows natif
 
-Relancez la commande proposée par le panneau, qui appelle `install.ps1 -Version 1.0.7 -ExpectedArchiveSha256 <checksum-signé>`. Lorsque ce paramètre est présent, aucun fichier `.sha256` distant n’est consulté. Chaque archive reste sous `%ProgramFiles%\DmxServerManager\releases\<version>-<sha256>` et `current` est une jonction vers la release active. L’installateur restaure la jonction, la configuration SCM, l’environnement et l’état antérieur si le service ou son healthcheck HTTP échoue.
+Relancez la commande proposée par le panneau, qui appelle `install.ps1 -Version 1.0.8 -ExpectedArchiveSha256 <checksum-signé>`. Lorsque ce paramètre est présent, aucun fichier `.sha256` distant n’est consulté. Chaque archive reste sous `%ProgramFiles%\DmxServerManager\releases\<version>-<sha256>` et `current` est une jonction vers la release active. L’installateur restaure la jonction, la configuration SCM, l’environnement et l’état antérieur si le service ou son healthcheck HTTP échoue.
 
 ## Docker
 
 ```bash
-cd install/linux
-export DMX_VERSION='1.0.7'
-export DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-signé>'
-sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct
-docker compose pull
-docker compose up -d
+cd /opt/dmx-server-manager
+docker compose pull panel
+docker compose up -d --force-recreate panel
 ```
 
-Recopiez la version et le digest affichés par le panneau après vérification du manifeste signé. Le bootstrap vérifie à nouveau la signature keyless de ce digest avec l’identité exacte du tag avant de persister `DMX_VERSION` et `DMX_IMAGE` dans `install/linux/.env`. Pour une installation Traefik, utilisez le mode `traefik` avec les variables de domaine déjà présentes dans `.env`. Pour revenir, réexécutez ces commandes avec l’ancienne version et son ancien digest vérifié. Ne supprimez pas le volume `dmx-server-manager-data`.
+`docker compose pull` récupère `ghcr.io/thefrcrazy/dmx-server-manager:latest`; `up --force-recreate` remplace ensuite le conteneur en conservant `config/` et `data/`. Un `docker pull` seul ne modifie jamais un conteneur déjà lancé.
+
+La commande proposée par le panneau utilise le digest signé exact. Pour un rollback, remplacez `DMX_IMAGE` dans `.env` par un tag immuable tel que `ghcr.io/thefrcrazy/dmx-server-manager:1.0.7`, puis relancez les deux commandes. Ne supprimez jamais `config/master.key` ni `data/`.
 
 ## Format du manifeste du panneau
 
@@ -70,13 +69,13 @@ Chaque tag `v*` publie les archives Linux/Windows, les installateurs natifs, leu
 
 ```bash
 cosign verify-blob \
-  --bundle dmx-server-manager-v1.0.7-x86_64-unknown-linux-gnu.tar.gz.sha256.sigstore.json \
-  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.7 \
+  --bundle dmx-server-manager-v1.0.8-x86_64-unknown-linux-gnu.tar.gz.sha256.sigstore.json \
+  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.8 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  dmx-server-manager-v1.0.7-x86_64-unknown-linux-gnu.tar.gz.sha256
+  dmx-server-manager-v1.0.8-x86_64-unknown-linux-gnu.tar.gz.sha256
 cosign verify-blob \
   --bundle dmx-server-manager-install-linux.sh.sigstore.json \
-  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.7 \
+  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.8 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   dmx-server-manager-install-linux.sh
 ```

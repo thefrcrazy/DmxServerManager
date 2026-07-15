@@ -442,7 +442,7 @@ fn validate_native_target(
 
 fn validate_docker_target(
     artifact: DockerArtifact,
-    version: &str,
+    _version: &str,
 ) -> Result<ReleaseTarget, ReleaseCheckErrorCode> {
     if artifact.image != RELEASE_IMAGE {
         return Err(ReleaseCheckErrorCode::ManifestInvalid);
@@ -455,14 +455,13 @@ fn validate_docker_target(
         .and_then(validate_sha256)?;
     let digest = format!("sha256:{digest}");
     let pinned_image = format!("{}@{}", artifact.image, digest);
-    let authenticated_bootstrap = format!(
-        "DMX_VERSION='{version}' DMX_IMAGE='{pinned_image}' sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct"
-    );
     Ok(ReleaseTarget::Docker {
         image: artifact.image,
         digest,
-        pull_command: format!("{authenticated_bootstrap} && docker compose pull"),
-        apply_command: format!("{authenticated_bootstrap} && docker compose up -d"),
+        pull_command: format!("docker pull '{pinned_image}'"),
+        apply_command: format!(
+            "DMX_IMAGE='{pinned_image}' docker compose up -d --force-recreate panel"
+        ),
     })
 }
 
@@ -586,10 +585,8 @@ mod tests {
         assert_eq!(digest, format!("sha256:{}", "e".repeat(64)));
         assert!(pull_command.contains(&digest));
         assert!(apply_command.contains(&digest));
-        assert!(pull_command.contains("DMX_VERSION='1.0.1'"));
-        assert!(pull_command.contains("./bootstrap-docker.sh direct"));
-        assert!(pull_command.contains("--preserve-env=DMX_VERSION,DMX_IMAGE"));
-        assert!(apply_command.contains("./bootstrap-docker.sh direct"));
+        assert!(pull_command.starts_with("docker pull 'ghcr.io/"));
+        assert!(apply_command.contains("docker compose up -d --force-recreate panel"));
         assert!(!pull_command.contains(":latest"));
     }
 

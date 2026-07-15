@@ -1368,7 +1368,7 @@ export interface components {
         /** Format: uri */
         DiscordWebhookUrl: string;
         DockerReleaseTarget: {
-            /** @description Display-only authenticated Docker bootstrap and compose up command pinned by digest. */
+            /** @description Display-only Compose recreate command pinned by the signed image digest. */
             apply_command: string;
             digest: string;
             /** @constant */
@@ -1378,7 +1378,7 @@ export interface components {
              * @enum {string}
              */
             kind: "docker";
-            /** @description Display-only authenticated Docker bootstrap and compose pull command pinned by digest. */
+            /** @description Display-only docker pull command pinned by the signed image digest. */
             pull_command: string;
         };
         EventEnvelope: {

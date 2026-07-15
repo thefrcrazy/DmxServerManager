@@ -21,10 +21,10 @@ for directory in "${DMX_DATA_DIR:-/data}" "${HOME:-/data/home}"; do
     fi
 done
 
-master_key_file="${DMX_MASTER_KEY_FILE:-/run/secrets/dmx_master_key}"
+master_key_file="${DMX_MASTER_KEY_FILE:-/config/master.key}"
 if [ ! -r "$master_key_file" ]; then
     echo "Missing readable master key: $master_key_file" >&2
-    echo "Run install/linux/bootstrap-docker.sh before starting Compose." >&2
+    echo "Run the standalone Docker installer or mount a 32-byte master key read-only." >&2
     exit 78
 fi
 

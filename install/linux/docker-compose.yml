@@ -2,7 +2,7 @@ name: dmx-server-manager
 
 services:
   panel:
-    image: "${DMX_IMAGE:?set DMX_IMAGE to ghcr.io/thefrcrazy/dmx-server-manager@sha256:<signed-digest>}"
+    image: "${DMX_IMAGE:-ghcr.io/thefrcrazy/dmx-server-manager:latest}"
     platform: linux/amd64
     restart: unless-stopped
     network_mode: host
@@ -16,39 +16,11 @@ services:
     pids_limit: 4096
     environment:
       TZ: ${DMX_TIMEZONE:-Etc/UTC}
-      DMX_BIND: ${DMX_BIND:-127.0.0.1:5500}
-      DMX_CONFIG_FILE: /data/config.toml
-      DMX_DATA_DIR: /data
-      DMX_DATABASE_URL: sqlite:///data/dmx-server-manager.sqlite?mode=rwc
-      DMX_IMPORT_ROOTS: /imports
-      DMX_LOG: ${DMX_LOG:-info}
-      DMX_MASTER_KEY_FILE: /run/secrets/dmx_master_key
-      DMX_STEAMCMD_PATH: /usr/games/steamcmd
-      DMX_STATIC_DIR: /opt/dmx-server-manager/static
-      DMX_REVERSE_PROXY: ${DMX_REVERSE_PROXY:-false}
-      DMX_SESSION_TTL_HOURS: ${DMX_SESSION_TTL_HOURS:-24}
+      DMX_CONFIG_FILE: /config/config.toml
       DMX_SETUP_TOKEN: ${DMX_SETUP_TOKEN:-}
-      DMX_TRUSTED_PROXIES: ${DMX_TRUSTED_PROXIES:-}
-      DMX_DEPLOYMENT_MODE: docker
-      # Empty means: use the official URL and public key compiled into the image.
-      # Override both variables together; a partial override is rejected.
-      DMX_RELEASE_MANIFEST_URL: ${DMX_RELEASE_MANIFEST_URL:-}
-      DMX_RELEASE_PUBLIC_KEY: ${DMX_RELEASE_PUBLIC_KEY:-}
-      DMX_RELEASE_CHECK_INTERVAL_SECONDS: ${DMX_RELEASE_CHECK_INTERVAL_SECONDS:-21600}
     volumes:
-      - dmx_data:/data
-      - type: bind
-        source: ${DMX_IMPORTS_PATH:-./imports}
-        target: /imports
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ./secrets/master.key
-        target: /run/secrets/dmx_master_key
-        read_only: true
-        bind:
-          create_host_path: false
+      - ./config:/config:ro
+      - ./data:/data
     tmpfs:
       - /tmp:size=256m,mode=1777
       - /run:size=16m,mode=0755
@@ -58,7 +30,3 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-
-volumes:
-  dmx_data:
-    name: dmx-server-manager-data

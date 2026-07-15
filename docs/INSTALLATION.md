@@ -9,7 +9,7 @@ La version 1.0 supporte exclusivement Linux AMD64, Windows AMD64 et les conteneu
 Téléchargez l’installateur et le checksum d’archive depuis les assets de la release, puis vérifiez séparément leurs bundles Sigstore produits par GitHub Actions. Ne lancez jamais directement un script distant via un pipe. `cosign` 3 est requis pour cette vérification initiale.
 
 ```bash
-version=1.0.7
+version=1.0.8
 asset="dmx-server-manager-v${version}-x86_64-unknown-linux-gnu.tar.gz"
 installer="dmx-server-manager-install-linux.sh"
 base="https://github.com/thefrcrazy/DmxServerManager/releases/download/v${version}"
@@ -48,7 +48,7 @@ Le panneau écoute par défaut sur `127.0.0.1:5500`; ouvrez-le via `http://local
 Dans PowerShell 5.1 ou 7 lancé en administrateur :
 
 ```powershell
-$Version = '1.0.7'
+$Version = '1.0.8'
 $Asset = "dmx-server-manager-v$Version-x86_64-pc-windows-msvc.zip"
 $Installer = 'dmx-server-manager-install-windows.ps1'
 $Base = "https://github.com/thefrcrazy/DmxServerManager/releases/download/v$Version"
@@ -77,31 +77,51 @@ L’installateur place le bootstrap SteamCMD officiel sous `%PROGRAMDATA%\DmxSer
 
 ## Docker Linux
 
-```bash
-cd install/linux
-export DMX_VERSION='1.0.7'
-export DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>'
-sudo --preserve-env=DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh direct
-docker compose pull
-docker compose up -d
-```
-
-Le bootstrap doit être exécuté avec `sudo` : il crée la clé en `0400`, propriétaire `10001:10001`, sans lecture globale. Il rend aussi l’arborescence d’import lisible/traversable par le groupe `10001` avec des répertoires `0750` et des fichiers `0640`. Le conteneur principal s’exécute avec l’UID/GID `10001`, un système de fichiers racine en lecture seule, toutes les capabilities supprimées et `/data` dans un volume nommé. `network_mode: host` est intentionnel et obligatoire pour les ports dynamiques des jeux.
-
-`cosign` 3 doit être installé sur l’hôte. Avant de créer ou modifier les fichiers locaux, le bootstrap vérifie la signature keyless de l’image avec l’issuer GitHub Actions et l’identité exacte `release.yml@refs/tags/v$DMX_VERSION`. Il refuse une version différente, une autre identité, un autre issuer, un tag ou un namespace différent. `DMX_IMAGE` doit être l’image officielle `@sha256:<digest>` indiquée par le manifeste de release signé. Le premier pull et toutes les mises à niveau utilisent donc exactement l’artefact authentifié.
-
-Pour Traefik HTTPS, renseignez un DNS public pointant sur l’hôte, ouvrez TCP 80/443, puis :
+Docker Engine et Docker Compose v2 doivent déjà être installés. L’installation du panneau ne nécessite ni clone Git, ni Bun, ni Rust, ni Cosign sur le serveur :
 
 ```bash
-DMX_DOMAIN=panel.example.com \
-DMX_ACME_EMAIL=admin@example.com \
-DMX_VERSION='1.0.7' \
-DMX_IMAGE='ghcr.io/thefrcrazy/dmx-server-manager@sha256:<digest-du-manifeste-signé>' \
-sudo --preserve-env=DMX_DOMAIN,DMX_ACME_EMAIL,DMX_VERSION,DMX_IMAGE ./bootstrap-docker.sh traefik
-docker compose -f docker-compose.traefik.yml up -d
+curl -fsSLo /tmp/dmx-server-manager-install-docker.sh \
+  https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/dmx-server-manager-install-docker.sh \
+  && sudo sh /tmp/dmx-server-manager-install-docker.sh
 ```
 
-Le compose HTTPS épingle [Traefik `v3.7.7`](https://github.com/traefik/traefik/releases/tag/v3.7.7) par digest. Cette version corrige notamment les avis de sécurité publiés avec cette release; ne remplacez pas ce pin par `latest`.
+L’installateur crée par défaut :
+
+- `/opt/dmx-server-manager/docker-compose.yml`, que vous pouvez modifier librement ;
+- `/opt/dmx-server-manager/config/config.toml` et la clé `config/master.key` ;
+- `/opt/dmx-server-manager/data/`, qui contient SQLite, instances, mondes et sauvegardes ;
+- `/opt/dmx-server-manager/.env`, avec l’image et le jeton temporaire du premier setup.
+
+Une relance de l’installateur conserve les fichiers `docker-compose.yml`, `.env` et `config/config.toml` existants. Vos réseaux, labels et réglages de reverse proxy personnalisés ne sont donc pas écrasés.
+
+Le conteneur s’exécute avec l’UID/GID `10001`, un système de fichiers racine en lecture seule et toutes les capabilities supprimées. Les deux dossiers sont montés directement : `./config:/config:ro` et `./data:/data`. `network_mode: host` est intentionnel et obligatoire pour les ports dynamiques des jeux.
+
+L’image par défaut est `ghcr.io/thefrcrazy/dmx-server-manager:latest`. Pour épingler une version ou un digest signé, modifiez `DMX_IMAGE` dans `.env`. Le tag versionné n’est jamais déplacé ; seul `latest` suit la dernière release publiée et validée.
+
+### Reverse proxy externe
+
+DmxServerManager ne déploie aucun Traefik, certificat ou conteneur proxy. Dans `config/config.toml`, conservez le loopback pour un accès local, ou configurez une adresse joignable uniquement par votre reverse proxy HTTPS :
+
+```toml
+bind = "127.0.0.1:5500"
+reverse_proxy = true
+trusted_proxies = ["IP_EXACTE_DU_PROXY"]
+```
+
+Si le proxy est dans un autre conteneur, adaptez votre propre réseau et le `bind` sans exposer le port 5500 en HTTP public. La liste accepte des IP exactes, pas un réseau entier.
+
+### Migration depuis l’ancien Compose du dépôt
+
+Arrêtez d’utiliser le dépôt sur le serveur, mais conservez-le pendant la migration. L’installateur peut arrêter l’ancienne stack, copier le volume nommé `dmx-server-manager-data` vers `data/` et reprendre exactement l’ancienne clé maître :
+
+```bash
+curl -fsSLo /tmp/dmx-server-manager-install-docker.sh \
+  https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/dmx-server-manager-install-docker.sh \
+  && sudo DMX_LEGACY_DIR="$HOME/DmxServerManager/install/linux" \
+    sh /tmp/dmx-server-manager-install-docker.sh
+```
+
+La source et l’ancien volume ne sont pas supprimés. L’installateur refuse de copier une base SQLite active, d’écraser un dossier `data/` non vide ou de migrer sans la clé maître de 32 octets.
 
 ## Docker Desktop Windows
 
@@ -113,19 +133,19 @@ Le réseau hôte de Docker Desktop expose les ports via la VM Linux. Vérifiez c
 
 La création initiale n’est permise que s’il n’existe aucun compte et si la requête vient de loopback, ou si un jeton d’installation temporaire a été configuré. Une installation native ouverte depuis `http://localhost:5500` n’a pas besoin de jeton.
 
-Pour un premier accès distant derrière HTTPS, générez le jeton sur l’hôte sans le copier dans un historique de shell :
+L’installateur Docker crée automatiquement un jeton initial dans `config/setup-token` et l’injecte depuis `.env`. Affichez-le uniquement au moment de créer l’Owner :
 
 ```bash
-read -r DMX_SETUP_TOKEN < <(openssl rand -base64 32)
-export DMX_SETUP_TOKEN
-docker compose -f docker-compose.traefik.yml up -d --force-recreate panel
+sudo cat /opt/dmx-server-manager/config/setup-token
 ```
 
-Saisissez cette valeur dans le champ demandé par l’écran de setup. Dès que l’Owner existe, retirez-la du conteneur :
+Saisissez cette valeur dans l’écran de setup. Dès que l’Owner existe, retirez la variable et le fichier, puis recréez le panneau :
 
 ```bash
-unset DMX_SETUP_TOKEN
-docker compose -f docker-compose.traefik.yml up -d --force-recreate panel
+cd /opt/dmx-server-manager
+sed -i '/^DMX_SETUP_TOKEN=/d' .env
+sudo rm -f config/setup-token
+docker compose up -d --force-recreate panel
 ```
 
-Si vous l’avez ajoutée à `install/linux/.env`, supprimez entièrement la ligne `DMX_SETUP_TOKEN` avant la recréation. Sur une installation native distante, placez temporairement `setup_token = "..."` dans le fichier de configuration protégé, puis supprimez la ligne et redémarrez le service. Créez immédiatement l’Owner et conservez les rôles à privilèges élevés au strict minimum. `DMX_SESSION_TTL_HOURS` (ou `session_ttl_hours`) règle la durée de session entre 1 et 720 heures ; la valeur par défaut est 24.
+Sur une installation native distante, placez temporairement `setup_token = "..."` dans le fichier de configuration protégé, puis supprimez la ligne et redémarrez le service. Créez immédiatement l’Owner et conservez les rôles à privilèges élevés au strict minimum. `session_ttl_hours` règle la durée de session entre 1 et 720 heures ; la valeur par défaut est 24.

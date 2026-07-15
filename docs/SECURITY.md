@@ -21,7 +21,7 @@ Une release native émet le cookie `Secure` même sur son listener loopback; ouv
 
 ## Clé maître
 
-La clé maître ne doit se trouver ni dans SQLite, ni dans les logs, ni dans une sauvegarde d’instance. Sur Linux natif : `/etc/dmx-server-manager/master.key`, propriétaire `root`, groupe du service, mode `0640`. Sur Windows, seuls Administrateurs, SYSTEM et le SID du service y accèdent en lecture; le service ne peut modifier ni la clé ni la configuration. Sur Docker, le bind mount `/run/secrets/dmx_master_key` conserve le propriétaire `10001:10001` et le mode `0400`. N’utilisez jamais `0444` pour contourner un problème de permissions.
+La clé maître ne doit se trouver ni dans SQLite, ni dans les logs, ni dans une sauvegarde d’instance. Sur Linux natif : `/etc/dmx-server-manager/master.key`, propriétaire `root`, groupe du service, mode `0640`. Sur Windows, seuls Administrateurs, SYSTEM et le SID du service y accèdent en lecture; le service ne peut modifier ni la clé ni la configuration. Sur Docker, le bind mount `/config/master.key` conserve le propriétaire `10001:10001`, le mode `0400` et un montage en lecture seule. N’utilisez jamais `0444` pour contourner un problème de permissions.
 
 Conservez une copie hors ligne chiffrée. Une rotation nécessite de rechiffrer transactionnellement tous les secrets; ne remplacez jamais simplement le fichier.
 

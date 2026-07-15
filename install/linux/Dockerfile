@@ -59,7 +59,7 @@ RUN groupadd --gid 10001 dmx-server-manager \
         --home-dir /home/dmx-server-manager --shell /usr/sbin/nologin \
         dmx-server-manager \
     && install -d -o 10001 -g 10001 -m 0700 \
-        /data /data/home /data/instances /data/backups /data/toolchains \
+        /config /data /data/home /data/instances /data/backups /data/toolchains \
     && install -d -o 10001 -g 10001 -m 0755 /opt/dmx-server-manager
 
 WORKDIR /opt/dmx-server-manager
@@ -69,20 +69,10 @@ COPY --chown=10001:10001 install/linux/entrypoint.sh ./entrypoint.sh
 RUN chmod 0555 ./dmx-server-manager ./entrypoint.sh
 
 ENV HOME=/data/home \
-    DMX_BIND=127.0.0.1:5500 \
-    DMX_CONFIG_FILE=/data/config.toml \
-    DMX_DATA_DIR=/data \
-    DMX_DATABASE_URL=sqlite:///data/dmx-server-manager.sqlite?mode=rwc \
-    DMX_IMPORT_ROOTS=/imports \
-    DMX_LOG=info \
-    DMX_MASTER_KEY_FILE=/run/secrets/dmx_master_key \
-    DMX_STEAMCMD_PATH=/usr/games/steamcmd \
-    DMX_STATIC_DIR=/opt/dmx-server-manager/static \
-    DMX_REVERSE_PROXY=false \
-    DMX_TRUSTED_PROXIES= \
+    DMX_CONFIG_FILE=/config/config.toml \
     PATH=/data/toolchains/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-VOLUME ["/data"]
+VOLUME ["/config", "/data"]
 EXPOSE 5500
 
 USER 10001:10001

@@ -1,0 +1,16 @@
+bind = "127.0.0.1:5500"
+data_dir = "/data"
+database_url = "sqlite:///data/dmx-server-manager.sqlite?mode=rwc"
+master_key_file = "/config/master.key"
+steamcmd_path = "/usr/games/steamcmd"
+static_dir = "/opt/dmx-server-manager/static"
+reverse_proxy = false
+trusted_proxies = []
+import_roots = []
+log = "info"
+deployment_mode = "docker"
+session_ttl_hours = 24
+
+# Avec un reverse proxy HTTPS externe, utilisez une adresse d'écoute joignable,
+# passez reverse_proxy à true et déclarez uniquement son IP exacte dans
+# trusted_proxies. N'exposez jamais le port 5500 en HTTP public.
