@@ -81,7 +81,45 @@ Docker Engine et Docker Compose v2 doivent déjà être installés. L’installa
 
 ### Installation manuelle avec Docker Compose
 
-Cette méthode vous laisse contrôler directement le Compose, les réseaux et les labels :
+Créez `/opt/dmx-server-manager/docker-compose.yml` avec ce contenu :
+
+```yaml
+name: dmx-server-manager
+
+services:
+  panel:
+    image: "${DMX_IMAGE:-ghcr.io/thefrcrazy/dmx-server-manager:latest}"
+    container_name: dmx-server-manager
+    platform: linux/amd64
+    restart: unless-stopped
+    network_mode: host
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 2m
+    pids_limit: 4096
+    environment:
+      TZ: ${DMX_TIMEZONE:-Etc/UTC}
+      DMX_CONFIG_FILE: /config/config.toml
+      DMX_SETUP_TOKEN: ${DMX_SETUP_TOKEN:-}
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /run:size=16m,mode=0755
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:5500/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+```
+
+Le fichier officiel signé est également disponible dans les assets de chaque release. Préparez les dossiers, la configuration et les secrets :
 
 ```bash
 sudo install -d -m 0750 -o "$(id -u)" -g "$(id -g)" /opt/dmx-server-manager
@@ -128,23 +166,23 @@ curl -fsSLo /tmp/dmx-server-manager-install-docker.sh \
   && sudo sh /tmp/dmx-server-manager-install-docker.sh
 ```
 
-Une relance de l’installateur conserve les fichiers `docker-compose.yml`, `.env` et `config/config.toml` existants. Vos réseaux, labels et réglages de reverse proxy personnalisés ne sont donc pas écrasés.
+Une relance de l’installateur conserve les fichiers `docker-compose.yml`, `.env` et `config/config.toml` existants. Vos personnalisations et réglages de reverse proxy ne sont donc pas écrasés.
 
-Le conteneur s’exécute avec l’UID/GID `10001`, un système de fichiers racine en lecture seule et toutes les capabilities supprimées. Les deux dossiers sont montés directement : `./config:/config:ro` et `./data:/data`. `network_mode: host` est intentionnel et obligatoire pour les ports dynamiques des jeux.
+Le conteneur s’exécute avec l’UID/GID `10001`, un système de fichiers racine en lecture seule et toutes les capabilities supprimées. Les deux dossiers sont montés directement : `./config:/config:ro` et `./data:/data`. `network_mode: host` est intentionnel et obligatoire pour les ports dynamiques des jeux. Il ne peut pas être combiné avec `ports:` ou `networks:`.
 
 L’image par défaut est `ghcr.io/thefrcrazy/dmx-server-manager:latest`. Pour épingler une version ou un digest signé, modifiez `DMX_IMAGE` dans `.env`. Le tag versionné n’est jamais déplacé ; seul `latest` suit la dernière release publiée et validée.
 
 ### Reverse proxy externe
 
-DmxServerManager ne déploie aucun Traefik, certificat ou conteneur proxy. Dans `config/config.toml`, conservez le loopback pour un accès local, ou configurez une adresse joignable uniquement par votre reverse proxy HTTPS :
+DmxServerManager ne déploie aucun Traefik, certificat ou conteneur proxy. Un Traefik exécuté dans un autre conteneur doit cibler le port `5500` de l’hôte ; il ne faut pas attacher le panneau à un réseau Docker `proxied`. Dans `config/config.toml`, conservez le loopback pour un accès local. Pour un reverse proxy HTTPS, écoutez sur une adresse de l’hôte joignable depuis Traefik et déclarez uniquement l’adresse source exacte du proxy :
 
 ```toml
-bind = "127.0.0.1:5500"
+bind = "IP_HOTE_JOIGNABLE_DEPUIS_TRAEFIK:5500"
 reverse_proxy = true
-trusted_proxies = ["IP_EXACTE_DU_PROXY"]
+trusted_proxies = ["IP_SOURCE_EXACTE_DE_TRAEFIK"]
 ```
 
-Si le proxy est dans un autre conteneur, adaptez votre propre réseau et le `bind` sans exposer le port 5500 en HTTP public. La liste accepte des IP exactes, pas un réseau entier.
+Utilisez le pare-feu de l’hôte pour refuser l’accès public direct au port `5500`. La liste accepte des IP exactes, pas un réseau entier.
 
 ### Migration depuis l’ancien Compose du dépôt
 
@@ -169,10 +207,11 @@ Le réseau hôte de Docker Desktop expose les ports via la VM Linux. Vérifiez c
 
 La création initiale n’est permise que s’il n’existe aucun compte et si la requête vient de loopback, ou si un jeton d’installation temporaire a été configuré. Une installation native ouverte depuis `http://localhost:5500` n’a pas besoin de jeton.
 
-L’installateur Docker crée automatiquement un jeton initial dans `config/setup-token` et l’injecte depuis `.env`. Affichez-le uniquement au moment de créer l’Owner :
+L’installateur Docker optionnel crée automatiquement un jeton initial dans `config/setup-token` et l’injecte depuis `.env`. Pour une installation Compose manuelle, le jeton est uniquement dans `.env`. Affichez-le uniquement au moment de créer l’Owner :
 
 ```bash
-sudo cat /opt/dmx-server-manager/config/setup-token
+cd /opt/dmx-server-manager
+grep '^DMX_SETUP_TOKEN=' .env
 ```
 
 Saisissez cette valeur dans l’écran de setup. Dès que l’Owner existe, retirez la variable et le fichier, puis recréez le panneau :

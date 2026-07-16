@@ -237,6 +237,21 @@ jobs:
       - name: Check shell scripts
         run: shellcheck install/linux/*.sh
 
+      - name: Check documented Docker Compose files
+        run: |
+          awk '
+            /^```yaml$/ { capture = 1; next }
+            capture && /^```$/ { exit }
+            capture { print }
+          ' README.md > "${RUNNER_TEMP}/README.docker-compose.yml"
+          awk '
+            /^```yaml$/ { capture = 1; next }
+            capture && /^```$/ { exit }
+            capture { print }
+          ' docs/INSTALLATION.md > "${RUNNER_TEMP}/INSTALLATION.docker-compose.yml"
+          cmp install/linux/docker-compose.yml "${RUNNER_TEMP}/README.docker-compose.yml"
+          cmp install/linux/docker-compose.yml "${RUNNER_TEMP}/INSTALLATION.docker-compose.yml"
+
       - name: Generate standalone Docker installation
         env:
           INSTALL_DIR: ${{ runner.temp }}/dmx-standalone-install

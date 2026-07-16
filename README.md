@@ -51,9 +51,47 @@ Les builds officiels surveillent par défaut un manifeste de release Ed25519 ave
 
 Docker Engine, Docker Compose v2 et Linux AMD64 sont requis. Aucun clone Git n’est nécessaire.
 
-### Méthode Docker Compose manuelle
+### Docker Compose
 
-Téléchargez les deux fichiers officiels, puis créez les volumes bind `config/` et `data/` :
+Créez `/opt/dmx-server-manager/docker-compose.yml` avec ce contenu :
+
+```yaml
+name: dmx-server-manager
+
+services:
+  panel:
+    image: "${DMX_IMAGE:-ghcr.io/thefrcrazy/dmx-server-manager:latest}"
+    container_name: dmx-server-manager
+    platform: linux/amd64
+    restart: unless-stopped
+    network_mode: host
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 2m
+    pids_limit: 4096
+    environment:
+      TZ: ${DMX_TIMEZONE:-Etc/UTC}
+      DMX_CONFIG_FILE: /config/config.toml
+      DMX_SETUP_TOKEN: ${DMX_SETUP_TOKEN:-}
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /run:size=16m,mode=0755
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:5500/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+```
+
+Le même fichier signé est téléchargeable depuis chaque release. Préparez ensuite les dossiers bind `config/` et `data/`, la configuration et les secrets :
 
 ```bash
 sudo install -d -m 0750 -o "$(id -u)" -g "$(id -g)" /opt/dmx-server-manager
@@ -83,7 +121,7 @@ docker compose pull panel
 docker compose up -d
 ```
 
-Le fichier [docker-compose.yml](install/linux/docker-compose.yml) est volontairement autonome et modifiable : ajoutez vos réseaux, labels ou contraintes sans dépendre du dépôt.
+Le fichier [docker-compose.yml](install/linux/docker-compose.yml) est autonome et modifiable sans cloner le dépôt. `network_mode: host` permet aux serveurs de jeux d’ouvrir leurs ports TCP/UDP dynamiques. Ce mode ne doit pas être combiné avec `ports:` ou `networks:` : un Traefik exécuté dans un autre conteneur doit cibler le port `5500` de l’hôte au lieu d’attacher le panneau à son réseau Docker.
 
 ### Méthode automatique optionnelle
 
@@ -109,7 +147,7 @@ docker compose pull panel
 docker compose up -d --force-recreate panel
 ```
 
-L’image suivie par défaut est `ghcr.io/thefrcrazy/dmx-server-manager:latest`; chaque release conserve aussi son tag versionné pour le rollback. Un simple `docker pull` ne remplace pas un conteneur déjà lancé, d’où la seconde commande Compose. Le projet ne fournit aucun Traefik : branchez votre reverse proxy HTTPS externe sur le panneau après avoir configuré précisément `bind`, `reverse_proxy` et `trusted_proxies` dans `config/config.toml`.
+L’image suivie par défaut est `ghcr.io/thefrcrazy/dmx-server-manager:latest`; chaque release conserve aussi son tag versionné pour le rollback. Un simple `docker pull` ne remplace pas un conteneur déjà lancé, d’où la seconde commande Compose. Le projet ne fournit aucun Traefik : branchez votre reverse proxy HTTPS externe sur le port hôte `5500` après avoir configuré précisément `bind`, `reverse_proxy` et `trusted_proxies` dans `config/config.toml`.
 
 L’équivalent avec `docker pull` explicite est `docker pull ghcr.io/thefrcrazy/dmx-server-manager:latest && docker compose up -d --force-recreate panel`, depuis `/opt/dmx-server-manager`.
 

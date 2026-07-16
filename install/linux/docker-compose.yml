@@ -3,6 +3,7 @@ name: dmx-server-manager
 services:
   panel:
     image: "${DMX_IMAGE:-ghcr.io/thefrcrazy/dmx-server-manager:latest}"
+    container_name: dmx-server-manager
     platform: linux/amd64
     restart: unless-stopped
     network_mode: host
