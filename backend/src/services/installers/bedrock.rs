@@ -15,7 +15,7 @@ use crate::domain::v1::StopStrategy;
 
 use super::{
     ExpectedDigest, InstallContext, InstallResult, InstalledArtifact, InstallerError,
-    InstallerExecutable, InstallerPlan, VerifiedSource, download_verified, extract_zip,
+    InstallerExecutable, InstallerPlan, download_verified, extract_zip,
     minecraft::{merge_properties, read_bounded_regular_text},
 };
 
@@ -1336,6 +1336,7 @@ fn valid_version(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::installers::{InstallerSources, VerifiedSource};
     use axum::body::Bytes;
     use futures::stream;
     use sha2::{Digest, Sha256};
@@ -1376,7 +1377,7 @@ mod tests {
     #[tokio::test]
     async fn official_download_catalog_resolves_the_exact_platform_archive() {
         let base = Url::parse("http://127.0.0.1:32123/").unwrap();
-        let sources = super::InstallerSources::fixture(&base);
+        let sources = InstallerSources::fixture(&base);
         let api = sources.bedrock_download_api.to_string();
         let mut responses = BTreeMap::new();
         responses.insert(
@@ -1461,7 +1462,7 @@ mod tests {
             .unwrap();
 
             let base = Url::parse("http://127.0.0.1:32123/").unwrap();
-            let mut sources = super::super::InstallerSources::fixture(&base);
+            let mut sources = InstallerSources::fixture(&base);
             let bytes = archive_fixture(platform.executable());
             let digest = format!("{:x}", Sha256::digest(&bytes));
             let source = VerifiedSource {
