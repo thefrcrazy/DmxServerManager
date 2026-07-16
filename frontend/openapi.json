@@ -3512,7 +3512,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.12"
+    "version": "1.0.13"
   },
   "openapi": "3.1.0",
   "paths": {

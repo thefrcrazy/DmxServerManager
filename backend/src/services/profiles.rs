@@ -986,7 +986,7 @@ fn valheim() -> GameProfile {
 }
 
 fn palworld() -> GameProfile {
-    base_profile(
+    let mut profile = base_profile(
         "palworld",
         "Palworld",
         "Serveur Palworld installé anonymement par SteamCMD (AppID 2394010).",
@@ -1021,7 +1021,12 @@ fn palworld() -> GameProfile {
             "admin_password": {"type": "string", "minLength": 1, "maxLength": 64, "secret": true, "writeOnly": true}
         }),
         &["server_name"],
-    )
+    );
+    // Revision 1 used the early Steam breakpad line as readiness evidence.
+    // Keep persisted revision 1 immutable and publish the corrected server
+    // readiness contract as a new built-in profile revision.
+    profile.revision = 2;
+    profile
 }
 
 fn validate_json_schema(value: &Value, schema: &Value, path: &str) -> Result<(), AppError> {
@@ -1172,6 +1177,10 @@ mod tests {
         ] {
             assert!(registry.get(id).is_some(), "missing profile {id}");
         }
+        assert_eq!(
+            registry.get("palworld").map(|profile| profile.revision),
+            Some(2)
+        );
         assert!(registry.all().iter().all(|profile| {
             profile.capabilities.iter().all(|capability| {
                 matches!(
