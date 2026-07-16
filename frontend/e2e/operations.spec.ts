@@ -43,8 +43,9 @@ test("le centre de notifications applique le ciblage, le filtre non lu et le tem
 });
 
 test("les onglets fichiers, sauvegardes et métriques sont opérationnels et pilotés par capabilities", async ({ page }) => {
+    const minecraftProfile = GAME_PROFILES.find((profile) => profile.id === "minecraft-java-vanilla")!;
     const operationalProfile = GameProfileSchema.parse({
-        ...GAME_PROFILES[0],
+        ...minecraftProfile,
         capabilities: ["settings", "files", "backups", "metrics"],
     });
     const api = new ApiMock({ profiles: [operationalProfile], instances: [INSTANCES[1]!] });
@@ -79,8 +80,9 @@ test("les onglets fichiers, sauvegardes et métriques sont opérationnels et pil
 });
 
 test("l’installation Modrinth envoie uniquement des identifiants typés et affiche l’artefact vérifié", async ({ page }) => {
+    const minecraftProfile = GAME_PROFILES.find((candidate) => candidate.id === "minecraft-java-vanilla")!;
     const profile = GameProfileSchema.parse({
-        ...GAME_PROFILES[0],
+        ...minecraftProfile,
         id: "minecraft-java-paper",
         name: "Minecraft Java — Paper",
         capabilities: ["settings", "mods"],
@@ -111,8 +113,9 @@ test("l’installation Modrinth envoie uniquement des identifiants typés et aff
 });
 
 test("les tâches planifiées restent limitées aux actions du profil et utilisent If-Match", async ({ page }) => {
+    const valheimProfile = GAME_PROFILES.find((candidate) => candidate.id === "valheim")!;
     const profile = GameProfileSchema.parse({
-        ...GAME_PROFILES[1],
+        ...valheimProfile,
         capabilities: ["settings", "install", "lifecycle", "console", "backups"],
     });
     const api = new ApiMock({ profiles: [profile], instances: [INSTANCES[0]!] });
