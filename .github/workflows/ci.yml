@@ -257,6 +257,36 @@ jobs:
           docker compose --project-directory "$INSTALL_DIR" \
             -f "$INSTALL_DIR/docker-compose.yml" config --quiet
 
+      - name: Validate manual Docker Compose installation
+        env:
+          INSTALL_DIR: ${{ runner.temp }}/dmx-manual-install
+        run: |
+          install -d "$INSTALL_DIR/config" "$INSTALL_DIR/data"
+          install -m 0644 install/linux/docker-compose.yml "$INSTALL_DIR/docker-compose.yml"
+          install -m 0644 install/linux/config.docker.example.toml "$INSTALL_DIR/config/config.toml"
+          openssl rand 32 > "$INSTALL_DIR/config/master.key"
+          setup_token=$(openssl rand -base64 32 | tr -d '\n')
+          {
+            printf '%s\n' 'DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:latest'
+            printf '%s\n' 'DMX_TIMEZONE=Etc/UTC'
+            printf 'DMX_SETUP_TOKEN=%s\n' "$setup_token"
+          } > "$INSTALL_DIR/.env"
+          unset setup_token
+          chmod 0750 "$INSTALL_DIR/config"
+          chmod 0700 "$INSTALL_DIR/data"
+          chmod 0640 "$INSTALL_DIR/config/config.toml"
+          chmod 0600 "$INSTALL_DIR/.env"
+          chmod 0400 "$INSTALL_DIR/config/master.key"
+          sudo chown root:10001 "$INSTALL_DIR/config" "$INSTALL_DIR/config/config.toml"
+          sudo chown 10001:10001 "$INSTALL_DIR/config/master.key" "$INSTALL_DIR/data"
+          if stat "$INSTALL_DIR/config/master.key" >/dev/null 2>&1; then
+            echo "The manual Docker master key is unexpectedly readable by the runner user." >&2
+            exit 1
+          fi
+          test "$(sudo stat -c '%u:%g:%a' "$INSTALL_DIR/config/master.key")" = "10001:10001:400"
+          docker compose --project-directory "$INSTALL_DIR" \
+            -f "$INSTALL_DIR/docker-compose.yml" config --quiet
+
       - name: Parse PowerShell installer
         shell: pwsh
         run: '[void][scriptblock]::Create((Get-Content -Raw install/windows/install.ps1))'

@@ -49,7 +49,45 @@ Les builds officiels surveillent par défaut un manifeste de release Ed25519 ave
 
 ## Installation rapide avec Docker
 
-Docker Engine, Docker Compose v2 et Linux AMD64 sont requis. Aucun clone Git n’est nécessaire : l’installateur autonome crée `/opt/dmx-server-manager/docker-compose.yml`, `config/` et `data/`, puis démarre le panneau.
+Docker Engine, Docker Compose v2 et Linux AMD64 sont requis. Aucun clone Git n’est nécessaire.
+
+### Méthode Docker Compose manuelle
+
+Téléchargez les deux fichiers officiels, puis créez les volumes bind `config/` et `data/` :
+
+```bash
+sudo install -d -m 0750 -o "$(id -u)" -g "$(id -g)" /opt/dmx-server-manager
+cd /opt/dmx-server-manager
+mkdir -p config data
+
+curl -fsSLo docker-compose.yml \
+  https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/docker-compose.yml
+curl -fsSLo config/config.toml \
+  https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/config.docker.example.toml
+
+openssl rand 32 > config/master.key
+setup_token=$(openssl rand -base64 32 | tr -d '\n')
+printf 'DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:latest\nDMX_TIMEZONE=Etc/UTC\nDMX_SETUP_TOKEN=%s\n' \
+  "$setup_token" > .env
+unset setup_token
+
+chmod 0750 config
+chmod 0700 data
+chmod 0640 config/config.toml
+chmod 0600 .env
+chmod 0400 config/master.key
+sudo chown root:10001 config config/config.toml
+sudo chown 10001:10001 config/master.key data
+
+docker compose pull panel
+docker compose up -d
+```
+
+Le fichier [docker-compose.yml](install/linux/docker-compose.yml) est volontairement autonome et modifiable : ajoutez vos réseaux, labels ou contraintes sans dépendre du dépôt.
+
+### Méthode automatique optionnelle
+
+Le script officiel réalise exactement cette initialisation :
 
 ```bash
 curl -fsSLo /tmp/dmx-server-manager-install-docker.sh \

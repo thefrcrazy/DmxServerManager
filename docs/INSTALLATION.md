@@ -77,20 +77,56 @@ L’installateur place le bootstrap SteamCMD officiel sous `%PROGRAMDATA%\DmxSer
 
 ## Docker Linux
 
-Docker Engine et Docker Compose v2 doivent déjà être installés. L’installation du panneau ne nécessite ni clone Git, ni Bun, ni Rust, ni Cosign sur le serveur :
+Docker Engine et Docker Compose v2 doivent déjà être installés. L’installation du panneau ne nécessite ni clone Git, ni Bun, ni Rust.
+
+### Installation manuelle avec Docker Compose
+
+Cette méthode vous laisse contrôler directement le Compose, les réseaux et les labels :
+
+```bash
+sudo install -d -m 0750 -o "$(id -u)" -g "$(id -g)" /opt/dmx-server-manager
+cd /opt/dmx-server-manager
+mkdir -p config data
+
+curl -fsSLo docker-compose.yml \
+  https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/docker-compose.yml
+curl -fsSLo config/config.toml \
+  https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/config.docker.example.toml
+
+openssl rand 32 > config/master.key
+setup_token=$(openssl rand -base64 32 | tr -d '\n')
+printf 'DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:latest\nDMX_TIMEZONE=Etc/UTC\nDMX_SETUP_TOKEN=%s\n' \
+  "$setup_token" > .env
+unset setup_token
+
+chmod 0750 config
+chmod 0700 data
+chmod 0640 config/config.toml
+chmod 0600 .env
+chmod 0400 config/master.key
+sudo chown root:10001 config config/config.toml
+sudo chown 10001:10001 config/master.key data
+
+docker compose pull panel
+docker compose up -d
+```
+
+Le résultat est :
+
+- `/opt/dmx-server-manager/docker-compose.yml`, que vous pouvez modifier librement ;
+- `/opt/dmx-server-manager/config/config.toml` et la clé `config/master.key` ;
+- `/opt/dmx-server-manager/data/`, qui contient SQLite, instances, mondes et sauvegardes ;
+- `/opt/dmx-server-manager/.env`, avec l’image et le jeton temporaire du premier setup.
+
+### Installateur automatique optionnel
+
+Pour générer exactement la même structure automatiquement :
 
 ```bash
 curl -fsSLo /tmp/dmx-server-manager-install-docker.sh \
   https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/dmx-server-manager-install-docker.sh \
   && sudo sh /tmp/dmx-server-manager-install-docker.sh
 ```
-
-L’installateur crée par défaut :
-
-- `/opt/dmx-server-manager/docker-compose.yml`, que vous pouvez modifier librement ;
-- `/opt/dmx-server-manager/config/config.toml` et la clé `config/master.key` ;
-- `/opt/dmx-server-manager/data/`, qui contient SQLite, instances, mondes et sauvegardes ;
-- `/opt/dmx-server-manager/.env`, avec l’image et le jeton temporaire du premier setup.
 
 Une relance de l’installateur conserve les fichiers `docker-compose.yml`, `.env` et `config/config.toml` existants. Vos réseaux, labels et réglages de reverse proxy personnalisés ne sont donc pas écrasés.
 

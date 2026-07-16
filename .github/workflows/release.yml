@@ -639,7 +639,13 @@ jobs:
           identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}"
           issuer='https://token.actions.githubusercontent.com'
           install -m 0755 install/linux/install-docker.sh dmx-server-manager-install-docker.sh
-          for file in dmx-server-manager-image-amd64.spdx.json dmx-server-manager-install-docker.sh; do
+          install -m 0644 install/linux/docker-compose.yml docker-compose.yml
+          install -m 0644 install/linux/config.docker.example.toml config.docker.example.toml
+          for file in \
+            dmx-server-manager-image-amd64.spdx.json \
+            dmx-server-manager-install-docker.sh \
+            docker-compose.yml \
+            config.docker.example.toml; do
             cosign sign-blob --yes --bundle "$file.sigstore.json" "$file"
             cosign verify-blob \
               --bundle "$file.sigstore.json" \
@@ -651,7 +657,11 @@ jobs:
             dmx-server-manager-image-amd64.spdx.json \
             dmx-server-manager-image-amd64.spdx.json.sigstore.json \
             dmx-server-manager-install-docker.sh \
-            dmx-server-manager-install-docker.sh.sigstore.json
+            dmx-server-manager-install-docker.sh.sigstore.json \
+            docker-compose.yml \
+            docker-compose.yml.sigstore.json \
+            config.docker.example.toml \
+            config.docker.example.toml.sigstore.json
 
   publish:
     name: Publish verified release
