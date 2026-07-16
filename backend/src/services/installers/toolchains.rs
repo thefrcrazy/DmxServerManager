@@ -450,12 +450,10 @@ fn normalize_archive_link_target(
         ));
     }
     let mut components = Vec::<OsString>::new();
-    if relative_to_parent {
-        if let Some(parent) = link_path.parent() {
-            for component in parent.components() {
-                if let Component::Normal(value) = component {
-                    components.push(value.to_os_string());
-                }
+    if relative_to_parent && let Some(parent) = link_path.parent() {
+        for component in parent.components() {
+            if let Component::Normal(value) = component {
+                components.push(value.to_os_string());
             }
         }
     }
