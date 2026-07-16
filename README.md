@@ -91,11 +91,20 @@ services:
       start_period: 30s
 ```
 
-Le même fichier signé est téléchargeable depuis chaque release. Préparez ensuite les dossiers bind `config/` et `data/`, la configuration et les secrets :
+Le même fichier signé est téléchargeable depuis chaque release. Télécharger uniquement le Compose ne suffit pas : `config/config.toml`, `config/master.key`, `.env` et `data/` doivent être créés avant le premier démarrage.
+
+La variable `DMX_CONTAINER_UID` ci-dessous doit correspondre à la ligne `user:` du Compose :
+
+- Compose officiel `user: "10001:10001"` : conservez `DMX_CONTAINER_UID=10001` ;
+- Compose personnalisé `user: "1001:1001"` : utilisez `DMX_CONTAINER_UID=1001`.
+
+Pour une installation neuve :
 
 ```bash
 sudo install -d -m 0750 -o "$(id -u)" -g "$(id -g)" /opt/dmx-server-manager
 cd /opt/dmx-server-manager
+docker compose down 2>/dev/null || true
+
 mkdir -p config data
 
 curl -fsSLo docker-compose.yml \
@@ -103,23 +112,46 @@ curl -fsSLo docker-compose.yml \
 curl -fsSLo config/config.toml \
   https://github.com/thefrcrazy/DmxServerManager/releases/latest/download/config.docker.example.toml
 
+umask 077
 openssl rand 32 > config/master.key
 setup_token=$(openssl rand -base64 32 | tr -d '\n')
-printf 'DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:latest\nDMX_TIMEZONE=Etc/UTC\nDMX_SETUP_TOKEN=%s\n' \
+printf 'DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:latest\nDMX_TIMEZONE=Europe/Paris\nDMX_SETUP_TOKEN=%s\n' \
   "$setup_token" > .env
 unset setup_token
+
+DMX_CONTAINER_UID=10001
+# Si votre Compose contient user: "1001:1001", utilisez plutôt :
+# DMX_CONTAINER_UID=1001
 
 chmod 0750 config
 chmod 0700 data
 chmod 0640 config/config.toml
 chmod 0600 .env
 chmod 0400 config/master.key
-sudo chown root:10001 config config/config.toml
-sudo chown 10001:10001 config/master.key data
+sudo chown "root:${DMX_CONTAINER_UID}" config config/config.toml
+sudo chown -R "${DMX_CONTAINER_UID}:${DMX_CONTAINER_UID}" config/master.key data
+
+test "$(wc -c < config/master.key | tr -d ' ')" -eq 32
+sudo stat -c '%u:%g %a %n' \
+  data config config/config.toml config/master.key
 
 docker compose pull panel
+docker compose run --rm --entrypoint sh panel -c '
+  id
+  test -w /data
+  test -r /config/config.toml
+  test -r /config/master.key
+  test "$(wc -c < /config/master.key | tr -d " ")" -eq 32
+  echo "Permissions et montages OK"
+'
+
 docker compose up -d
+docker compose logs --tail=100 panel
 ```
+
+Pour `DMX_CONTAINER_UID=1001`, les permissions attendues sont `1001:1001 700` pour `data`, `0:1001 750` pour `config`, `0:1001 640` pour `config/config.toml` et `1001:1001 400` pour `config/master.key`. Remplacez `1001` par `10001` avec le Compose officiel.
+
+Ne régénérez jamais `config/master.key` pour une installation existante : restaurez la clé originale, sinon les secrets déjà chiffrés dans SQLite deviendront illisibles.
 
 Le fichier [docker-compose.yml](install/linux/docker-compose.yml) est autonome et modifiable sans cloner le dépôt. `network_mode: host` permet aux serveurs de jeux d’ouvrir leurs ports TCP/UDP dynamiques. Ce mode ne doit pas être combiné avec `ports:` ou `networks:` : un Traefik exécuté dans un autre conteneur doit cibler le port `5500` de l’hôte au lieu d’attacher le panneau à son réseau Docker.
 
