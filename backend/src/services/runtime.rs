@@ -6243,32 +6243,6 @@ struct OutputPumpConfig {
     public_log_policy: PublicLogPolicy,
 }
 
-async fn pump_output<R>(
-    reader: R,
-    log_path: PathBuf,
-    stream: &'static str,
-    instance_id: String,
-    events: EventHub,
-    redactions: Vec<String>,
-) where
-    R: AsyncRead + Unpin,
-{
-    pump_output_observed(
-        reader,
-        OutputPumpConfig {
-            log_path,
-            combined_log: None,
-            stream,
-            instance_id,
-            events,
-            redactions,
-            observer: None,
-            public_log_policy: PublicLogPolicy::Normal,
-        },
-    )
-    .await;
-}
-
 async fn pump_output_observed<R>(mut reader: R, config: OutputPumpConfig)
 where
     R: AsyncRead + Unpin,
@@ -8494,13 +8468,18 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let log = root.path().join("console.log");
         let (mut writer, reader) = tokio::io::duplex(64 * 1024);
-        let task = tokio::spawn(pump_output(
+        let task = tokio::spawn(pump_output_observed(
             reader,
-            log.clone(),
-            "stdout",
-            uuid::Uuid::new_v4().to_string(),
-            EventHub::new(8),
-            vec!["top-secret".into()],
+            OutputPumpConfig {
+                log_path: log.clone(),
+                combined_log: None,
+                stream: "stdout",
+                instance_id: uuid::Uuid::new_v4().to_string(),
+                events: EventHub::new(8),
+                redactions: vec!["top-secret".into()],
+                observer: None,
+                public_log_policy: PublicLogPolicy::Normal,
+            },
         ));
         writer
             .write_all(format!("password=top-secret {}\n", "x".repeat(20_000)).as_bytes())

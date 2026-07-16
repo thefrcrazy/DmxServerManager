@@ -118,7 +118,10 @@ test("la page Jobs affiche l’action humaine persistante et donne accès au ter
     await expect(page.getByRole("heading", { name: "Authentification Hytale requise" })).toBeVisible();
     await expect(page.getByText("ABCD-1234", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Ouvrir Hytale" })).toHaveAttribute("href", "https://accounts.hytale.com/device?user_code=ABCD-1234");
-    await expect(page.getByRole("link", { name: "Voir le terminal d’installation" })).toHaveAttribute("href", "/servers/22222222-2222-4222-8222-222222222222?tab=console");
+    await expect(page.getByRole("link", { name: "Voir le terminal d’installation" })).toHaveAttribute(
+        "href",
+        "/servers/22222222-2222-4222-8222-222222222222?tab=console&source=install&job=dededede-dede-4ded-8ded-dededededede",
+    );
 });
 
 test("la mise à jour manuelle affiche la version installée et crée un job", async ({ page }) => {
