@@ -1,8 +1,8 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::post,
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,10 @@ use crate::{
     api::auth::{AuthUser, authorize_instance},
     core::{AppState, database, error::AppError},
     domain::v1::Job,
-    services::{jobs, runtime::RuntimeAction},
+    services::{
+        jobs,
+        runtime::{RuntimeAction, RuntimeLogLine, RuntimeLogSource},
+    },
 };
 
 pub fn routes() -> Router<AppState> {
@@ -20,6 +23,7 @@ pub fn routes() -> Router<AppState> {
         .route("/servers/{id}/actions/stop", post(stop))
         .route("/servers/{id}/actions/restart", post(restart))
         .route("/servers/{id}/actions/kill", post(kill))
+        .route("/servers/{id}/logs", get(log_history))
         .route("/servers/{id}/console", post(console))
 }
 
@@ -32,6 +36,19 @@ struct ConsoleRequest {
 #[derive(Debug, Serialize)]
 struct ConsoleResponse {
     accepted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LogHistoryQuery {
+    source: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+struct LogHistoryResponse {
+    source: String,
+    items: Vec<RuntimeLogLine>,
 }
 
 async fn install(
@@ -207,6 +224,29 @@ async fn console(
         StatusCode::ACCEPTED,
         Json(ConsoleResponse { accepted: true }),
     ))
+}
+
+async fn log_history(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+    Query(query): Query<LogHistoryQuery>,
+) -> Result<Json<LogHistoryResponse>, AppError> {
+    super::validate_instance_id(&id)?;
+    authorize_instance(&state, &auth, &id, "server.console.read").await?;
+    let source = match query.source.as_deref().unwrap_or("console") {
+        "install" => RuntimeLogSource::Install,
+        "console" => RuntimeLogSource::Console,
+        _ => return Err(AppError::BadRequest("servers.invalid_log_source".into())),
+    };
+    let items = state
+        .runtime
+        .log_history(&id, source, query.limit.unwrap_or(500))
+        .await?;
+    Ok(Json(LogHistoryResponse {
+        source: source.as_str().to_string(),
+        items,
+    }))
 }
 
 fn idempotency_key(headers: &HeaderMap) -> Result<Option<String>, AppError> {

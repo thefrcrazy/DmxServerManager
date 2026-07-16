@@ -226,7 +226,7 @@ export default function Jobs() {
                                 </div>
                             )}
                             <footer className="job-card__actions">
-                                {job.instance_id && instanceName && job.kind === "install" && <Button as="link" to={`/servers/${job.instance_id}?tab=console`} variant="secondary" size="sm" icon={<Terminal size={15} aria-hidden="true" />}>{t("jobs.view_install_terminal")}</Button>}
+                                {job.instance_id && instanceName && job.kind === "install" && <Button as="link" to={`/servers/${job.instance_id}?tab=console&source=install&job=${job.id}`} variant="secondary" size="sm" icon={<Terminal size={15} aria-hidden="true" />}>{t("jobs.view_install_terminal")}</Button>}
                                 {job.instance_id && instanceName && <Button as="link" to={`/servers/${job.instance_id}`} variant="ghost" size="sm" icon={<ExternalLink size={15} aria-hidden="true" />}>{t("jobs.view_instance")}</Button>}
                                 {cancellable && <Button type="button" variant="danger" size="sm" isLoading={cancellingId === job.id} icon={<Ban size={15} aria-hidden="true" />} onClick={() => void cancelJob(job)}>{t("jobs.cancel")}</Button>}
                             </footer>

@@ -831,6 +831,50 @@
         ],
         "type": "object"
       },
+      "LogHistoryLine": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "stream": {
+            "enum": [
+              "install",
+              "install_error",
+              "console",
+              "console_error"
+            ]
+          }
+        },
+        "required": [
+          "stream",
+          "message"
+        ],
+        "type": "object"
+      },
+      "LogHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LogHistoryLine"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "install",
+              "console"
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "items"
+        ],
+        "type": "object"
+      },
       "CreateChatMessageRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3422,7 +3466,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.10"
+    "version": "1.0.11"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -7091,6 +7135,66 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/servers/{id}/logs": {
+      "get": {
+        "operationId": "getServerLogHistory",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "default": "console",
+              "enum": [
+                "install",
+                "console"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 500,
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogHistoryResponse"
+                }
+              }
+            },
+            "description": "Bounded persisted installer or game console history."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "default": {
             "$ref": "#/components/responses/Problem"

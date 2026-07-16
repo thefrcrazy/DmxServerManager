@@ -677,6 +677,17 @@ fn server_paths() -> Value {
                 "responses": {"202": {"description": "Bounded command written to the managed process standard input.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConsoleResponse"}}}}, "409": {"$ref": "#/components/responses/Conflict"}}
             }
         },
+        "/servers/{id}/logs": {
+            "get": {
+                "operationId": "getServerLogHistory", "tags": ["servers"],
+                "parameters": [
+                    {"$ref": "#/components/parameters/ServerId"},
+                    {"name": "source", "in": "query", "schema": {"enum": ["install", "console"], "default": "console"}},
+                    {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 500, "default": 500}}
+                ],
+                "responses": {"200": {"description": "Bounded persisted installer or game console history.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LogHistoryResponse"}}}}}
+            }
+        },
         "/servers/{id}/imports/zip": {
             "post": {
                 "operationId": "importServerZip", "tags": ["imports"],
@@ -1666,6 +1677,20 @@ fn server_schemas() -> Value {
             "type": "object", "additionalProperties": false, "required": ["accepted"],
             "properties": {"accepted": {"type": "boolean"}}
         },
+        "LogHistoryLine": {
+            "type": "object", "additionalProperties": false, "required": ["stream", "message"],
+            "properties": {
+                "stream": {"enum": ["install", "install_error", "console", "console_error"]},
+                "message": {"type": "string"}
+            }
+        },
+        "LogHistoryResponse": {
+            "type": "object", "additionalProperties": false, "required": ["source", "items"],
+            "properties": {
+                "source": {"enum": ["install", "console"]},
+                "items": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/components/schemas/LogHistoryLine"}}
+            }
+        },
         "ImportSourceRequest": {
             "type": "object", "additionalProperties": false, "required": ["source_path"],
             "properties": {"source_path": {"type": "string", "minLength": 1, "description": "Path inside a root declared by DMX_IMPORT_ROOTS."}}
@@ -2011,6 +2036,7 @@ mod tests {
         "GET /schedules/{id}",
         "GET /servers",
         "GET /servers/{id}",
+        "GET /servers/{id}/logs",
         "GET /servers/{id}/metrics",
         "GET /servers/{id}/mods",
         "GET /servers/{id}/secrets",

@@ -863,6 +863,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/servers/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getServerLogHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/servers/{id}/imports/attach": {
         parameters: {
             query?: never;
@@ -1309,6 +1325,16 @@ export interface components {
         };
         ConsoleResponse: {
             accepted: boolean;
+        };
+        LogHistoryLine: {
+            message: string;
+            /** @enum {unknown} */
+            stream: "install" | "install_error" | "console" | "console_error";
+        };
+        LogHistoryResponse: {
+            items: components["schemas"]["LogHistoryLine"][];
+            /** @enum {unknown} */
+            source: "install" | "console";
         };
         CreateChatMessageRequest: {
             /** @description Plain text; limited to 16384 encoded bytes, with LF and TAB as the only accepted control characters. */
@@ -4029,6 +4055,34 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getServerLogHistory: {
+        parameters: {
+            query?: {
+                source?: "install" | "console";
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded persisted installer or game console history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogHistoryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             default: components["responses"]["Problem"];
         };
     };

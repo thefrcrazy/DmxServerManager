@@ -416,32 +416,42 @@ pub fn launch_plan(settings: &Value) -> Result<InstallerPlan, InstallerError> {
 pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> {
     let sanitized = strip_terminal_controls(output);
     let url_pattern = Regex::new(r"https://accounts\.hytale\.com/device[^\s\x00-\x1f]*").ok()?;
-    let matched = url_pattern
-        .find(&sanitized)?
-        .as_str()
-        .trim_end_matches(['.', ',', ';', ':', ')', ']', '}', '"', '\'']);
-    let url = Url::parse(matched).ok()?;
-    if url.scheme() != "https"
-        || url.host_str() != Some("accounts.hytale.com")
-        || url.path() != "/device"
-        || url.username() != ""
-        || url.password().is_some()
-        || url.fragment().is_some()
-    {
+    let url = url_pattern.find(&sanitized).and_then(|matched| {
+        let matched = matched
+            .as_str()
+            .trim_end_matches(['.', ',', ';', ':', ')', ']', '}', '"', '\'']);
+        let url = Url::parse(matched).ok()?;
+        (url.scheme() == "https"
+            && url.host_str() == Some("accounts.hytale.com")
+            && url.path() == "/device"
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none())
+        .then_some(url)
+    });
+    let query_code = url
+        .as_ref()
+        .and_then(|url| {
+            url.query_pairs()
+                .find_map(|(key, value)| (key == "user_code").then(|| value.into_owned()))
+        })
+        .filter(|value| valid_user_code(value));
+    let text_code = Regex::new(
+        r"(?i)(?:authorization|user[_ ]?|device|verification)\s*code\s*[:=]\s*([A-Z0-9-]{4,32})",
+    )
+    .ok()?
+    .captures(&sanitized)
+    .and_then(|captures| captures.get(1))
+    .map(|value| value.as_str().to_ascii_uppercase())
+    .filter(|value| valid_user_code(value));
+    if url.is_none() && text_code.is_none() {
         return None;
     }
-    let query_code = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "user_code").then(|| value.into_owned()))
-        .filter(|value| valid_user_code(value));
-    let text_code = Regex::new(r"(?i)(?:user[_ ]?code|code)\s*[:=]\s*([A-Z0-9-]{4,32})")
-        .ok()?
-        .captures(&sanitized)
-        .and_then(|captures| captures.get(1))
-        .map(|value| value.as_str().to_ascii_uppercase())
-        .filter(|value| valid_user_code(value));
     Some(DeviceAuthorization {
-        verification_uri: url.to_string(),
+        verification_uri: url.map_or_else(
+            || "https://accounts.hytale.com/device".to_string(),
+            |url| url.to_string(),
+        ),
         user_code: query_code.or(text_code),
     })
 }
@@ -760,6 +770,17 @@ mod tests {
         assert!(
             detect_device_authorization("http://accounts.hytale.com/device?user_code=X").is_none()
         );
+    }
+
+    #[test]
+    fn device_authorization_accepts_the_official_downloader_code_line() {
+        let detected = detect_device_authorization("Authorization code: ABCD-1234").unwrap();
+        assert_eq!(
+            detected.verification_uri,
+            "https://accounts.hytale.com/device"
+        );
+        assert_eq!(detected.user_code.as_deref(), Some("ABCD-1234"));
+        assert!(detect_device_authorization("Process exit code: 8").is_none());
     }
 
     #[test]

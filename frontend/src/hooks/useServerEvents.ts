@@ -8,10 +8,14 @@ import {
 } from "@/schemas/operations";
 import { API_BASE_URL } from "@/services/api/base.client";
 import { apiService } from "@/services";
+import type { ServerLogSource } from "@/services/api/server.client";
+
+const MAX_VISIBLE_LOG_LINES = 1_000;
 
 interface UseServerEventsOptions {
     serverId: string | undefined;
     serverStatus: string | undefined;
+    logSource: ServerLogSource;
     onServerUpdate: () => void;
     onStatusChange?: (status: string) => void;
 }
@@ -29,7 +33,11 @@ interface UseServerEventsReturn {
     clearPendingBedrockArchive: () => void;
 }
 
-export function useServerEvents({ serverId, serverStatus, onServerUpdate, onStatusChange }: UseServerEventsOptions): UseServerEventsReturn {
+function formatLogLine(stream: string, message: string): string {
+    return stream === "stderr" || stream.endsWith("_error") ? `[stderr] ${message}` : message;
+}
+
+export function useServerEvents({ serverId, serverStatus, logSource, onServerUpdate, onStatusChange }: UseServerEventsOptions): UseServerEventsReturn {
     const [logs, setLogs] = useState<string[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [operationRevision, setOperationRevision] = useState(0);
@@ -64,8 +72,12 @@ export function useServerEvents({ serverId, serverStatus, onServerUpdate, onStat
             }
         }
         if (type === "server.log" && typeof payload === "object" && payload !== null && "message" in payload) {
-            const message = (payload as { message?: unknown }).message;
-            if (typeof message === "string") setLogs((current) => [...current, message].slice(-500));
+            const { message, stream } = payload as { message?: unknown; stream?: unknown };
+            const isRequestedSource = typeof stream !== "string"
+                || (logSource === "install" ? stream.startsWith("install") : !stream.startsWith("install"));
+            if (typeof message === "string" && isRequestedSource) {
+                setLogs((current) => [...current, formatLogLine(typeof stream === "string" ? stream : "", message)].slice(-MAX_VISIBLE_LOG_LINES));
+            }
             return;
         }
 
@@ -80,14 +92,26 @@ export function useServerEvents({ serverId, serverStatus, onServerUpdate, onStat
         }
         if (type.startsWith("schedule.")) setScheduleRevision((revision) => revision + 1);
         if (type.startsWith("server.") || type.startsWith("job.")) onServerUpdate();
-    }, [onServerUpdate, onStatusChange, serverId]);
+    }, [logSource, onServerUpdate, onStatusChange, serverId]);
+
+    const loadHistory = useCallback(async () => {
+        if (!serverId) return;
+        const response = await apiService.servers.getLogHistory(serverId, logSource);
+        if (!response.success) return;
+        setLogs(response.data.items.map(({ stream, message }) => formatLogLine(stream, message)).slice(-MAX_VISIBLE_LOG_LINES));
+    }, [logSource, serverId]);
 
     const resynchronize = useCallback(() => {
-        setLogs([]);
+        void loadHistory();
         setPendingDeviceAuthorization(null);
         setPendingBedrockArchive(null);
         onServerUpdate();
-    }, [onServerUpdate]);
+    }, [loadHistory, onServerUpdate]);
+
+    useEffect(() => {
+        setLogs([]);
+        void loadHistory();
+    }, [loadHistory]);
 
     useEffect(() => {
         if (!serverId) return;
@@ -111,7 +135,7 @@ export function useServerEvents({ serverId, serverStatus, onServerUpdate, onStat
     }, [applyEvent, resynchronize, serverId]);
 
     useEffect(() => {
-        if (serverStatus !== "running") setLogs((current) => current.slice(-500));
+        if (serverStatus !== "running") setLogs((current) => current.slice(-MAX_VISIBLE_LOG_LINES));
     }, [serverStatus]);
 
     useEffect(() => {
@@ -123,7 +147,7 @@ export function useServerEvents({ serverId, serverStatus, onServerUpdate, onStat
         if (!serverId || !command.trim()) return false;
         const response = await apiService.servers.sendCommand(serverId, command.trim());
         if (!response.success) return false;
-        setLogs((current) => [...current, `> ${command.trim()}`].slice(-500));
+        setLogs((current) => [...current, `> ${command.trim()}`].slice(-MAX_VISIBLE_LOG_LINES));
         return true;
     }, [serverId]);
 

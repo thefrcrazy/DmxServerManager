@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[0-9A-Za-z.+-]+$')]
-    [string]$Version = $(if ($env:DMX_VERSION) { $env:DMX_VERSION } else { '1.0.10' }),
+    [string]$Version = $(if ($env:DMX_VERSION) { $env:DMX_VERSION } else { '1.0.11' }),
 
     [string]$ExpectedArchiveSha256 = $(if ($env:DMX_EXPECTED_ARCHIVE_SHA256) { $env:DMX_EXPECTED_ARCHIVE_SHA256 } else { '' }),
 

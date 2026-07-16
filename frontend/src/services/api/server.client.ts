@@ -33,6 +33,16 @@ const ActionResponseSchema = z.union([
     z.object({ job: JobSchema }).transform(({ job }) => job),
 ]);
 
+export type ServerLogSource = "install" | "console";
+
+const LogHistoryResponseSchema = z.object({
+    source: z.enum(["install", "console"]),
+    items: z.array(z.object({
+        stream: z.enum(["install", "install_error", "console", "console_error"]),
+        message: z.string(),
+    })),
+});
+
 export class ServerClient extends BaseClient {
     async getServers(): Promise<ClientResponse<Instance[]>> {
         return this.request("/servers", z.array(InstanceSchema));
@@ -76,6 +86,14 @@ export class ServerClient extends BaseClient {
             `/servers/${encodeURIComponent(id)}/console`,
             z.object({ accepted: z.boolean() }),
             { method: "POST", body: JSON.stringify({ command }) },
+        );
+    }
+
+    async getLogHistory(id: string, source: ServerLogSource): Promise<ClientResponse<z.infer<typeof LogHistoryResponseSchema>>> {
+        const query = new URLSearchParams({ source, limit: "500" });
+        return this.request(
+            `/servers/${encodeURIComponent(id)}/logs?${query.toString()}`,
+            LogHistoryResponseSchema,
         );
     }
 

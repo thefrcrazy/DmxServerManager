@@ -83,7 +83,15 @@ export default function ServerDetail() {
     const onStatusChange = useCallback((runtimeState: string) => {
         setInstance((current) => current ? { ...current, runtime_state: runtimeState as Instance["runtime_state"] } : current);
     }, []);
-    const events = useServerEvents({ serverId: id, serverStatus: instance?.runtime_state, onServerUpdate: loadInstance, onStatusChange });
+    const installationInProgress = instance ? ["installing", "updating"].includes(instance.installation_state) : false;
+    const logSource = installationInProgress || searchParams.get("source") === "install" ? "install" : "console";
+    const events = useServerEvents({
+        serverId: id,
+        serverStatus: instance?.runtime_state,
+        logSource,
+        onServerUpdate: loadInstance,
+        onStatusChange,
+    });
 
     useEffect(() => {
         if (!id
@@ -165,11 +173,13 @@ export default function ServerDetail() {
         }
         toast.success(t("server_detail.job_queued"));
         if (nextAction === "install") {
+            events.clearLogs();
             if (profile?.capabilities.includes("console") && hasPermission("server.console.read")) {
                 setActiveTab("console");
                 const next = new URLSearchParams(searchParams);
                 next.set("tab", "console");
                 next.set("job", response.data.id);
+                next.set("source", "install");
                 setSearchParams(next, { replace: true });
             }
             await loadInstance();

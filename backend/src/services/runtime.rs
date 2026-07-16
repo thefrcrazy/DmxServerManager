@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     ffi::OsString,
+    io::SeekFrom,
     net::{Ipv4Addr, SocketAddrV4},
     panic::AssertUnwindSafe,
     path::{Path, PathBuf},
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     process::{Child, ChildStdin, Command},
     sync::{Mutex, mpsc, oneshot, watch},
 };
@@ -36,6 +37,9 @@ const MAX_CONSOLE_COMMAND: usize = 4 * 1024;
 const MAX_LOG_LINE: usize = 16 * 1024;
 const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024;
 const LOG_GENERATIONS: usize = 5;
+const MAX_LOG_HISTORY_LINES: usize = 500;
+const MAX_LOG_HISTORY_BYTES: u64 = 1024 * 1024;
+const PARTIAL_LOG_FLUSH_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_WATCHDOG_RESTARTS: u8 = 5;
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
 const READINESS_TIMEOUT: Duration = Duration::from_secs(5 * 60);
@@ -58,6 +62,40 @@ pub enum RuntimeAction {
     Stop,
     Restart,
     Kill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeLogSource {
+    Install,
+    Console,
+}
+
+impl RuntimeLogSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Install => "install",
+            Self::Console => "console",
+        }
+    }
+
+    fn files(self) -> [(&'static str, &'static str); 2] {
+        match self {
+            Self::Install => [
+                ("logs/install.log", "install"),
+                ("logs/install.error.log", "install_error"),
+            ],
+            Self::Console => [
+                ("logs/console.log", "console"),
+                ("logs/console.error.log", "console_error"),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeLogLine {
+    pub stream: String,
+    pub message: String,
 }
 
 #[derive(Debug)]
@@ -304,6 +342,30 @@ impl RuntimeManager {
         response_rx
             .await
             .map_err(|_| AppError::Internal("runtime actor stopped".into()))?
+    }
+
+    pub async fn log_history(
+        &self,
+        instance_id: &str,
+        source: RuntimeLogSource,
+        limit: usize,
+    ) -> Result<Vec<RuntimeLogLine>, AppError> {
+        let storage =
+            instance_storage::resolve(&self.inner.pool, &self.inner.settings, instance_id).await?;
+        let limit = limit.clamp(1, MAX_LOG_HISTORY_LINES);
+        if source == RuntimeLogSource::Install {
+            let combined = storage.root.join("logs/install.combined.log");
+            match tokio::fs::symlink_metadata(&combined).await {
+                Ok(_) => return read_log_tail(&combined, "install", limit).await,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let mut lines = Vec::with_capacity(limit.saturating_mul(2));
+        for (relative, stream) in source.files() {
+            lines.extend(read_log_tail(&storage.root.join(relative), stream, limit).await?);
+        }
+        Ok(lines)
     }
 
     pub async fn begin_filesystem_maintenance(
@@ -1082,6 +1144,19 @@ impl InstanceActor {
                     self.publish_job(&job.id).await;
                     return;
                 }
+                if action == RuntimeAction::Install
+                    && let Ok(root) = self.instance_root().await
+                {
+                    let outcome = if error.cancelled {
+                        format!("[DMX] Installation cancelled ({}).", error.code)
+                    } else {
+                        format!(
+                            "[DMX] Installation failed ({}): {}.",
+                            error.code, error.client_message
+                        )
+                    };
+                    let _ = self.write_install_log(&root, &outcome).await;
+                }
                 match action {
                     RuntimeAction::Install => {
                         if error.cancelled {
@@ -1453,10 +1528,22 @@ impl InstanceActor {
             ));
         }
         let instance = self.instance().await?;
+        let root = self.instance_root().await?;
+        reset_install_logs(&root).await?;
+        self.write_install_log(
+            &root,
+            &format!(
+                "[DMX] Installation job {job_id} started for profile {}.",
+                instance.profile_id
+            ),
+        )
+        .await?;
         jobs::progress(&self.inner.pool, job_id, 5)
             .await
             .map_err(OperationFailure::internal)?;
-        backups::create_pre_update(
+        self.write_install_log(&root, "[DMX] Preparing the pre-installation backup.")
+            .await?;
+        if let Err(error) = backups::create_pre_update(
             &self.inner.pool,
             &self.inner.settings,
             &self.instance_id,
@@ -1464,13 +1551,18 @@ impl InstanceActor {
             job_id,
         )
         .await
-        .map_err(|error| {
-            OperationFailure::with_internal(
+        {
+            let _ = self
+                .write_install_log(&root, "[DMX] The pre-installation backup failed.")
+                .await;
+            return Err(OperationFailure::with_internal(
                 "pre_update_backup_failed",
                 "backups.pre_update_failed",
                 error,
-            )
-        })?;
+            ));
+        }
+        self.write_install_log(&root, "[DMX] Pre-installation backup completed.")
+            .await?;
         if instance.profile_id == "hytale" {
             return self.install_hytale(job_id, &instance).await;
         }
@@ -1502,7 +1594,6 @@ impl InstanceActor {
             .await
             .map_err(OperationFailure::internal)?;
 
-        let root = self.instance_root().await?;
         let staging_parent = ensure_staging_parent(&root).await?;
         let staging = staging_parent.join(job_id);
         match tokio::fs::symlink_metadata(&staging).await {
@@ -1530,6 +1621,11 @@ impl InstanceActor {
         }
 
         let mut command = Command::new(&self.inner.settings.steamcmd_path);
+        self.write_install_log(
+            &root,
+            &format!("[DMX] Starting SteamCMD anonymous installation for AppID {app_id}."),
+        )
+        .await?;
         command
             .arg("+force_install_dir")
             .arg(&staging)
@@ -1592,24 +1688,39 @@ impl InstanceActor {
         let mut cancellation_rx = self.install_cancellation_receiver(job_id).await?;
 
         let redactions = Vec::new();
+        let combined_log = Arc::new(Mutex::new(
+            RotatingLog::open(root.join("logs/install.combined.log"))
+                .await
+                .map_err(OperationFailure::internal)?,
+        ));
         let stdout_task = child.stdout.take().map(|stdout| {
-            tokio::spawn(pump_output(
+            tokio::spawn(pump_output_observed(
                 stdout,
-                root.join("logs/install.log"),
-                "install",
-                self.instance_id.clone(),
-                self.inner.events.clone(),
-                redactions.clone(),
+                OutputPumpConfig {
+                    log_path: root.join("logs/install.log"),
+                    combined_log: Some(combined_log.clone()),
+                    stream: "install",
+                    instance_id: self.instance_id.clone(),
+                    events: self.inner.events.clone(),
+                    redactions: redactions.clone(),
+                    observer: None,
+                    public_log_policy: PublicLogPolicy::Normal,
+                },
             ))
         });
         let stderr_task = child.stderr.take().map(|stderr| {
-            tokio::spawn(pump_output(
+            tokio::spawn(pump_output_observed(
                 stderr,
-                root.join("logs/install.error.log"),
-                "install_error",
-                self.instance_id.clone(),
-                self.inner.events.clone(),
-                redactions,
+                OutputPumpConfig {
+                    log_path: root.join("logs/install.error.log"),
+                    combined_log: Some(combined_log.clone()),
+                    stream: "install_error",
+                    instance_id: self.instance_id.clone(),
+                    events: self.inner.events.clone(),
+                    redactions,
+                    observer: None,
+                    public_log_policy: PublicLogPolicy::Normal,
+                },
             ))
         });
         let (status, mut interrupted) = tokio::select! {
@@ -1659,6 +1770,11 @@ impl InstanceActor {
                 "servers.steamcmd_anonymous_install_failed",
             ));
         }
+        self.write_install_log(
+            &root,
+            "[DMX] SteamCMD completed. Validating the installed files.",
+        )
+        .await?;
         let current_game = root.join("game");
         if let Err(error) =
             preserve_instance_data(&instance, steam_profile.as_ref(), &current_game, &staging).await
@@ -1724,6 +1840,8 @@ impl InstanceActor {
         }
         remove_dir_if_exists(&staging_parent).await.ok();
         self.publish_state().await;
+        self.write_install_log(&root, "[DMX] Steam installation completed successfully.")
+            .await?;
         if !self.retain_install_rollback
             && (instance.auto_start || instance.desired_state == "running")
         {
@@ -2317,6 +2435,11 @@ impl InstanceActor {
             .map_err(OperationFailure::internal)?;
 
         let root = self.instance_root().await?;
+        self.write_install_log(
+            &root,
+            "[DMX] Preparing the official Hytale downloader and managed Java 25.",
+        )
+        .await?;
         let staging_parent = ensure_staging_parent(&root).await?;
         let hytale_staging = staging_parent.join("hytale");
         match tokio::fs::symlink_metadata(&hytale_staging).await {
@@ -2386,6 +2509,11 @@ impl InstanceActor {
         let plan = installers::hytale::prepare_hytale_downloader(&session, &context)
             .await
             .map_err(installer_failure)?;
+        self.write_install_log(
+            &root,
+            "[DMX] Official Hytale downloader ready. Checking the available server version.",
+        )
+        .await?;
         let mut redactions = Vec::new();
         if let Some(document) = self
             .inner
@@ -2424,6 +2552,11 @@ impl InstanceActor {
                         "servers.provider_response_invalid",
                     )
                 })?;
+            self.write_install_log(
+                &root,
+                &format!("[DMX] Hytale server version {installed_version} selected."),
+            )
+            .await?;
             match installers::hytale::read_plaintext_credentials(&plan.credential_file).await {
                 Ok(document) => {
                     self.inner
@@ -2449,6 +2582,11 @@ impl InstanceActor {
                 .await
                 .map_err(OperationFailure::internal)?;
 
+            self.write_install_log(
+                &root,
+                "[DMX] Starting the official Hytale server download. Authentication instructions will appear here and as an action card if required.",
+            )
+            .await?;
             self.run_hytale_downloader(
                 job_id,
                 &plan,
@@ -2474,6 +2612,11 @@ impl InstanceActor {
             jobs::progress(&self.inner.pool, job_id, 55)
                 .await
                 .map_err(OperationFailure::internal)?;
+            self.write_install_log(
+                &root,
+                "[DMX] Download completed. Extracting and validating the Hytale server.",
+            )
+            .await?;
             remove_dir_if_exists(&payload)
                 .await
                 .map_err(OperationFailure::internal)?;
@@ -2578,12 +2721,18 @@ impl InstanceActor {
         #[cfg(not(windows))]
         let job_handle = None;
 
+        let combined_log = Arc::new(Mutex::new(
+            RotatingLog::open(root.join("logs/install.combined.log"))
+                .await
+                .map_err(OperationFailure::internal)?,
+        ));
         let (line_tx, mut line_rx) = mpsc::channel(256);
         let stdout_task = child.stdout.take().map(|stdout| {
             tokio::spawn(pump_output_observed(
                 stdout,
                 OutputPumpConfig {
                     log_path: root.join("logs/install.log"),
+                    combined_log: Some(combined_log.clone()),
                     stream: "install",
                     instance_id: self.instance_id.clone(),
                     events: self.inner.events.clone(),
@@ -2598,6 +2747,7 @@ impl InstanceActor {
                 stderr,
                 OutputPumpConfig {
                     log_path: root.join("logs/install.error.log"),
+                    combined_log: Some(combined_log.clone()),
                     stream: "install_error",
                     instance_id: self.instance_id.clone(),
                     events: self.inner.events.clone(),
@@ -2726,6 +2876,14 @@ impl InstanceActor {
             .map_err(OperationFailure::internal)?;
 
         let root = self.instance_root().await?;
+        self.write_install_log(
+            &root,
+            &format!(
+                "[DMX] Preparing the native installer for profile {}.",
+                instance.profile_id
+            ),
+        )
+        .await?;
         let staging_parent = ensure_staging_parent(&root).await?;
         let staging = staging_parent.join(job_id);
         let settings: Value =
@@ -2795,6 +2953,11 @@ impl InstanceActor {
                 .map_err(installer_failure)?;
         }
         let mut cancellation_rx = self.install_cancellation_receiver(job_id).await?;
+        self.write_install_log(
+            &root,
+            "[DMX] Downloading and validating the required game files and toolchains.",
+        )
+        .await?;
         let mut installation = tokio::select! {
             result = installers::install_native(
                 &instance.profile_id,
@@ -2827,6 +2990,11 @@ impl InstanceActor {
                 if instance.profile_id == "minecraft-bedrock"
                     && error.code == "bedrock_official_source_unavailable"
                 {
+                    self.write_install_log(
+                        &root,
+                        "[ACTION REQUIRED] Upload the official Minecraft Bedrock server archive from the action card above or from the Jobs page.",
+                    )
+                    .await?;
                     let payload = serde_json::json!({
                         "job_id": job_id,
                         "interaction": {
@@ -2866,6 +3034,11 @@ impl InstanceActor {
                 return Err(error);
             }
         };
+        self.write_install_log(
+            &root,
+            "[DMX] Native installer completed. Activating the staged game files.",
+        )
+        .await?;
         let result = self
             .commit_native_install(job_id, instance, &root, &staging, installed)
             .await;
@@ -2883,6 +3056,11 @@ impl InstanceActor {
         staging: &Path,
         installed: installers::InstallResult,
     ) -> Result<(), OperationFailure> {
+        self.write_install_log(
+            root,
+            "[DMX] Switching the validated staging directory into place.",
+        )
+        .await?;
         jobs::progress(&self.inner.pool, job_id, 80)
             .await
             .map_err(OperationFailure::internal)?;
@@ -2933,6 +3111,8 @@ impl InstanceActor {
             remove_dir_if_exists(parent).await.ok();
         }
         self.publish_state().await;
+        self.write_install_log(root, "[DMX] Installation completed successfully.")
+            .await?;
         if !self.retain_install_rollback
             && (instance.auto_start || instance.desired_state == "running")
         {
@@ -3060,6 +3240,7 @@ impl InstanceActor {
                 stdout,
                 OutputPumpConfig {
                     log_path: root.join("logs/console.log"),
+                    combined_log: None,
                     stream: "stdout",
                     instance_id: self.instance_id.clone(),
                     events: self.inner.events.clone(),
@@ -3074,6 +3255,7 @@ impl InstanceActor {
                 stderr,
                 OutputPumpConfig {
                     log_path: root.join("logs/console.error.log"),
+                    combined_log: None,
                     stream: "stderr",
                     instance_id: self.instance_id.clone(),
                     events: self.inner.events.clone(),
@@ -4092,6 +4274,22 @@ impl InstanceActor {
                 .map_err(OperationFailure::internal)?
                 .root,
         )
+    }
+
+    async fn write_install_log(&self, root: &Path, message: &str) -> Result<(), OperationFailure> {
+        let mut writer = RotatingLog::open(root.join("logs/install.combined.log"))
+            .await
+            .map_err(OperationFailure::internal)?;
+        writer
+            .write_line(message)
+            .await
+            .map_err(OperationFailure::internal)?;
+        self.inner.events.publish(
+            "server.log",
+            Some(self.instance_id.clone()),
+            serde_json::json!({"stream": "install", "message": message}),
+        );
+        Ok(())
     }
 
     async fn set_runtime_state(
@@ -5948,8 +6146,95 @@ fn append_bounded_output(output: &mut String, line: &str, limit: usize) {
     }
 }
 
+async fn reset_install_logs(root: &Path) -> Result<(), OperationFailure> {
+    let logs = root.join("logs");
+    match tokio::fs::symlink_metadata(&logs).await {
+        Ok(metadata) if metadata.is_dir() && !runtime_metadata_is_link_like(&metadata) => {}
+        Ok(_) => {
+            return Err(OperationFailure::new(
+                "install_log_unsafe",
+                "servers.instance_data_unsafe",
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            tokio::fs::create_dir(&logs)
+                .await
+                .map_err(OperationFailure::internal)?;
+        }
+        Err(error) => return Err(OperationFailure::internal(error)),
+    }
+    for name in ["install.log", "install.error.log", "install.combined.log"] {
+        for generation in 0..LOG_GENERATIONS {
+            let path = if generation == 0 {
+                logs.join(name)
+            } else {
+                logs.join(format!("{name}.{generation}"))
+            };
+            match tokio::fs::symlink_metadata(&path).await {
+                Ok(metadata) if metadata.is_file() || runtime_metadata_is_link_like(&metadata) => {
+                    tokio::fs::remove_file(&path)
+                        .await
+                        .map_err(OperationFailure::internal)?;
+                }
+                Ok(_) => {
+                    return Err(OperationFailure::new(
+                        "install_log_unsafe",
+                        "servers.instance_data_unsafe",
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(OperationFailure::internal(error)),
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn read_log_tail(
+    path: &Path,
+    stream: &str,
+    limit: usize,
+) -> Result<Vec<RuntimeLogLine>, AppError> {
+    let metadata = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_file() || runtime_metadata_is_link_like(&metadata) {
+        return Err(AppError::Conflict("servers.instance_data_unsafe".into()));
+    }
+    let start = metadata.len().saturating_sub(MAX_LOG_HISTORY_BYTES);
+    let mut file = tokio::fs::File::open(path).await?;
+    if start > 0 {
+        file.seek(SeekFrom::Start(start)).await?;
+    }
+    let mut bytes =
+        Vec::with_capacity((metadata.len() - start).min(MAX_LOG_HISTORY_BYTES) as usize);
+    file.read_to_end(&mut bytes).await?;
+    let contents = String::from_utf8_lossy(&bytes);
+    let contents = if start > 0 {
+        contents
+            .split_once('\n')
+            .map_or("", |(_, complete_lines)| complete_lines)
+    } else {
+        contents.as_ref()
+    };
+    let mut messages: Vec<_> = contents
+        .lines()
+        .rev()
+        .take(limit)
+        .map(|message| RuntimeLogLine {
+            stream: stream.to_string(),
+            message: message.trim_end_matches('\r').to_string(),
+        })
+        .collect();
+    messages.reverse();
+    Ok(messages)
+}
+
 struct OutputPumpConfig {
     log_path: PathBuf,
+    combined_log: Option<Arc<Mutex<RotatingLog>>>,
     stream: &'static str,
     instance_id: String,
     events: EventHub,
@@ -5972,6 +6257,7 @@ async fn pump_output<R>(
         reader,
         OutputPumpConfig {
             log_path,
+            combined_log: None,
             stream,
             instance_id,
             events,
@@ -6003,20 +6289,31 @@ where
         events: &config.events,
         redactions: &config.redactions,
         observer: config.observer.as_ref(),
+        combined_log: config.combined_log.as_ref(),
         public_log_policy: config.public_log_policy,
     };
     loop {
-        let read = match reader.read(&mut chunk).await {
-            Ok(0) => break,
-            Ok(read) => read,
-            Err(error) => {
+        let read = match tokio::time::timeout(PARTIAL_LOG_FLUSH_INTERVAL, reader.read(&mut chunk))
+            .await
+        {
+            Ok(Ok(0)) => break,
+            Ok(Ok(read)) => read,
+            Ok(Err(error)) => {
                 tracing::warn!(instance_id = %config.instance_id, %error, "server log read failed");
                 break;
             }
+            Err(_) => {
+                if !line.is_empty() || truncated {
+                    emit_log_line(&mut writer, &mut line, &mut truncated, &context).await;
+                }
+                continue;
+            }
         };
         for byte in &chunk[..read] {
-            if *byte == b'\n' {
-                emit_log_line(&mut writer, &mut line, &mut truncated, &context).await;
+            if matches!(*byte, b'\n' | b'\r') {
+                if !line.is_empty() || truncated {
+                    emit_log_line(&mut writer, &mut line, &mut truncated, &context).await;
+                }
             } else if line.len() < MAX_LOG_LINE {
                 line.push(*byte);
             } else {
@@ -6035,6 +6332,7 @@ struct LogLineContext<'a> {
     events: &'a EventHub,
     redactions: &'a [String],
     observer: Option<&'a mpsc::Sender<String>>,
+    combined_log: Option<&'a Arc<Mutex<RotatingLog>>>,
     public_log_policy: PublicLogPolicy,
 }
 
@@ -6069,6 +6367,17 @@ async fn emit_log_line(
     if let Err(error) = writer.write_line(&line).await {
         tracing::warn!(instance_id = %context.instance_id, %error, "server log write failed");
     }
+    if let Some(combined_log) = context.combined_log {
+        let combined_line = if context.stream.ends_with("_error") {
+            format!("[stderr] {line}")
+        } else {
+            line.clone()
+        };
+        let mut combined_log = combined_log.lock().await;
+        if let Err(error) = combined_log.write_line(&combined_line).await {
+            tracing::warn!(instance_id = %context.instance_id, %error, "combined server log write failed");
+        }
+    }
     context.events.publish(
         "server.log",
         Some(context.instance_id.to_string()),
@@ -6093,7 +6402,7 @@ fn redact_hytale_device_authorization(line: &str) -> String {
     .iter()
     .any(|marker| lowercase.contains(marker));
     if contains_device_url || contains_code {
-        "[REDACTED HYTALE DEVICE AUTHORIZATION]".into()
+        "[ACTION REQUIRED] Hytale authentication is waiting. Use the secure action card above the terminal or open the Jobs page to copy the authorization code.".into()
     } else {
         line.to_string()
     }
@@ -8210,6 +8519,7 @@ mod tests {
     async fn hytale_device_authorization_is_observable_internally_but_never_logged_or_published() {
         let root = tempfile::tempdir().unwrap();
         let log = root.path().join("install.log");
+        let combined = root.path().join("install.combined.log");
         let events = EventHub::new(8);
         let mut receiver = events.subscribe();
         let (line_tx, mut line_rx) = mpsc::channel(4);
@@ -8218,6 +8528,9 @@ mod tests {
             reader,
             OutputPumpConfig {
                 log_path: log.clone(),
+                combined_log: Some(Arc::new(Mutex::new(
+                    RotatingLog::open(combined.clone()).await.unwrap(),
+                ))),
                 stream: "install",
                 instance_id: uuid::Uuid::new_v4().to_string(),
                 events,
@@ -8240,16 +8553,52 @@ mod tests {
         assert_eq!(
             contents
                 .lines()
-                .filter(|line| line.contains("[REDACTED HYTALE DEVICE AUTHORIZATION]"))
+                .filter(|line| line.contains("[ACTION REQUIRED] Hytale authentication is waiting"))
                 .count(),
             2
         );
+        let combined_contents = tokio::fs::read_to_string(combined).await.unwrap();
+        assert!(!combined_contents.contains("ABCD-1234"));
+        assert!(!combined_contents.contains("accounts.hytale.com/device"));
+        assert!(combined_contents.contains("[ACTION REQUIRED] Hytale authentication is waiting"));
         for _ in 0..2 {
             let event = receiver.recv().await.unwrap();
             let message = event.payload["message"].as_str().unwrap();
             assert!(!message.contains("ABCD-1234"));
             assert!(!message.contains("accounts.hytale.com/device"));
         }
+    }
+
+    #[tokio::test]
+    async fn installer_prompt_without_newline_is_flushed_while_process_keeps_running() {
+        let root = tempfile::tempdir().unwrap();
+        let log = root.path().join("install.log");
+        let (line_tx, mut line_rx) = mpsc::channel(4);
+        let (mut writer, reader) = tokio::io::duplex(4 * 1024);
+        let task = tokio::spawn(pump_output_observed(
+            reader,
+            OutputPumpConfig {
+                log_path: log,
+                combined_log: None,
+                stream: "install",
+                instance_id: uuid::Uuid::new_v4().to_string(),
+                events: EventHub::new(8),
+                redactions: Vec::new(),
+                observer: Some(line_tx),
+                public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
+            },
+        ));
+        writer
+            .write_all(b"Authorization code: ABCD-1234")
+            .await
+            .unwrap();
+        let observed = tokio::time::timeout(Duration::from_secs(2), line_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(observed, "Authorization code: ABCD-1234");
+        drop(writer);
+        task.await.unwrap();
     }
 
     #[tokio::test]

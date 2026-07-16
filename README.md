@@ -31,7 +31,7 @@ Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version
 
 Les binaires de jeux ne sont jamais inclus dans l’image ou les releases. Les installateurs officiels et SteamCMD les téléchargent à la demande, selon leurs licences.
 
-Pendant une installation ou une mise à jour, la page de l’instance bascule sur l’onglet Terminal et affiche les sorties de l’installateur en temps réel. Lorsqu’une action humaine est nécessaire, le job passe à `waiting_for_user` et conserve une action explicite dans la page Jobs et sur l’instance (par exemple le code OAuth Hytale ou l’archive Bedrock attendue). Les installateurs n’acceptent jamais de saisie shell arbitraire.
+Pendant une installation ou une mise à jour, la page de l’instance bascule sur l’onglet Terminal et affiche les sorties de l’installateur en temps réel. L’historique borné est relu depuis le disque après une navigation, un rechargement ou une reconnexion SSE ; les invites sans saut de ligne sont également affichées. Lorsqu’une action humaine est nécessaire, le job passe à `waiting_for_user` et conserve une action explicite dans la page Jobs et sur l’instance (par exemple le code OAuth Hytale ou l’archive Bedrock attendue). Les installateurs n’acceptent jamais de saisie shell arbitraire.
 
 Un AppID Steam personnalisé n’est pas automatiquement compatible. Le dépôt doit autoriser la connexion anonyme, fournir un exécutable natif AMD64 pour l’OS hôte et réussir la validation du profil. Les comptes Steam privés, Wine et Proton ne sont pas pris en charge en 1.0.
 
@@ -153,7 +153,49 @@ Pour `DMX_CONTAINER_UID=1001`, les permissions attendues sont `1001:1001 700` po
 
 Ne régénérez jamais `config/master.key` pour une installation existante : restaurez la clé originale, sinon les secrets déjà chiffrés dans SQLite deviendront illisibles.
 
-Le fichier [docker-compose.yml](install/linux/docker-compose.yml) est autonome et modifiable sans cloner le dépôt. `network_mode: host` permet aux serveurs de jeux d’ouvrir leurs ports TCP/UDP dynamiques. Ce mode ne doit pas être combiné avec `ports:` ou `networks:` : un Traefik exécuté dans un autre conteneur doit cibler le port `5500` de l’hôte au lieu d’attacher le panneau à son réseau Docker.
+Le fichier [docker-compose.yml](install/linux/docker-compose.yml) est autonome et modifiable sans cloner le dépôt. Il utilise le mode réseau hôte, recommandé lorsqu’il faut laisser DmxServerManager choisir librement les ports des jeux.
+
+### Choisir le mode réseau Docker
+
+Les deux modes suivants sont valides, mais ils ne se configurent pas de la même manière :
+
+| Mode | Avantage | Contrainte |
+|---|---|---|
+| `network_mode: host` — Compose officiel | Les ports de jeux réservés par le panneau sont immédiatement utilisables, sans liste `ports:` dans Compose. | Le conteneur ne peut pas rejoindre un réseau Docker `proxied`. Un Traefik conteneurisé doit joindre le port `5500` de l’hôte par une route déjà disponible dans votre infrastructure. |
+| Réseau bridge partagé avec Traefik | Fonctionne comme un Compose classique : labels Traefik, `expose: 5500` et réseau externe partagé. | Docker ne peut pas publier un nouveau port de jeu à chaud. Il faut déclarer à l’avance des plages TCP/UDP libres dans `ports:` puis choisir les ports des instances dans ces plages. |
+
+Pour utiliser un Traefik existant sans mode hôte, retirez `network_mode: host` et utilisez par exemple cette adaptation :
+
+```yaml
+services:
+  panel:
+    networks:
+      - proxied
+    expose:
+      - "5500"
+    ports:
+      - "5520-5530:5520-5530/udp"
+      - "25600-25649:25600-25649/tcp"
+      - "19140-19159:19140-19159/udp"
+      - "24600-24649:24600-24649/udp"
+      - "8220-8240:8220-8240/udp"
+      - "27020-27119:27020-27119/tcp"
+      - "27020-27119:27020-27119/udp"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxied
+      traefik.http.routers.dmxmanager.rule: "Host(`${DMX_HOSTNAME}`)"
+      traefik.http.routers.dmxmanager.entrypoints: websecure
+      traefik.http.routers.dmxmanager.tls: "true"
+      traefik.http.routers.dmxmanager.tls.certresolver: leresolver
+      traefik.http.services.dmxmanager.loadbalancer.server.port: "5500"
+
+networks:
+  proxied:
+    external: true
+```
+
+Dans ce mode bridge, configurez `bind = "0.0.0.0:5500"`, `reverse_proxy = true` et l’adresse IP exacte du conteneur Traefik dans `trusted_proxies`. Le port `5500` reste uniquement exposé au réseau Docker : ne l’ajoutez pas à `ports:`. Adaptez les plages de jeux aux ports libres de votre hôte ; une plage déjà utilisée empêchera le conteneur de démarrer.
 
 ### Méthode automatique optionnelle
 

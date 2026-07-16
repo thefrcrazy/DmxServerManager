@@ -9,7 +9,7 @@ La version 1.0 supporte exclusivement Linux AMD64, Windows AMD64 et les conteneu
 Téléchargez l’installateur et le checksum d’archive depuis les assets de la release, puis vérifiez séparément leurs bundles Sigstore produits par GitHub Actions. Ne lancez jamais directement un script distant via un pipe. `cosign` 3 est requis pour cette vérification initiale.
 
 ```bash
-version=1.0.10
+version=1.0.11
 asset="dmx-server-manager-v${version}-x86_64-unknown-linux-gnu.tar.gz"
 installer="dmx-server-manager-install-linux.sh"
 base="https://github.com/thefrcrazy/DmxServerManager/releases/download/v${version}"
@@ -48,7 +48,7 @@ Le panneau écoute par défaut sur `127.0.0.1:5500`; ouvrez-le via `http://local
 Dans PowerShell 5.1 ou 7 lancé en administrateur :
 
 ```powershell
-$Version = '1.0.10'
+$Version = '1.0.11'
 $Asset = "dmx-server-manager-v$Version-x86_64-pc-windows-msvc.zip"
 $Installer = 'dmx-server-manager-install-windows.ps1'
 $Base = "https://github.com/thefrcrazy/DmxServerManager/releases/download/v$Version"
@@ -168,13 +168,58 @@ curl -fsSLo /tmp/dmx-server-manager-install-docker.sh \
 
 Une relance de l’installateur conserve les fichiers `docker-compose.yml`, `.env` et `config/config.toml` existants. Vos personnalisations et réglages de reverse proxy ne sont donc pas écrasés.
 
-Le conteneur s’exécute avec l’UID/GID `10001`, un système de fichiers racine en lecture seule et toutes les capabilities supprimées. Les deux dossiers sont montés directement : `./config:/config:ro` et `./data:/data`. `network_mode: host` est intentionnel et obligatoire pour les ports dynamiques des jeux. Il ne peut pas être combiné avec `ports:` ou `networks:`.
+Le conteneur s’exécute avec l’UID/GID `10001`, un système de fichiers racine en lecture seule et toutes les capabilities supprimées. Les deux dossiers sont montés directement : `./config:/config:ro` et `./data:/data`.
 
 L’image par défaut est `ghcr.io/thefrcrazy/dmx-server-manager:latest`. Pour épingler une version ou un digest signé, modifiez `DMX_IMAGE` dans `.env`. Le tag versionné n’est jamais déplacé ; seul `latest` suit la dernière release publiée et validée.
 
+### Modes réseau Docker
+
+Le Compose officiel utilise `network_mode: host`. C’est le mode recommandé pour des ports de jeux réellement dynamiques : lorsqu’une instance réserve un port libre, aucun changement du Compose n’est nécessaire. Ce mode ne peut pas être combiné avec `ports:` ou `networks:`.
+
+Si votre Traefik fonctionne déjà dans Docker et découvre ses services par labels, vous pouvez utiliser un réseau bridge externe à la place. Retirez `network_mode: host`, joignez le réseau de Traefik et publiez à l’avance des plages de ports de jeux :
+
+```yaml
+services:
+  panel:
+    networks:
+      - proxied
+    expose:
+      - "5500"
+    ports:
+      - "5520-5530:5520-5530/udp"
+      - "25600-25649:25600-25649/tcp"
+      - "19140-19159:19140-19159/udp"
+      - "24600-24649:24600-24649/udp"
+      - "8220-8240:8220-8240/udp"
+      - "27020-27119:27020-27119/tcp"
+      - "27020-27119:27020-27119/udp"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxied
+      traefik.http.routers.dmxmanager.rule: "Host(`${DMX_HOSTNAME}`)"
+      traefik.http.routers.dmxmanager.entrypoints: websecure
+      traefik.http.routers.dmxmanager.tls: "true"
+      traefik.http.routers.dmxmanager.tls.certresolver: leresolver
+      traefik.http.services.dmxmanager.loadbalancer.server.port: "5500"
+
+networks:
+  proxied:
+    external: true
+```
+
+Règles du mode bridge :
+
+- `bind` doit être `0.0.0.0:5500` afin que Traefik atteigne le panneau ;
+- le port du panneau utilise seulement `expose: 5500`, jamais `ports:`, pour ne pas publier son HTTP directement sur Internet ;
+- les ports choisis dans le panneau doivent rester dans les plages TCP/UDP publiées ;
+- ajouter une nouvelle plage exige `docker compose up -d --force-recreate panel` ;
+- Docker réserve toute la plage au démarrage : un seul port hôte déjà occupé provoque `address already in use`.
+
 ### Reverse proxy externe
 
-DmxServerManager ne déploie aucun Traefik, certificat ou conteneur proxy. Un Traefik exécuté dans un autre conteneur doit cibler le port `5500` de l’hôte ; il ne faut pas attacher le panneau à un réseau Docker `proxied`. Dans `config/config.toml`, conservez le loopback pour un accès local. Pour un reverse proxy HTTPS, écoutez sur une adresse de l’hôte joignable depuis Traefik et déclarez uniquement l’adresse source exacte du proxy :
+DmxServerManager ne déploie aucun Traefik, certificat ou conteneur proxy. Dans `config/config.toml`, conservez le loopback pour un accès local direct. Pour un reverse proxy HTTPS, activez le mode proxy et déclarez uniquement l’adresse source exacte du proxy.
+
+Avec le Compose officiel en réseau hôte :
 
 ```toml
 bind = "IP_HOTE_JOIGNABLE_DEPUIS_TRAEFIK:5500"
@@ -182,7 +227,15 @@ reverse_proxy = true
 trusted_proxies = ["IP_SOURCE_EXACTE_DE_TRAEFIK"]
 ```
 
-Utilisez le pare-feu de l’hôte pour refuser l’accès public direct au port `5500`. La liste accepte des IP exactes, pas un réseau entier.
+Avec le mode bridge partagé avec Traefik :
+
+```toml
+bind = "0.0.0.0:5500"
+reverse_proxy = true
+trusted_proxies = ["IP_EXACTE_DU_CONTENEUR_TRAEFIK"]
+```
+
+Utilisez le pare-feu de l’hôte pour refuser l’accès public direct au port `5500` en mode hôte. La liste `trusted_proxies` accepte des IP exactes, pas un réseau entier. Si l’adresse de Traefik change, attribuez-lui une IP stable sur le réseau partagé ou mettez la configuration à jour.
 
 ### Migration depuis l’ancien Compose du dépôt
 

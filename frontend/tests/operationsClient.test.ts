@@ -20,6 +20,7 @@ import { NotificationsClient } from "../src/services/api/notifications.client";
 import { ModsClient } from "../src/services/api/mods.client";
 import { ProfileClient } from "../src/services/api/profile.client";
 import { SchedulesClient } from "../src/services/api/schedules.client";
+import { ServerClient } from "../src/services/api/server.client";
 import { WebhooksClient } from "../src/services/api/webhooks.client";
 
 const originalFetch = globalThis.fetch;
@@ -70,6 +71,26 @@ describe("clients opérationnels", () => {
 
         expect(inputs[0]).toBe(`/api/v1/chat?before_id=${BACKUP_ID}&limit=25`);
         expect(inputs[1]).toBe(`/api/v1/notifications?before_id=${BACKUP_ID}&limit=50&unread_only=true`);
+    });
+
+    test("relit l’historique borné du terminal d’installation", async () => {
+        let input = "";
+        globalThis.fetch = async (requestInput) => {
+            input = String(requestInput);
+            return Response.json({
+                source: "install",
+                items: [
+                    { stream: "install", message: "Downloading..." },
+                    { stream: "install_error", message: "Waiting for authentication" },
+                ],
+            });
+        };
+
+        const response = await new ServerClient().getLogHistory(SERVER_ID, "install");
+
+        expect(response.success).toBe(true);
+        expect(input).toBe(`/api/v1/servers/${SERVER_ID}/logs?source=install&limit=500`);
+        if (response.success) expect(response.data.items).toHaveLength(2);
     });
 
     test("envoie un upload brut et le CSRF via le client central", async () => {
