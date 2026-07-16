@@ -299,6 +299,16 @@ fn profile_paths() -> Value {
                 "responses": {"200": {"description": "All immutable revisions for a profile.", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/GameProfile"}}}}}}
             }
         },
+        "/game-profiles/{id}/version-catalog": {
+            "get": {
+                "operationId": "getGameProfileVersionCatalog", "tags": ["game profiles"],
+                "parameters": [
+                    {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 64}},
+                    {"name": "game_version", "in": "query", "required": false, "schema": {"type": "string", "minLength": 1, "maxLength": 96}}
+                ],
+                "responses": {"200": {"description": "Current official game and loader versions available to the selected built-in profile.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProfileVersionCatalog"}}}}}
+            }
+        },
         "/game-profiles/steam": {
             "post": {
                 "operationId": "createSteamProfile", "tags": ["game profiles"],
@@ -1272,6 +1282,16 @@ fn profile_schemas() -> Value {
                 "ui_schema": {"type": "object", "additionalProperties": true},
                 "steam_profile": {"$ref": "#/components/schemas/SteamProfile"}
             }
+        },
+        "ProfileVersionCatalog": {
+            "type": "object", "additionalProperties": false,
+            "required": ["profile_id", "game_versions", "selected_game_version", "loader_versions"],
+            "properties": {
+                "profile_id": {"type": "string", "minLength": 1, "maxLength": 64},
+                "game_versions": {"type": "array", "maxItems": 512, "items": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "^[A-Za-z0-9._+-]+$"}},
+                "selected_game_version": {"type": ["string", "null"], "minLength": 1, "maxLength": 96, "pattern": "^[A-Za-z0-9._+-]+$"},
+                "loader_versions": {"type": "array", "maxItems": 512, "items": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "^[A-Za-z0-9._+-]+$"}}
+            }
         }
     })
 }
@@ -2023,6 +2043,7 @@ mod tests {
         "GET /files/text",
         "GET /game-profiles",
         "GET /game-profiles/{id}/revisions",
+        "GET /game-profiles/{id}/version-catalog",
         "GET /health",
         "GET /jobs",
         "GET /jobs/{id}",

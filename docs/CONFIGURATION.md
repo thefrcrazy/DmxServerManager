@@ -76,10 +76,11 @@ Le panneau vérifie au démarrage puis selon l’intervalle configuré. L’Owne
 
 ## Sources Minecraft Bedrock
 
-Microsoft ne publie pas de manifeste Bedrock stable fournissant à la fois version, URL et checksum. DmxServerManager n’invente donc aucun endpoint ni digest. Deux flux explicites sont disponibles :
+Microsoft expose un endpoint public de liens utilisé par le site officiel, mais sans checksum fournisseur. DmxServerManager utilise ce flux par défaut et n’invente aucun digest :
 
-- configurer une source épinglée avec URL officielle, version et SHA-256 ; les trois valeurs sont obligatoires et toute redirection reste limitée aux hôtes HTTPS officiels autorisés ;
-- laisser la source vide : le job d’installation passe à `waiting_for_user`. L’Owner télécharge l’archive depuis la [page officielle Bedrock](https://www.minecraft.net/en-us/download/server/bedrock), calcule son SHA-256, puis envoie le ZIP sur la route indiquée par le job avec le header `x-dmx-archive-sha256`.
+- sans override, le panneau découvre la version stable Linux ou Windows via `net-secondary.web.minecraft-services.net/api/v1.0/download/links`, accepte uniquement une archive exacte sous `www.minecraft.net/bedrockdedicatedserver/`, calcule son SHA-256 et valide son contenu ;
+- une source épinglée avec URL officielle, version et SHA-256 peut être configurée par l’administrateur ; les trois valeurs sont obligatoires et cette source devient prioritaire ;
+- si le service officiel est indisponible, l’import manuel signé par le SHA-256 fourni par l’Owner reste un secours, jamais le chemin normal.
 
 Configuration TOML équivalente pour une source épinglée :
 

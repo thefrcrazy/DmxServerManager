@@ -49,6 +49,7 @@ RUN dpkg --add-architecture i386 \
         steamcmd \
         tini \
         unzip \
+        xdg-user-dirs \
         xz-utils \
         zip \
     && ln -s /usr/games/steamcmd /usr/local/bin/steamcmd \

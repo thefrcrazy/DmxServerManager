@@ -7,7 +7,7 @@ mod minecraft_loaders;
 mod toolchains;
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     fs,
     io::Read,
@@ -16,7 +16,7 @@ use std::{
 };
 
 #[cfg(test)]
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use futures::StreamExt;
 use md5::Md5;
@@ -80,8 +80,9 @@ pub struct InstallerSources {
     pub buildtools: VerifiedSource,
     pub hytale_downloader: Url,
     pub adoptium_api_base: Url,
-    /// Mojang does not publish a stable, checksummed Bedrock download API.
-    /// These remain absent in the production catalog until such a contract exists.
+    pub bedrock_download_api: Url,
+    /// Optional administrator pins override dynamic official Bedrock discovery.
+    /// The public Minecraft link service does not publish a provider checksum.
     pub bedrock_linux: Option<VerifiedSource>,
     pub bedrock_windows: Option<VerifiedSource>,
     allowed_hosts: BTreeSet<String>,
@@ -128,6 +129,10 @@ impl InstallerSources {
                 .expect("constant Hytale downloader URL is valid"),
             adoptium_api_base: Url::parse("https://api.adoptium.net/v3/")
                 .expect("constant Adoptium API URL is valid"),
+            bedrock_download_api: Url::parse(
+                "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links",
+            )
+            .expect("constant Minecraft download API URL is valid"),
             bedrock_linux: None,
             bedrock_windows: None,
             allowed_hosts: [
@@ -146,6 +151,7 @@ impl InstallerSources {
                 "hub.spigotmc.org",
                 "downloader.hytale.com",
                 "api.adoptium.net",
+                "net-secondary.web.minecraft-services.net",
                 "github.com",
                 "release-assets.githubusercontent.com",
                 "objects.githubusercontent.com",
@@ -182,6 +188,7 @@ impl InstallerSources {
             },
             hytale_downloader: base.join("hytale/downloader.zip").unwrap(),
             adoptium_api_base: base.join("adoptium/").unwrap(),
+            bedrock_download_api: base.join("bedrock/downloads.json").unwrap(),
             bedrock_linux: None,
             bedrock_windows: None,
             allowed_hosts: [host].into_iter().collect(),
@@ -324,6 +331,333 @@ pub async fn remove_bedrock_upload(
     job_id: &str,
 ) -> Result<(), InstallerError> {
     bedrock::remove_local_archive(instance_root, job_id).await
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileVersionCatalog {
+    pub profile_id: String,
+    pub game_versions: Vec<String>,
+    pub selected_game_version: Option<String>,
+    pub loader_versions: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CatalogMinecraftManifest {
+    versions: Vec<CatalogMinecraftVersion>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CatalogMinecraftVersion {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CatalogGameVersion {
+    version: String,
+    stable: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct CatalogLoaderVersion {
+    loader: CatalogVersionValue,
+}
+
+#[derive(Debug, Deserialize)]
+struct CatalogVersionValue {
+    version: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PaperProjectCatalog {
+    project: PaperProjectIdentity,
+    versions: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PaperProjectIdentity {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PurpurProjectCatalog {
+    project: String,
+    versions: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PurpurVersionCatalog {
+    project: String,
+    version: String,
+    builds: PurpurBuildCatalog,
+}
+
+#[derive(Debug, Deserialize)]
+struct PurpurBuildCatalog {
+    all: Vec<String>,
+}
+
+pub async fn profile_version_catalog(
+    profile_id: &str,
+    requested_game_version: Option<&str>,
+) -> Result<ProfileVersionCatalog, InstallerError> {
+    if profile_id != "minecraft-bedrock" && !profile_id.starts_with("minecraft-java-") {
+        return Err(InstallerError::new(
+            "profile_catalog_unavailable",
+            "profiles.catalog_unavailable",
+        ));
+    }
+    let context = InstallContext::official()?;
+    let game_versions = match profile_id {
+        "minecraft-bedrock" => vec![bedrock::current_official_version(&context).await?],
+        "minecraft-java-fabric" => stable_game_versions(
+            read_json::<Vec<CatalogGameVersion>>(
+                &context,
+                &context
+                    .sources
+                    .fabric_meta_base
+                    .join("versions/game")
+                    .map_err(|error| {
+                        InstallerError::internal("fabric_catalog_url_failed", error)
+                    })?,
+            )
+            .await?,
+        ),
+        "minecraft-java-quilt" => stable_game_versions(
+            read_json::<Vec<CatalogGameVersion>>(
+                &context,
+                &context
+                    .sources
+                    .quilt_meta_base
+                    .join("versions/game")
+                    .map_err(|error| InstallerError::internal("quilt_catalog_url_failed", error))?,
+            )
+            .await?,
+        ),
+        "minecraft-java-paper" => {
+            let project: PaperProjectCatalog = read_json(
+                &context,
+                &context
+                    .sources
+                    .paper_api_base
+                    .join("projects/paper")
+                    .map_err(|error| InstallerError::internal("paper_catalog_url_failed", error))?,
+            )
+            .await?;
+            if project.project.id != "paper" {
+                return Err(InstallerError::new(
+                    "paper_catalog_invalid",
+                    "servers.provider_response_invalid",
+                ));
+            }
+            let supported = project
+                .versions
+                .into_values()
+                .flatten()
+                .collect::<BTreeSet<_>>();
+            mojang_release_versions(&context)
+                .await?
+                .into_iter()
+                .filter(|version| supported.contains(version))
+                .collect()
+        }
+        "minecraft-java-purpur" => {
+            let project: PurpurProjectCatalog = read_json(
+                &context,
+                &context
+                    .sources
+                    .purpur_api_base
+                    .join("purpur")
+                    .map_err(|error| {
+                        InstallerError::internal("purpur_catalog_url_failed", error)
+                    })?,
+            )
+            .await?;
+            if project.project != "purpur" {
+                return Err(InstallerError::new(
+                    "purpur_catalog_invalid",
+                    "servers.provider_response_invalid",
+                ));
+            }
+            let supported = project.versions.into_iter().collect::<BTreeSet<_>>();
+            mojang_release_versions(&context)
+                .await?
+                .into_iter()
+                .filter(|version| supported.contains(version))
+                .collect()
+        }
+        "minecraft-java-forge" => {
+            let loaders = forge_catalog_versions(&context).await?;
+            mojang_release_versions(&context)
+                .await?
+                .into_iter()
+                .filter(|game| {
+                    loaders
+                        .iter()
+                        .any(|loader| loader.starts_with(&format!("{game}-")))
+                })
+                .collect()
+        }
+        "minecraft-java-neoforge" => {
+            let loaders = neoforge_catalog_versions(&context).await?;
+            mojang_release_versions(&context)
+                .await?
+                .into_iter()
+                .filter(|game| {
+                    loaders.iter().any(|loader| {
+                        minecraft_loaders::validate_neoforge_version(game, loader).is_ok()
+                    })
+                })
+                .collect()
+        }
+        "minecraft-java-vanilla" | "minecraft-java-spigot" => {
+            mojang_release_versions(&context).await?
+        }
+        _ => {
+            return Err(InstallerError::new(
+                "profile_catalog_unavailable",
+                "profiles.catalog_unavailable",
+            ));
+        }
+    };
+    let game_versions = unique_safe_versions(game_versions);
+    let selected_game_version = requested_game_version
+        .filter(|version| game_versions.iter().any(|candidate| candidate == *version))
+        .map(str::to_string)
+        .or_else(|| game_versions.first().cloned());
+    let loader_versions = match (profile_id, selected_game_version.as_deref()) {
+        ("minecraft-java-fabric", Some(game)) => {
+            let url = context
+                .sources
+                .fabric_meta_base
+                .join(&format!("versions/loader/{game}"))
+                .map_err(|error| InstallerError::internal("fabric_catalog_url_failed", error))?;
+            read_json::<Vec<CatalogLoaderVersion>>(&context, &url)
+                .await?
+                .into_iter()
+                .map(|entry| entry.loader.version)
+                .collect()
+        }
+        ("minecraft-java-quilt", Some(game)) => {
+            let url = context
+                .sources
+                .quilt_meta_base
+                .join(&format!("versions/loader/{game}"))
+                .map_err(|error| InstallerError::internal("quilt_catalog_url_failed", error))?;
+            read_json::<Vec<CatalogLoaderVersion>>(&context, &url)
+                .await?
+                .into_iter()
+                .map(|entry| entry.loader.version)
+                .collect()
+        }
+        ("minecraft-java-forge", Some(game)) => forge_catalog_versions(&context)
+            .await?
+            .into_iter()
+            .rev()
+            .filter(|loader| loader.starts_with(&format!("{game}-")))
+            .collect(),
+        ("minecraft-java-neoforge", Some(game)) => neoforge_catalog_versions(&context)
+            .await?
+            .into_iter()
+            .rev()
+            .filter(|loader| minecraft_loaders::validate_neoforge_version(game, loader).is_ok())
+            .collect(),
+        ("minecraft-java-purpur", Some(game)) => {
+            let url = context
+                .sources
+                .purpur_api_base
+                .join(&format!("purpur/{game}"))
+                .map_err(|error| InstallerError::internal("purpur_catalog_url_failed", error))?;
+            let version: PurpurVersionCatalog = read_json(&context, &url).await?;
+            if version.project != "purpur" || version.version != game {
+                return Err(InstallerError::new(
+                    "purpur_catalog_invalid",
+                    "servers.provider_response_invalid",
+                ));
+            }
+            version.builds.all.into_iter().rev().collect()
+        }
+        _ => Vec::new(),
+    };
+    Ok(ProfileVersionCatalog {
+        profile_id: profile_id.to_string(),
+        game_versions,
+        selected_game_version,
+        loader_versions: unique_safe_versions(loader_versions),
+    })
+}
+
+async fn mojang_release_versions(context: &InstallContext) -> Result<Vec<String>, InstallerError> {
+    let manifest: CatalogMinecraftManifest =
+        read_json(context, &context.sources.minecraft_manifest).await?;
+    Ok(manifest
+        .versions
+        .into_iter()
+        .filter(|version| version.kind == "release")
+        .map(|version| version.id)
+        .collect())
+}
+
+fn stable_game_versions(entries: Vec<CatalogGameVersion>) -> Vec<String> {
+    entries
+        .into_iter()
+        .filter(|entry| entry.stable)
+        .map(|entry| entry.version)
+        .collect()
+}
+
+async fn forge_catalog_versions(context: &InstallContext) -> Result<Vec<String>, InstallerError> {
+    let url = context
+        .sources
+        .forge_maven_base
+        .join("net/minecraftforge/forge/maven-metadata.xml")
+        .map_err(|error| InstallerError::internal("forge_catalog_url_failed", error))?;
+    maven_metadata_versions(context, &url).await
+}
+
+async fn neoforge_catalog_versions(
+    context: &InstallContext,
+) -> Result<Vec<String>, InstallerError> {
+    let url = context
+        .sources
+        .neoforge_maven_base
+        .join("net/neoforged/neoforge/maven-metadata.xml")
+        .map_err(|error| InstallerError::internal("neoforge_catalog_url_failed", error))?;
+    maven_metadata_versions(context, &url).await
+}
+
+async fn maven_metadata_versions(
+    context: &InstallContext,
+    url: &Url,
+) -> Result<Vec<String>, InstallerError> {
+    let bytes = read_bytes(context, url, MAX_PROVIDER_JSON_BYTES).await?;
+    let document = std::str::from_utf8(&bytes).map_err(|_| {
+        InstallerError::new("maven_catalog_invalid", "servers.provider_response_invalid")
+    })?;
+    let pattern = regex::Regex::new(r"<version>([^<]{1,96})</version>")
+        .map_err(|error| InstallerError::internal("maven_catalog_parser_failed", error))?;
+    Ok(pattern
+        .captures_iter(document)
+        .filter_map(|captures| captures.get(1))
+        .map(|value| value.as_str().to_string())
+        .collect())
+}
+
+fn unique_safe_versions(values: Vec<String>) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    values
+        .into_iter()
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 96
+                && value.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+')
+                })
+                && seen.insert(value.clone())
+        })
+        .take(512)
+        .collect()
 }
 
 fn configured_bedrock_source(

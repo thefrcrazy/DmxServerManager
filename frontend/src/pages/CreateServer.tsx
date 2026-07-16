@@ -50,6 +50,8 @@ export default function CreateServer() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState("");
+    const [profileOptions, setProfileOptions] = useState<Record<string, readonly string[]>>({});
+    const [catalogLoading, setCatalogLoading] = useState(false);
 
     const canCreate = hasPermission("server.create");
     const canImport = hasPermission("server.files.write");
@@ -86,6 +88,63 @@ export default function CreateServer() {
         if (!availableModes.includes(mode)) setMode("install");
     }, [availableModes, mode]);
 
+    useEffect(() => {
+        const profile = selectedProfile;
+        const usesVersionCatalog = profile?.id === "minecraft-bedrock"
+            || profile?.id.startsWith("minecraft-java-");
+        if (!profile || !usesVersionCatalog) {
+            setProfileOptions({});
+            setCatalogLoading(false);
+            return;
+        }
+        let active = true;
+        const requestedVersion = typeof settings.version === "string" && settings.version
+            ? settings.version
+            : undefined;
+        setProfileOptions({
+            version: [],
+            ...(profile.settings_schema.properties.loader_version
+                ? { loader_version: [] }
+                : {}),
+        });
+        setCatalogLoading(true);
+        void apiService.profiles.getVersionCatalog(profile.id, requestedVersion).then((response) => {
+            if (!active) return;
+            if (!response.success) {
+                // Keep creation usable if an upstream catalog is temporarily
+                // unavailable; the normal validated text fields remain as a
+                // manual fallback.
+                setProfileOptions({});
+                return;
+            }
+            setProfileOptions({
+                version: response.data.game_versions,
+                ...(profile.settings_schema.properties.loader_version
+                    ? { loader_version: response.data.loader_versions }
+                    : {}),
+            });
+            setSettings((current) => {
+                const next = { ...current };
+                const selectedVersion = response.data.selected_game_version;
+                if (selectedVersion && !response.data.game_versions.includes(String(current.version ?? ""))) {
+                    next.version = selectedVersion;
+                }
+                if (profile.settings_schema.properties.loader_version) {
+                    const currentLoader = String(current.loader_version ?? "");
+                    if (!response.data.loader_versions.includes(currentLoader)) {
+                        next.loader_version = response.data.loader_versions[0] ?? "";
+                    }
+                }
+                return next;
+            });
+        }).finally(() => {
+            if (active) setCatalogLoading(false);
+        });
+        return () => {
+            active = false;
+        };
+    }, [selectedProfile, settings.version]);
+
     useEffect(() => () => uploadTask.current?.cancel(), []);
 
     const translatedError = (value: string): string => {
@@ -102,6 +161,7 @@ export default function CreateServer() {
         setArchive(null);
         setSourcePath("");
         setUploadProgress(0);
+        setProfileOptions({});
         setError("");
     };
 
@@ -274,6 +334,8 @@ export default function CreateServer() {
                         {selectedProfile && <ProfileSettingsFields
                             profile={selectedProfile}
                             values={{ ...settings, ...secrets }}
+                            options={profileOptions}
+                            loadingOptions={catalogLoading ? ["version", "loader_version"] : []}
                             onChange={(key, value, secret) => secret
                                 ? setSecrets((current) => ({ ...current, [key]: String(value) }))
                                 : setSettings((current) => ({ ...current, [key]: value }))}

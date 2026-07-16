@@ -44,6 +44,33 @@ struct UploadMetadata {
     version: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DownloadLinksResponse {
+    result: DownloadLinksResult,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DownloadLinksResult {
+    links: Vec<DownloadLink>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DownloadLink {
+    download_type: String,
+    download_url: String,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedSource {
+    url: Url,
+    expected_sha256: Option<String>,
+    size: Option<u64>,
+    version: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BedrockPlatform {
     Linux,
@@ -108,8 +135,7 @@ async fn install_bedrock_for_platform(
             size: archive.size,
         }
     } else {
-        let source = platform_source(context, platform)?;
-        validate_digest(&source.sha256)?;
+        let source = platform_source(context, platform).await?;
         if source.version != version {
             return Err(InstallerError::new(
                 "bedrock_version_unavailable",
@@ -118,12 +144,16 @@ async fn install_bedrock_for_platform(
         }
         let archive =
             staging.with_file_name(format!(".bedrock-{}.zip", uuid::Uuid::new_v4().as_simple()));
+        let expected_digest = source
+            .expected_sha256
+            .as_ref()
+            .map(|sha256| ExpectedDigest::Sha256(sha256.clone()));
         let downloaded = download_verified(
             context,
             &source.url,
             &archive,
             MAX_BEDROCK_ARCHIVE_BYTES,
-            Some(&ExpectedDigest::Sha256(source.sha256.clone())),
+            expected_digest.as_ref(),
             source.size,
         )
         .await?;
@@ -687,20 +717,110 @@ fn launch_plan_for(
     })
 }
 
-fn platform_source(
+async fn platform_source(
     context: &InstallContext,
     platform: BedrockPlatform,
-) -> Result<&VerifiedSource, InstallerError> {
+) -> Result<ResolvedSource, InstallerError> {
     let source = match platform {
         BedrockPlatform::Linux => context.sources.bedrock_linux.as_ref(),
         BedrockPlatform::Windows => context.sources.bedrock_windows.as_ref(),
     };
-    source.ok_or_else(|| {
+    if let Some(source) = source {
+        validate_digest(&source.sha256)?;
+        return Ok(ResolvedSource {
+            url: source.url.clone(),
+            expected_sha256: Some(source.sha256.clone()),
+            size: source.size,
+            version: source.version.clone(),
+        });
+    }
+    discover_official_source(context, platform).await
+}
+
+async fn discover_official_source(
+    context: &InstallContext,
+    platform: BedrockPlatform,
+) -> Result<ResolvedSource, InstallerError> {
+    let response: DownloadLinksResponse =
+        super::read_json(context, &context.sources.bedrock_download_api)
+            .await
+            .map_err(|error| InstallerError {
+                code: "bedrock_official_source_unavailable",
+                client_message: "servers.bedrock_automatic_install_unavailable",
+                internal: Some(format!("{}: {}", error.code, error)),
+            })?;
+    let expected_type = match platform {
+        BedrockPlatform::Linux => "serverBedrockLinux",
+        BedrockPlatform::Windows => "serverBedrockWindows",
+    };
+    let link = response
+        .result
+        .links
+        .into_iter()
+        .find(|link| link.download_type == expected_type)
+        .ok_or_else(|| {
+            InstallerError::new(
+                "bedrock_official_source_unavailable",
+                "servers.bedrock_automatic_install_unavailable",
+            )
+        })?;
+    let url = Url::parse(&link.download_url).map_err(|_| {
         InstallerError::new(
-            "bedrock_official_source_unavailable",
-            "servers.bedrock_automatic_install_unavailable",
+            "bedrock_source_url_invalid",
+            "servers.provider_response_invalid",
         )
+    })?;
+    let version = discovered_source_version(&url, platform)?;
+    Ok(ResolvedSource {
+        url,
+        expected_sha256: None,
+        size: None,
+        version,
     })
+}
+
+fn discovered_source_version(
+    url: &Url,
+    platform: BedrockPlatform,
+) -> Result<String, InstallerError> {
+    let platform = match platform {
+        BedrockPlatform::Linux => "linux",
+        BedrockPlatform::Windows => "win",
+    };
+    let prefix = format!("/bedrockdedicatedserver/bin-{platform}/bedrock-server-");
+    let version = url
+        .path()
+        .strip_prefix(&prefix)
+        .and_then(|path| path.strip_suffix(".zip"))
+        .filter(|version| valid_version(version))
+        .ok_or_else(|| {
+            InstallerError::new(
+                "bedrock_source_url_rejected",
+                "servers.provider_response_invalid",
+            )
+        })?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("www.minecraft.net")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(InstallerError::new(
+            "bedrock_source_url_rejected",
+            "servers.provider_response_invalid",
+        ));
+    }
+    Ok(version.to_string())
+}
+
+pub(super) async fn current_official_version(
+    context: &InstallContext,
+) -> Result<String, InstallerError> {
+    discover_official_source(context, current_platform()?)
+        .await
+        .map(|source| source.version)
 }
 
 async fn validate_executable(
@@ -1243,10 +1363,32 @@ mod tests {
     }
 
     #[test]
-    fn production_catalog_does_not_claim_an_unpublished_bedrock_api() {
+    fn production_catalog_uses_dynamic_official_discovery_without_a_fake_checksum() {
         let context = InstallContext::official().unwrap();
         assert!(context.sources.bedrock_linux.is_none());
         assert!(context.sources.bedrock_windows.is_none());
+        assert_eq!(
+            context.sources.bedrock_download_api.as_str(),
+            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
+        );
+    }
+
+    #[tokio::test]
+    async fn official_download_catalog_resolves_the_exact_platform_archive() {
+        let base = Url::parse("http://127.0.0.1:32123/").unwrap();
+        let sources = super::InstallerSources::fixture(&base);
+        let api = sources.bedrock_download_api.to_string();
+        let mut responses = BTreeMap::new();
+        responses.insert(
+            api,
+            br#"{"result":{"links":[{"downloadType":"serverBedrockWindows","downloadUrl":"https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.33.2.zip"},{"downloadType":"serverBedrockLinux","downloadUrl":"https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.33.2.zip"}]}}"#.to_vec(),
+        );
+        let context = InstallContext::with_fixture_responses(sources, responses).unwrap();
+        let resolved = discover_official_source(&context, BedrockPlatform::Linux)
+            .await
+            .unwrap();
+        assert_eq!(resolved.version, "1.26.33.2");
+        assert!(resolved.expected_sha256.is_none());
     }
 
     #[test]

@@ -15,13 +15,13 @@ Un profil intégré est immuable. Une instance reste liée à une révision pré
 
 ## Hytale
 
-L’installation utilise exclusivement le [downloader officiel Hytale](https://support.hytale.com/hc/en-us/articles/45326769420827-Hytale-Server-Manual). Le job passe à `waiting_for_user` pendant l’authentification device et publie uniquement l’URL officielle et le code utilisateur à durée courte. Les jetons persistants sont chiffrés dans le magasin de secrets; le fichier temporaire du downloader est supprimé avant la fin du job.
+L’installation utilise exclusivement le [downloader officiel Hytale](https://support.hytale.com/hc/en-us/articles/45326769420827-Hytale-Server-Manual). Le job passe à `waiting_for_user` pendant l’authentification device et publie uniquement la page publique `accounts.hytale.com/device` et le code utilisateur à durée courte. Certaines versions du downloader affichent une route OAuth interne : elle n’est jamais proposée directement à l’utilisateur. Lorsqu’une demande expire, le dernier code remplace atomiquement l’ancien dans le Job et dans l’instance. Les jetons persistants sont chiffrés dans le magasin de secrets; le fichier temporaire du downloader est supprimé avant la fin du job.
 
 Le driver impose Java 25, lance `HytaleServer.jar` depuis `game/Server/` avec `../Assets.zip` et `HytaleServer.aot`, et n’exécute aucun script fourni par le serveur. Une sortie documentée avec le code `8` adopte uniquement un arbre complet validé depuis `game/updater/staging`. La bascule conserve mondes, configuration et mods, maintient un rollback persistant, puis confirme la mise à jour après 30 secondes stables. Un crash pendant cette fenêtre restaure automatiquement la version précédente sans perdre les changements de monde intervenus pendant l’essai.
 
 ## Minecraft Java
 
-Chaque instance fixe une version exacte de Minecraft. Fabric, Forge, NeoForge, Quilt et Purpur exigent aussi `loader_version`; cette valeur désigne respectivement une version exacte du loader ou un numéro de build Purpur. Les alias flottants tels que `latest`, `recommended` et `stable` sont refusés. Spigot n’expose pas ce champ : la version de BuildTools est une constante de maintenance du panneau. Changer de version ou de loader nécessite une nouvelle installation; le lancement refuse un marqueur d’installation qui ne correspond plus à la configuration.
+Chaque instance fixe une version exacte de Minecraft. L’écran de création interroge les catalogues officiels et propose les versions de jeu et de loader compatibles dans des sélecteurs. Fabric, Forge, NeoForge, Quilt et Purpur exigent aussi `loader_version`; cette valeur désigne respectivement une version exacte du loader ou un numéro de build Purpur. Les alias flottants tels que `latest`, `recommended` et `stable` sont refusés. Spigot n’expose pas ce champ : la version de BuildTools est une constante de maintenance du panneau. Changer de version ou de loader nécessite une nouvelle installation; le lancement refuse un marqueur d’installation qui ne correspond plus à la configuration.
 
 | Variante | Source et validation | Contenu utilisateur |
 |---|---|---|
@@ -62,7 +62,9 @@ Références primaires : [Fabric Server](https://fabricmc.net/use/server/), [Fab
 
 ## Minecraft Bedrock
 
-Le profil prend en charge les archives officielles AMD64 Linux et Windows. L’EULA doit être acceptée explicitement à la création et cette décision est auditée. En l’absence de source administrateur épinglée, le même job attend qu’un Owner fournisse l’archive officielle et son SHA-256 ; un nouvel import générique ne peut pas contourner ce contrôle.
+Le panneau interroge l’endpoint public de téléchargement utilisé par le site officiel Minecraft, sélectionne uniquement `serverBedrockLinux` ou `serverBedrockWindows`, puis refuse toute URL qui ne correspond pas exactement au chemin HTTPS officiel attendu. Microsoft ne publie pas de checksum dans cette réponse : DmxServerManager calcule donc le SHA-256 du fichier reçu, valide la taille, la structure ZIP et l’exécutable avant de l’enregistrer dans l’inventaire. Une source administrateur épinglée avec SHA-256 reste prioritaire lorsqu’elle est configurée.
+
+Le profil prend en charge les archives officielles AMD64 Linux et Windows. L’EULA doit être acceptée explicitement à la création et cette décision est auditée. Si la découverte officielle échoue, le même job attend qu’un Owner fournisse l’archive officielle et son SHA-256 ; un nouvel import générique ne peut pas contourner ce contrôle.
 
 Les mises à jour utilisent un staging puis une bascule avec rollback. `server.properties` conserve les clés et commentaires inconnus. Les mondes, `allowlist.json`, `permissions.json`, `behavior_packs/` et `resource_packs/` sont préservés avec des quotas et sans suivre de liens. Le lancement utilise exclusivement `bedrock_server` ou `bedrock_server.exe` du stockage de l’instance, sans shell, puis l’arrêt envoie `stop` sur stdin. Les sauvegardes sont pilotées par le profil et excluent binaires, caches, logs et secrets.
 

@@ -1763,12 +1763,38 @@ impl InstanceActor {
             };
         }
         if !status.success() {
-            remove_dir_if_exists(&staging).await.ok();
-            self.install_failed().await;
-            return Err(OperationFailure::new(
-                "steamcmd_failed",
-                "servers.steamcmd_anonymous_install_failed",
-            ));
+            let exit = status.code().map_or_else(
+                || "terminated by signal".to_string(),
+                |code| code.to_string(),
+            );
+            self.write_install_log(
+                &root,
+                &format!(
+                    "[DMX] SteamCMD exited unsuccessfully ({exit}). Checking whether the depot was nevertheless installed completely."
+                ),
+            )
+            .await?;
+            let installed_files_are_valid =
+                validate_installed_files(&instance, steam_profile.as_ref(), &staging)
+                    .await
+                    .is_ok();
+            let manifest_is_valid =
+                read_steam_build_id(&staging, self.inner.settings.steamcmd_path.parent(), app_id)
+                    .await
+                    .is_ok_and(|build_id| build_id.is_some());
+            if !installed_files_are_valid || !manifest_is_valid {
+                self.install_failed().await;
+                return Err(OperationFailure::with_internal(
+                    "steamcmd_failed",
+                    "servers.steamcmd_anonymous_install_failed",
+                    format!("SteamCMD exit: {exit}"),
+                ));
+            }
+            self.write_install_log(
+                &root,
+                "[DMX] The staged depot and Steam app manifest are complete; continuing after the non-zero SteamCMD exit.",
+            )
+            .await?;
         }
         self.write_install_log(
             &root,
@@ -2762,7 +2788,7 @@ impl InstanceActor {
         tokio::pin!(timeout);
         let mut captured = String::new();
         let mut authorization_tail = String::new();
-        let mut waiting = false;
+        let mut active_authorization: Option<installers::hytale::DeviceAuthorization> = None;
         let (status, interrupted) = loop {
             tokio::select! {
                 status = child.wait() => break (status, None),
@@ -2770,27 +2796,38 @@ impl InstanceActor {
                     if let Some(line) = line {
                         append_bounded_output(&mut captured, &line, 64 * 1024);
                         append_bounded_output(&mut authorization_tail, &line, 16 * 1024);
-                        if !waiting
-                            && let Some(authorization) = installers::hytale::detect_device_authorization(&authorization_tail)
+                        if let Some(authorization) =
+                            installers::hytale::detect_device_authorization(&authorization_tail)
+                            && active_authorization.as_ref() != Some(&authorization)
                         {
                             let payload = serde_json::json!({
                                 "job_id": job_id,
                                 "interaction": {
                                     "kind": "oauth_device",
-                                    "verification_uri": authorization.verification_uri,
-                                    "user_code": authorization.user_code,
+                                    "verification_uri": authorization.verification_uri.clone(),
+                                    "user_code": authorization.user_code.clone(),
                                 }
                             });
-                            jobs::wait_for_user(&self.inner.pool, job_id, payload.clone())
+                            if active_authorization.is_some() {
+                                jobs::refresh_waiting_for_user(
+                                    &self.inner.pool,
+                                    job_id,
+                                    payload.clone(),
+                                )
                                 .await
                                 .map_err(OperationFailure::internal)?;
+                            } else {
+                                jobs::wait_for_user(&self.inner.pool, job_id, payload.clone())
+                                    .await
+                                    .map_err(OperationFailure::internal)?;
+                            }
                             self.inner.events.publish(
                                 "job.waiting_for_user",
                                 Some(self.instance_id.clone()),
                                 payload,
                             );
                             self.publish_job(job_id).await;
-                            waiting = true;
+                            active_authorization = Some(authorization);
                         }
                     }
                 }
@@ -2819,7 +2856,7 @@ impl InstanceActor {
         while let Ok(line) = line_rx.try_recv() {
             append_bounded_output(&mut captured, &line, 64 * 1024);
         }
-        if waiting {
+        if active_authorization.is_some() {
             jobs::resume_from_user(&self.inner.pool, job_id)
                 .await
                 .map_err(OperationFailure::internal)?;
@@ -2839,9 +2876,19 @@ impl InstanceActor {
         }
         let status = status.map_err(OperationFailure::internal)?;
         if !status.success() {
-            return Err(OperationFailure::new(
+            let exit = status.code().map_or_else(
+                || "terminated by signal".to_string(),
+                |code| code.to_string(),
+            );
+            self.write_install_log(
+                root,
+                &format!("[DMX] Hytale downloader exited unsuccessfully ({exit})."),
+            )
+            .await?;
+            return Err(OperationFailure::with_internal(
                 "hytale_downloader_failed",
                 "servers.hytale_downloader_failed",
+                format!("Hytale downloader exit: {exit}"),
             ));
         }
         Ok(captured)

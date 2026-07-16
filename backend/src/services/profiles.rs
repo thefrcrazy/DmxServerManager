@@ -1011,7 +1011,7 @@ fn palworld() -> GameProfile {
             stop: StopStrategy::Interrupt {
                 timeout_seconds: 60,
             },
-            ready_log_pattern: Some("Setting breakpad minidump AppID".into()),
+            ready_log_pattern: Some("Running Palworld dedicated server on".into()),
         },
         json!({
             "server_name": {"type": "string", "minLength": 1, "maxLength": 64},

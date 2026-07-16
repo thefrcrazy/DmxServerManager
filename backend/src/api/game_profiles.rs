@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::{get, post, put},
 };
@@ -10,18 +10,25 @@ use crate::{
     api::{SuccessResponse, auth::AuthUser},
     core::{AppState, database, error::AppError},
     domain::v1::{GameProfile, SteamExecutable, SteamProfile, SteamStopStrategy},
-    services::{catalog, profiles::build_local_steam_profile},
+    services::{catalog, installers, profiles::build_local_steam_profile},
 };
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/game-profiles", get(list))
         .route("/game-profiles/{id}/revisions", get(list_revisions))
+        .route("/game-profiles/{id}/version-catalog", get(version_catalog))
         .route("/game-profiles/steam", post(create_steam))
         .route(
             "/game-profiles/steam/{id}",
             put(revise_steam).delete(remove_steam),
         )
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VersionCatalogQuery {
+    game_version: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,6 +96,30 @@ async fn list_revisions(
         return Err(AppError::NotFound("profiles.not_found".into()));
     }
     Ok(Json(revisions))
+}
+
+async fn version_catalog(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+    Query(query): Query<VersionCatalogQuery>,
+) -> Result<Json<installers::ProfileVersionCatalog>, AppError> {
+    require_profile_read(&auth)?;
+    if state.profiles.get(&id).is_none() {
+        return Err(AppError::NotFound("profiles.not_found".into()));
+    }
+    let catalog = installers::profile_version_catalog(&id, query.game_version.as_deref())
+        .await
+        .map_err(|error| {
+            tracing::warn!(
+                profile_id = %id,
+                code = error.code,
+                detail = ?error.internal,
+                "game profile version catalog failed"
+            );
+            AppError::Internal(error.client_message.into())
+        })?;
+    Ok(Json(catalog))
 }
 
 async fn create_steam(

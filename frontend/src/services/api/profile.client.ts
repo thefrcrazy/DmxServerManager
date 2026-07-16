@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { GameProfile, GameProfileSchema } from "@/schemas/api";
+import {
+    GameProfile,
+    GameProfileSchema,
+    ProfileVersionCatalog,
+    ProfileVersionCatalogSchema,
+} from "@/schemas/api";
 import {
     CreateSteamProfile,
     OperationSuccessSchema,
@@ -15,6 +20,14 @@ export class ProfileClient extends BaseClient {
 
     async getRevisions(id: string): Promise<ClientResponse<GameProfile[]>> {
         return this.request(`/game-profiles/${encodeURIComponent(id)}/revisions`, SteamProfileRevisionListSchema);
+    }
+
+    async getVersionCatalog(id: string, gameVersion?: string): Promise<ClientResponse<ProfileVersionCatalog>> {
+        const query = gameVersion ? `?game_version=${encodeURIComponent(gameVersion)}` : "";
+        return this.request(
+            `/game-profiles/${encodeURIComponent(id)}/version-catalog${query}`,
+            ProfileVersionCatalogSchema,
+        );
     }
 
     async createSteam(input: CreateSteamProfile): Promise<ClientResponse<GameProfile>> {

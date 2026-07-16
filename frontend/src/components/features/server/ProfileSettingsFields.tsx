@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { GameProfile, JsonSchemaProperty } from "@/schemas/api";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { ProfileValue } from "@/utils/profileSettings";
 
 function ComplexField({ name, property, value, required, onChange }: FieldProps) {
@@ -46,10 +47,13 @@ interface FieldProps {
     value: ProfileValue | undefined;
     required: boolean;
     onChange: (value: ProfileValue) => void;
+    options?: readonly string[];
+    optionsLoading?: boolean;
 }
 
 export function ProfileSettingField(props: FieldProps) {
-    const { name, property, value, required, onChange } = props;
+    const { t } = useLanguage();
+    const { name, property, value, required, onChange, options, optionsLoading = false } = props;
     const label = property.title ?? name.replaceAll("_", " ");
     const itemType = typeof property.items === "object" && property.items !== null && "type" in property.items
         ? (property.items as { type?: unknown }).type
@@ -81,13 +85,16 @@ export function ProfileSettingField(props: FieldProps) {
             </label>
         );
     }
-    if (property.enum) {
+    const selectOptions = options ?? property.enum?.map(String);
+    if (selectOptions) {
         return (
             <div className="form-group">
                 <label htmlFor={`setting-${name}`}>{label}</label>
-                <select id={`setting-${name}`} className="input" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} required={required}>
-                    {property.enum.map((option) => <option key={String(option)} value={String(option)}>{String(option)}</option>)}
+                <select id={`setting-${name}`} className="input" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} required={required} disabled={optionsLoading}>
+                    {(required || selectOptions.length === 0) && <option value="">{t(optionsLoading ? "server_creation.catalog_loading" : "server_creation.catalog_select")}</option>}
+                    {selectOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
+                {property.description && <p className="helper-text">{property.description}</p>}
             </div>
         );
     }
@@ -113,11 +120,13 @@ export function ProfileSettingField(props: FieldProps) {
     );
 }
 
-export function ProfileSettingsFields({ profile, values, onChange, includeSecrets = true }: {
+export function ProfileSettingsFields({ profile, values, onChange, includeSecrets = true, options = {}, loadingOptions = [] }: {
     profile: GameProfile;
     values: Record<string, ProfileValue>;
     onChange: (name: string, value: ProfileValue, secret: boolean) => void;
     includeSecrets?: boolean;
+    options?: Record<string, readonly string[]>;
+    loadingOptions?: readonly string[];
 }) {
     return Object.entries(profile.settings_schema.properties)
         .filter(([, property]) => includeSecrets || (!property.secret && !property.writeOnly))
@@ -128,6 +137,8 @@ export function ProfileSettingsFields({ profile, values, onChange, includeSecret
                 property={property}
                 value={values[name]}
                 required={profile.settings_schema.required.includes(name)}
+                options={options[name]}
+                optionsLoading={loadingOptions.includes(name)}
                 onChange={(value) => onChange(name, value, Boolean(property.secret || property.writeOnly))}
             />
         ));

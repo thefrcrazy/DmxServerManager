@@ -508,6 +508,27 @@ pub async fn wait_for_user(
     append_event(pool, id, "job.waiting_for_user", payload).await
 }
 
+pub async fn refresh_waiting_for_user(
+    pool: &DbPool,
+    id: &str,
+    payload: serde_json::Value,
+) -> Result<(), AppError> {
+    if !payload.is_object() {
+        return Err(AppError::Internal(
+            "waiting-for-user payload must be an object".into(),
+        ));
+    }
+    let result =
+        sqlx::query("UPDATE jobs SET state = state WHERE id = ? AND state = 'waiting_for_user'")
+            .bind(id)
+            .execute(pool)
+            .await?;
+    if result.rows_affected() != 1 {
+        return Err(AppError::Conflict("jobs.invalid_state_transition".into()));
+    }
+    append_event(pool, id, "job.waiting_for_user", payload).await
+}
+
 pub async fn resume_from_user(pool: &DbPool, id: &str) -> Result<(), AppError> {
     let result = sqlx::query(
         "UPDATE jobs SET state = 'running' WHERE id = ? AND state = 'waiting_for_user'",
@@ -1181,6 +1202,27 @@ mod tests {
             refreshed.interaction,
             Some(JobInteraction::BedrockArchiveUpload { ref instance_id, .. })
                 if instance_id == &refreshed.instance_id.clone().unwrap()
+        ));
+
+        refresh_waiting_for_user(
+            &pool,
+            &job.id,
+            serde_json::json!({
+                "job_id": job.id,
+                "interaction": {
+                    "kind": "oauth_device",
+                    "verification_uri": "https://accounts.hytale.com/device",
+                    "user_code": "NEWCODE1"
+                }
+            }),
+        )
+        .await
+        .unwrap();
+        let refreshed = get(&pool, &job.id).await.unwrap();
+        assert!(matches!(
+            refreshed.interaction,
+            Some(JobInteraction::OauthDevice { ref user_code, .. })
+                if user_code.as_deref() == Some("NEWCODE1")
         ));
 
         append_event(

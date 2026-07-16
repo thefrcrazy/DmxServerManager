@@ -22,6 +22,7 @@ const MAX_DOWNLOADER_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_CREDENTIAL_BYTES: u64 = 16 * 1024;
 
 pub const DOWNLOADER_CREDENTIAL_SECRET: &str = "hytale_downloader_credentials";
+const HYTALE_DEVICE_VERIFICATION_URI: &str = "https://accounts.hytale.com/device";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceAuthorization {
@@ -415,20 +416,29 @@ pub fn launch_plan(settings: &Value) -> Result<InstallerPlan, InstallerError> {
 
 pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> {
     let sanitized = strip_terminal_controls(output);
-    let url_pattern = Regex::new(r"https://accounts\.hytale\.com/device[^\s\x00-\x1f]*").ok()?;
-    let url = url_pattern.find(&sanitized).and_then(|matched| {
-        let matched = matched
-            .as_str()
-            .trim_end_matches(['.', ',', ';', ':', ')', ']', '}', '"', '\'']);
-        let url = Url::parse(matched).ok()?;
-        (url.scheme() == "https"
-            && url.host_str() == Some("accounts.hytale.com")
-            && url.path() == "/device"
-            && url.username().is_empty()
-            && url.password().is_none()
-            && url.fragment().is_none())
-        .then_some(url)
-    });
+    let url_pattern = Regex::new(
+        r"https://(?:accounts\.hytale\.com/device|oauth\.accounts\.hytale\.com/oauth2/device/verify)[^\s\x00-\x1f]*",
+    )
+    .ok()?;
+    let url = url_pattern
+        .find_iter(&sanitized)
+        .last()
+        .and_then(|matched| {
+            let matched = matched
+                .as_str()
+                .trim_end_matches(['.', ',', ';', ':', ')', ']', '}', '"', '\'']);
+            let url = Url::parse(matched).ok()?;
+            let official_device_page =
+                url.host_str() == Some("accounts.hytale.com") && url.path() == "/device";
+            let downloader_verification_page = url.host_str() == Some("oauth.accounts.hytale.com")
+                && url.path() == "/oauth2/device/verify";
+            (url.scheme() == "https"
+                && (official_device_page || downloader_verification_page)
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.fragment().is_none())
+            .then_some(url)
+        });
     let query_code = url
         .as_ref()
         .and_then(|url| {
@@ -440,19 +450,29 @@ pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> 
         r"(?i)(?:authorization|user[_ ]?|device|verification)\s*code\s*[:=]\s*([A-Z0-9-]{4,32})",
     )
     .ok()?
-    .captures(&sanitized)
+    .captures_iter(&sanitized)
+    .last()
     .and_then(|captures| captures.get(1))
     .map(|value| value.as_str().to_ascii_uppercase())
     .filter(|value| valid_user_code(value));
+    let standalone_code = url.as_ref().and_then(|_| {
+        Regex::new(r"(?m)^\s*([A-Z0-9-]{6,16})\s*$")
+            .ok()?
+            .captures_iter(&sanitized)
+            .last()
+            .and_then(|captures| captures.get(1))
+            .map(|value| value.as_str().to_ascii_uppercase())
+            .filter(|value| valid_user_code(value))
+    });
     if url.is_none() && text_code.is_none() {
         return None;
     }
     Some(DeviceAuthorization {
-        verification_uri: url.map_or_else(
-            || "https://accounts.hytale.com/device".to_string(),
-            |url| url.to_string(),
-        ),
-        user_code: query_code.or(text_code),
+        // The downloader currently prints an internal OAuth verification route
+        // on some releases. Hypixel's public device-flow contract documents this
+        // stable page and optional user_code query instead.
+        verification_uri: HYTALE_DEVICE_VERIFICATION_URI.to_string(),
+        user_code: query_code.or(text_code).or(standalone_code),
     })
 }
 
@@ -781,6 +801,18 @@ mod tests {
         );
         assert_eq!(detected.user_code.as_deref(), Some("ABCD-1234"));
         assert!(detect_device_authorization("Process exit code: 8").is_none());
+    }
+
+    #[test]
+    fn downloader_internal_verification_route_is_canonicalized() {
+        let detected = detect_device_authorization(
+            "Please visit the following URL to authenticate:\n\
+             https://oauth.accounts.hytale.com/oauth2/device/verify\n\
+             ABCD1234\n",
+        )
+        .unwrap();
+        assert_eq!(detected.verification_uri, HYTALE_DEVICE_VERIFICATION_URI);
+        assert_eq!(detected.user_code.as_deref(), Some("ABCD1234"));
     }
 
     #[test]

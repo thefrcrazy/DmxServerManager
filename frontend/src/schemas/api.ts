@@ -115,6 +115,17 @@ export type JsonSchemaProperty = z.infer<typeof JsonSchemaPropertySchema>;
 export type GameProfile = z.infer<typeof GameProfileSchema>;
 export type SteamProfile = z.infer<typeof SteamProfileSchema>;
 
+const ProfileCatalogVersionSchema = z.string().min(1).max(96).regex(/^[A-Za-z0-9._+-]+$/);
+
+export const ProfileVersionCatalogSchema = z.object({
+    profile_id: z.string(),
+    game_versions: z.array(ProfileCatalogVersionSchema).max(512),
+    selected_game_version: ProfileCatalogVersionSchema.nullable(),
+    loader_versions: z.array(ProfileCatalogVersionSchema).max(512),
+}).strict();
+
+export type ProfileVersionCatalog = z.infer<typeof ProfileVersionCatalogSchema>;
+
 export const InstallationStateSchema = z.enum([
     "not_installed",
     "installing",

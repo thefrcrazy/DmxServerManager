@@ -59,6 +59,8 @@ export const fr = {
         mode_label: "Mode de création",
         profile_title: "Instance et profil de jeu",
         profile_label: "Profil de jeu",
+        catalog_loading: "Chargement des versions…",
+        catalog_select: "Sélectionner une version…",
         auto_start: "Démarrer automatiquement après les redémarrages du panneau",
         modes: {
             install: "Nouvelle installation",

@@ -300,14 +300,14 @@ export default function ServerDetail() {
                     <ServerFiles
                         instanceId={instance.id}
                         canWrite={hasPermission("server.files.write")}
-                        isStopped={instance.runtime_state === "stopped"}
+                        isStopped={instance.runtime_state === "stopped" && !installationInProgress}
                         refreshSignal={events.operationRevision}
                     />
                 ) : activeTab === "backups" ? (
                     <ServerBackups
                         instanceId={instance.id}
                         canManage={hasPermission("server.backup")}
-                        isStopped={instance.runtime_state === "stopped"}
+                        isStopped={instance.runtime_state === "stopped" && !installationInProgress}
                         refreshSignal={events.operationRevision}
                     />
                 ) : activeTab === "metrics" ? (
@@ -320,7 +320,7 @@ export default function ServerDetail() {
                     <ServerMods
                         instanceId={instance.id}
                         isInstalled={instance.installation_state === "installed"}
-                        isStopped={instance.runtime_state === "stopped"}
+                        isStopped={instance.runtime_state === "stopped" && !installationInProgress}
                         refreshSignal={events.operationRevision}
                     />
                 ) : activeTab === "schedules" && profile ? (

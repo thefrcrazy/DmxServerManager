@@ -61,6 +61,8 @@ export const en: TranslationType = {
         mode_label: "Creation mode",
         profile_title: "Instance and game profile",
         profile_label: "Game profile",
+        catalog_loading: "Loading versions…",
+        catalog_select: "Select a version…",
         auto_start: "Start automatically after panel restarts",
         modes: {
             install: "New installation",

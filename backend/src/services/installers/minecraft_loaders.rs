@@ -1293,7 +1293,7 @@ fn required_version(settings: &Value, key: &'static str) -> Result<String, Insta
     Ok(value.to_string())
 }
 
-fn validate_neoforge_version(
+pub(super) fn validate_neoforge_version(
     game_version: &str,
     loader_version: &str,
 ) -> Result<(), InstallerError> {

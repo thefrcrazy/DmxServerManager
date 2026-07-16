@@ -1235,6 +1235,52 @@
         ],
         "type": "object"
       },
+      "ProfileVersionCatalog": {
+        "additionalProperties": false,
+        "properties": {
+          "game_versions": {
+            "items": {
+              "maxLength": 96,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._+-]+$",
+              "type": "string"
+            },
+            "maxItems": 512,
+            "type": "array"
+          },
+          "loader_versions": {
+            "items": {
+              "maxLength": 96,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._+-]+$",
+              "type": "string"
+            },
+            "maxItems": 512,
+            "type": "array"
+          },
+          "profile_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "selected_game_version": {
+            "maxLength": 96,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._+-]+$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "profile_id",
+          "game_versions",
+          "selected_game_version",
+          "loader_versions"
+        ],
+        "type": "object"
+      },
       "HealthResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3466,7 +3512,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.11"
+    "version": "1.0.12"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5541,6 +5587,62 @@
               }
             },
             "description": "All immutable revisions for a profile."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "game profiles"
+        ]
+      }
+    },
+    "/game-profiles/{id}/version-catalog": {
+      "get": {
+        "operationId": "getGameProfileVersionCatalog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "game_version",
+            "required": false,
+            "schema": {
+              "maxLength": 96,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileVersionCatalog"
+                }
+              }
+            },
+            "description": "Current official game and loader versions available to the selected built-in profile."
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

@@ -457,6 +457,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/game-profiles/{id}/version-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getGameProfileVersionCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1439,6 +1455,12 @@ export interface components {
             ui_schema: {
                 [key: string]: unknown;
             };
+        };
+        ProfileVersionCatalog: {
+            game_versions: string[];
+            loader_versions: string[];
+            profile_id: string;
+            selected_game_version: string | null;
         };
         HealthResponse: {
             /** @constant */
@@ -3094,6 +3116,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GameProfile"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getGameProfileVersionCatalog: {
+        parameters: {
+            query?: {
+                game_version?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current official game and loader versions available to the selected built-in profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileVersionCatalog"];
                 };
             };
             401: components["responses"]["Unauthorized"];

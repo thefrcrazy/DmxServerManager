@@ -42,9 +42,13 @@ Consultez le Job et son identifiant de trace. Vérifiez l’espace disque, le co
 
 ### Une installation semble bloquée
 
-Ouvrez le Job puis **Voir le terminal d’installation**. Le panneau relit l’historique persistant et continue avec le flux SSE en direct. Pour Hytale, le downloader officiel affiche une URL `accounts.hytale.com/device` et un code d’autorisation : ceux-ci sont présentés dans une carte d’action sûre sur l’instance et dans la page Jobs. Pour Bedrock, la carte demande l’archive officielle si aucune source épinglée n’est configurée.
+Ouvrez le Job puis **Voir le terminal d’installation**. Le panneau relit l’historique persistant et continue avec le flux SSE en direct. Pour Hytale, le downloader officiel affiche une URL et un code d’autorisation : le panneau normalise l’action vers `https://accounts.hytale.com/device`, présente le code sur l’instance et dans la page Jobs, puis remplace la carte si le code expire. Ne réutilisez jamais un ancien code.
 
 Le terminal d’installation reste volontairement en lecture seule : Hytale utilise son flux OAuth device, Minecraft exige l’EULA dans la configuration, SteamCMD est anonyme et les autres installateurs sont non interactifs. Aucune saisie shell arbitraire n’est transmise à un installateur.
+
+Bedrock est téléchargé automatiquement depuis le lien stable publié par le service public utilisé par `minecraft.net`. Si ce service officiel est indisponible, le job peut encore proposer l’import manuel sécurisé comme procédure de secours.
+
+Les messages Palworld `SteamAPI ... before SteamAPI_Init succeeded` peuvent apparaître pendant l’initialisation Unreal. Le critère de disponibilité est la ligne `Running Palworld dedicated server on :PORT`. Une sortie `error code: 130` lors d’un arrêt demandé correspond à l’interruption gracieuse du processus et n’indique pas à elle seule une installation corrompue.
 
 En dernier recours, les journaux bornés se trouvent dans `instances/<id>/logs/` sous le dossier de données. `install.combined.log` conserve l’ordre combiné de stdout/stderr ; les codes OAuth et secrets y sont remplacés par une indication d’action, jamais écrits en clair.
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { GameProfileSchema, InstanceSchema } from "../src/schemas/api";
+import { GameProfileSchema, InstanceSchema, ProfileVersionCatalogSchema } from "../src/schemas/api";
 import { initialProfileSettings, isSafeRelativeExecutable, partitionProfileValues } from "../src/utils/profileSettings";
 
 const valheimProfile = GameProfileSchema.parse({
@@ -59,6 +59,20 @@ describe("contrats des profils", () => {
         expect(isSafeRelativeExecutable("/usr/bin/server")).toBe(false);
         expect(isSafeRelativeExecutable("server.exe:alternate-stream")).toBe(false);
         expect(isSafeRelativeExecutable("server\nname")).toBe(false);
+    });
+
+    test("valide le catalogue borné de versions Minecraft", () => {
+        const catalog = ProfileVersionCatalogSchema.parse({
+            profile_id: "minecraft-java-fabric",
+            game_versions: ["26.2", "1.21.11"],
+            selected_game_version: "26.2",
+            loader_versions: ["0.19.3", "0.19.2"],
+        });
+        expect(catalog.loader_versions[0]).toBe("0.19.3");
+        expect(ProfileVersionCatalogSchema.safeParse({
+            ...catalog,
+            loader_versions: ["../loader"],
+        }).success).toBe(false);
     });
 });
 
