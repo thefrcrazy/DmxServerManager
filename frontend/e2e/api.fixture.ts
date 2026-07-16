@@ -107,6 +107,45 @@ export const OWNER: UserInfo = UserInfoSchema.parse({
 
 export const GAME_PROFILES: GameProfile[] = [
     GameProfileSchema.parse({
+        id: "minecraft-java",
+        revision: 1,
+        name: "Minecraft Java",
+        description: "Serveur Minecraft Java avec loader, version et runtime Java configurables.",
+        kind: "builtin",
+        platforms: ["linux-x64", "windows-x64"],
+        capabilities: ["settings", "install", "lifecycle", "console", "files", "backups", "metrics", "mods"],
+        ports: [{ name: "port", protocol: "tcp", default: 25565 }],
+        lifecycle: {
+            stop: { kind: "stdin", command: "stop", timeout_seconds: 60 },
+            ready_log_pattern: "Done \\(.+\\)! For help",
+        },
+        settings_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["loader", "version", "eula_accepted"],
+            properties: {
+                loader: {
+                    type: "string",
+                    title: "Loader",
+                    enum: ["vanilla", "paper", "fabric", "forge", "neoforge", "spigot", "purpur", "quilt"],
+                    default: "vanilla",
+                },
+                version: { type: "string", title: "Version", minLength: 1, maxLength: 64, default: "1.21.8" },
+                loader_version: {
+                    type: "string",
+                    title: "Version du loader",
+                    minLength: 1,
+                    maxLength: 96,
+                    pattern: "^[A-Za-z0-9._+-]+$",
+                },
+                port: { type: "integer", title: "Port TCP", minimum: 1, maximum: 65_535, default: 25_565 },
+                max_memory_mb: { type: "integer", title: "Mémoire maximale", minimum: 512, maximum: 131_072, default: 4096 },
+                eula_accepted: { type: "boolean", title: "J’accepte le contrat EULA", const: true, default: false },
+            },
+        },
+        ui_schema: { layout: "sections" },
+    }),
+    GameProfileSchema.parse({
         id: "minecraft-java-vanilla",
         revision: 1,
         name: "Minecraft Java — Vanilla",
