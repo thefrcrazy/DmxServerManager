@@ -12,6 +12,7 @@ import { apiService } from "@/services";
 import { ImportUploadTask } from "@/services/api/imports.client";
 import { formatBytes } from "@/utils/formatters";
 import { initialProfileSettings, partitionProfileValues, ProfileValue } from "@/utils/profileSettings";
+import { gameProfileVisual } from "@/constants/gameProfiles";
 
 type CreationMode = "install" | "zip" | "copy" | "attach";
 
@@ -321,11 +322,41 @@ export default function CreateServer() {
                     <h2 className="server-config-title"><Gamepad2 size={20} aria-hidden="true" />{t("server_creation.profile_title")}</h2>
                     <fieldset className="server-creation-fieldset" disabled={Boolean(createdInstanceId) || isSubmitting}>
                         <div className="form-group">
-                            <label htmlFor="server-profile">{t("server_creation.profile_label")}</label>
-                            <select id="server-profile" className="input" value={profileId} onChange={(event) => selectProfile(event.target.value)} required>
-                                {profiles.map((profile) => <option key={`${profile.id}@${profile.revision}`} value={profile.id}>{profile.name}</option>)}
+                            <label className="profile-picker__label" htmlFor="server-profile">{t("server_creation.profile_label")}</label>
+                            <select
+                                id="server-profile"
+                                className="sr-only"
+                                value={profileId}
+                                onChange={(event) => selectProfile(event.target.value)}
+                                required
+                            >
+                                {profiles.map((profile) => (
+                                    <option key={`${profile.id}@${profile.revision}`} value={profile.id}>{profile.name}</option>
+                                ))}
                             </select>
-                            {selectedProfile && <p className="helper-text">{selectedProfile.description}</p>}
+                            <div className="profile-picker" role="radiogroup" aria-label={t("server_creation.profile_picker_aria")}>
+                                {profiles.map((profile) => {
+                                    const visual = gameProfileVisual(profile.id, profile.name);
+                                    const selected = profile.id === profileId;
+                                    return (
+                                        <button
+                                            key={`${profile.id}@${profile.revision}`}
+                                            type="button"
+                                            className={`profile-picker__option ${selected ? "profile-picker__option--selected" : ""}`}
+                                            role="radio"
+                                            aria-checked={selected}
+                                            onClick={() => selectProfile(profile.id)}
+                                        >
+                                            <img src={visual.artwork} alt="" loading="lazy" />
+                                            <span className="profile-picker__content">
+                                                <strong>{visual.label}</strong>
+                                                <small>{profile.description}</small>
+                                            </span>
+                                            <span className="profile-picker__revision">r{profile.revision}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                         <div className="form-group">
                             <label htmlFor="server-name">{t("servers.server_name")}</label>

@@ -878,7 +878,16 @@ fn interaction_is_safe(interaction: &JobInteraction, job_instance_id: Option<&st
                 && uri
                     .query_pairs()
                     .all(|(key, value)| key == "user_code" && valid_user_code(value.as_ref()));
-            valid_uri && user_code.as_deref().is_none_or(valid_user_code)
+            let query_code = uri
+                .query_pairs()
+                .find_map(|(key, value)| (key == "user_code").then(|| value.into_owned()));
+            valid_uri
+                && user_code.as_deref().is_none_or(valid_user_code)
+                && match (query_code.as_deref(), user_code.as_deref()) {
+                    (Some(query), Some(code)) => query == code,
+                    (None, None) => true,
+                    _ => false,
+                }
         }
         JobInteraction::BedrockArchiveUpload {
             instance_id,
@@ -1211,7 +1220,7 @@ mod tests {
                 "job_id": job.id,
                 "interaction": {
                     "kind": "oauth_device",
-                    "verification_uri": "https://accounts.hytale.com/device",
+                    "verification_uri": "https://accounts.hytale.com/device?user_code=NEWCODE1",
                     "user_code": "NEWCODE1"
                 }
             }),

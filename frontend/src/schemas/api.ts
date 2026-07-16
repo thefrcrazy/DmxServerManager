@@ -193,7 +193,16 @@ export const HytaleDeviceInteractionSchema = z.object({
     kind: z.literal("oauth_device"),
     verification_uri: officialHytaleUri,
     user_code: z.string().min(4).max(32).regex(/^[A-Z0-9-]+$/).nullable(),
-}).strict();
+}).strict().superRefine((value, context) => {
+    const queryCode = new URL(value.verification_uri).searchParams.get("user_code");
+    if (queryCode !== value.user_code) {
+        context.addIssue({
+            code: "custom",
+            path: ["verification_uri"],
+            message: "hytale_user_code_mismatch",
+        });
+    }
+});
 
 const bedrockUploadPath = z.string().regex(
     /^\/api\/v1\/servers\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/imports\/zip$/i,

@@ -1,6 +1,7 @@
 import { Search, LayoutGrid, List } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Input, Select } from "@/components/ui";
+import { gameProfileVisual } from "@/constants/gameProfiles";
 
 interface ServerFiltersProps {
     search: string;
@@ -26,8 +27,8 @@ export default function ServerFilters({
     const { t } = useLanguage();
 
     return (
-        <div className="server-filters" style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ flex: 1, minWidth: "200px" }}>
+        <div className="server-filters">
+            <div className="server-filters__search">
                 <Input
                     placeholder={t("common.search")}
                     aria-label={t("common.search")}
@@ -37,11 +38,11 @@ export default function ServerFilters({
                 />
             </div>
 
-            <div style={{ width: "200px" }}>
+            <div className="server-filters__profile">
                 <Select
                     options={[
                         { value: "all", label: t("common.all_games") },
-                        ...gameTypes.map(type => ({ value: type, label: type.charAt(0).toUpperCase() + type.slice(1) }))
+                        ...gameTypes.map(type => ({ value: type, label: gameProfileVisual(type).label }))
                     ]}
                     value={gameType}
                     onChange={(value: string) => onGameTypeChange(value)}
@@ -50,11 +51,10 @@ export default function ServerFilters({
                 />
             </div>
 
-            <div className="view-toggle" style={{ display: "flex", background: "var(--bg-card)", padding: "0.25rem", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
+            <div className="view-toggle">
                 <button
                     onClick={() => onViewModeChange("list")}
                     className={`btn btn--icon btn--ghost ${viewMode === "list" ? "active" : ""}`}
-                    style={{ background: viewMode === "list" ? "var(--bg-hover)" : "transparent", color: viewMode === "list" ? "var(--primary)" : "var(--text-muted)" }}
                     title={t("common.list_view")}
                     aria-label={t("common.list_view")}
                     aria-pressed={viewMode === "list"}
@@ -64,7 +64,6 @@ export default function ServerFilters({
                 <button
                     onClick={() => onViewModeChange("grid")}
                     className={`btn btn--icon btn--ghost ${viewMode === "grid" ? "active" : ""}`}
-                    style={{ background: viewMode === "grid" ? "var(--bg-hover)" : "transparent", color: viewMode === "grid" ? "var(--primary)" : "var(--text-muted)" }}
                     title={t("common.grid_view")}
                     aria-label={t("common.grid_view")}
                     aria-pressed={viewMode === "grid"}

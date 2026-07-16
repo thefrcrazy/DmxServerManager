@@ -1,4 +1,4 @@
-import { Download, Play, RotateCw, Server as ServerIcon, Skull, Square } from "lucide-react";
+import { Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { GameProfile, Instance } from "@/schemas/api";
@@ -7,6 +7,7 @@ import { Table, Tooltip } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePermission } from "@/hooks";
 import { useToast } from "@/contexts/ToastContext";
+import { gameProfileVisual } from "@/constants/gameProfiles";
 import ServerCard from "./ServerCard";
 
 interface ServerListProps {
@@ -44,7 +45,7 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
 
     if (viewMode === "grid") {
         return (
-            <div className="server-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1.5rem" }}>
+            <div className="server-grid">
                 {servers.map((server) => <ServerCard
                     key={server.id}
                     server={server}
@@ -65,12 +66,14 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                 const needsInstall = ["not_installed", "failed"].includes(server.installation_state);
                 const busy = loadingAction?.startsWith(`${server.id}-`) ?? false;
                 const capabilities = new Set(profiles.find((profile) => profile.id === server.profile_id)?.capabilities ?? []);
+                const profile = profiles.find((candidate) => candidate.id === server.profile_id);
+                const visual = gameProfileVisual(server.profile_id, profile?.name);
                 const canInstall = capabilities.has("install") && hasPermission("server.update_game");
                 const canStartStop = capabilities.has("lifecycle");
                 return (
                     <tr key={server.id} onClick={() => navigate(`/servers/${server.id}`)} style={{ cursor: "pointer" }}>
-                        <td><div className="server-name"><ServerIcon size={18} /><span>{server.name}</span></div></td>
-                        <td>{server.profile_id} <span className="text-muted">r{server.profile_revision}</span></td>
+                        <td><div className="server-name"><img className="server-game-thumb" src={visual.artwork} alt="" loading="lazy" /><span>{server.name}</span></div></td>
+                        <td>{visual.label} <span className="text-muted">r{server.profile_revision}</span></td>
                         <td>
                             <span className={`badge badge--${server.installation_state === "installed" ? "success" : "warning"}`}>{t(`servers.installation_states.${server.installation_state}`)}</span>
                             {server.installed_version && <small className="server-version">{server.installed_version}{server.installed_build ? ` · ${server.installed_build}` : ""}</small>}

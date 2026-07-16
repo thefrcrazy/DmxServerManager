@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title">
+  <title id="title">Viking longship at dusk</title>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#291c2f"/><stop offset=".7" stop-color="#9c563d"/><stop offset="1" stop-color="#df9a58"/></linearGradient></defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <circle cx="490" cy="102" r="54" fill="#f6c77d" opacity=".86"/>
+  <path d="M0 230 90 143l62 75 61-109 83 112 83-91 84 92 80-73 97 90v121H0Z" fill="#18191c"/>
+  <path d="M0 278c144-23 252 4 353 1 112-4 185-27 287-14v95H0Z" fill="#101820"/>
+  <path d="m205 270 36 31h176l39-31c-68 13-173 15-251 0Z" fill="#0a0b0d"/>
+  <path d="M323 156v119" stroke="#0a0b0d" stroke-width="8"/>
+  <path d="M329 164c53 22 73 56 77 91h-77Z" fill="#b84a36"/>
+  <path d="M313 164c-43 21-59 50-63 80h63Z" fill="#e2b16e"/>
+  <path d="m196 273-27-39m296 38 28-40" stroke="#0a0b0d" stroke-width="8"/>
+</svg>

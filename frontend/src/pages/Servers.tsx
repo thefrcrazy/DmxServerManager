@@ -27,7 +27,7 @@ export default function Servers() {
         viewMode,
         setViewMode,
         handleServerAction,
-    } = useFilteredServers({ initialViewMode: "list" });
+    } = useFilteredServers({ initialViewMode: "grid" });
 
     useEffect(() => {
         setPageTitle(t("servers.title"), t("dashboard.welcome"), { to: "/" });

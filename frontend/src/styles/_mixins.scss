@@ -20,12 +20,13 @@
     flex-direction: column;
 }
 
-// Card styling (Mistral Style)
+// Card styling
 @mixin card {
-    background: var(--color-bg-tertiary);
+    background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    transition: border-color var(--transition-base);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--transition-base), background-color var(--transition-base), transform var(--transition-base);
 
     &:hover {
         border-color: var(--color-border-hover);

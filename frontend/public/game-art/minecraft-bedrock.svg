@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title">
+  <title id="title">Block landscape above water</title>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5e90bf"/><stop offset="1" stop-color="#b8d3df"/></linearGradient></defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <path d="M0 208h92v-45h91v29h95v-76h93v45h91v-26h91v54h87v171H0Z" fill="#477a45"/>
+  <path d="M0 233h92v-45h91v29h95v-76h93v45h91v-26h91v54h87v146H0Z" fill="#69513f"/>
+  <path d="M0 274c135-20 229-2 327 8 100 10 199 6 313-13v91H0Z" fill="#2677a9"/>
+  <path d="M0 300c145-18 245-2 342 6 92 8 184 5 298-12" fill="none" stroke="#74c7e7" stroke-width="8" opacity=".65"/>
+  <g fill="#8c7358"><rect x="114" y="218" width="35" height="30"/><rect x="303" y="166" width="36" height="29"/><rect x="480" y="214" width="35" height="29"/></g>
+</svg>

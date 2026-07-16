@@ -11,7 +11,7 @@
     display: flex;
     flex-direction: column;
     z-index: 50;
-    padding: var(--spacing-4);
+    padding: 0.875rem 0.75rem;
     transition: width var(--transition-smooth);
 
     &__header,
@@ -80,9 +80,9 @@
         width: 28px;
         height: 28px;
         border-radius: var(--radius-md);
-        background: var(--color-accent);
-        border: none;
-        color: white;
+        background: var(--color-bg-elevated);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-muted);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -96,7 +96,8 @@
         }
 
         &:hover {
-            opacity: 0.9;
+            color: var(--color-text-primary);
+            border-color: var(--color-border-hover);
         }
 
 
@@ -109,7 +110,8 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding-bottom: var(--spacing-3);
+        min-height: 46px;
+        padding: 0 var(--spacing-2) var(--spacing-4);
         gap: var(--spacing-2);
     }
 
@@ -133,7 +135,7 @@
     &__nav {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-1);
+        gap: 3px;
         flex: 1;
     }
 
@@ -141,9 +143,11 @@
         display: flex;
         align-items: center;
         gap: var(--spacing-2);
-        padding: var(--spacing-2) var(--spacing-3);
+        min-height: 36px;
+        padding: 0 var(--spacing-3);
         color: var(--color-text-muted);
         text-decoration: none;
+        border: 1px solid transparent;
         border-radius: var(--radius-md);
         font-weight: 500;
         font-size: 0.8125rem;
@@ -171,8 +175,14 @@
         }
 
         &.active {
-            color: white;
-            background-color: var(--color-accent);
+            color: var(--color-text-primary);
+            background-color: var(--color-bg-elevated);
+            border-color: var(--color-border);
+            box-shadow: var(--shadow-sm);
+
+            svg {
+                color: var(--color-accent);
+            }
         }
     }
 

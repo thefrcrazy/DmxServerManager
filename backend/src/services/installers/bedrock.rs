@@ -741,14 +741,31 @@ async fn discover_official_source(
     context: &InstallContext,
     platform: BedrockPlatform,
 ) -> Result<ResolvedSource, InstallerError> {
-    let response: DownloadLinksResponse =
-        super::read_json(context, &context.sources.bedrock_download_api)
-            .await
-            .map_err(|error| InstallerError {
-                code: "bedrock_official_source_unavailable",
-                client_message: "servers.bedrock_automatic_install_unavailable",
-                internal: Some(format!("{}: {}", error.code, error)),
-            })?;
+    let mut errors = Vec::new();
+    let mut response = None;
+    for api in std::iter::once(&context.sources.bedrock_download_api)
+        .chain(context.sources.bedrock_download_fallback_api.iter())
+    {
+        match super::read_json(context, api).await {
+            Ok(value) => {
+                response = Some(value);
+                break;
+            }
+            Err(error) => errors.push(format!(
+                "{} ({})",
+                api.host_str().unwrap_or("unknown"),
+                error.code
+            )),
+        }
+    }
+    let response: DownloadLinksResponse = response.ok_or_else(|| InstallerError {
+        code: "bedrock_official_source_unavailable",
+        client_message: "servers.bedrock_automatic_install_unavailable",
+        internal: Some(format!(
+            "official Bedrock catalogs failed: {}",
+            errors.join(", ")
+        )),
+    })?;
     let expected_type = match platform {
         BedrockPlatform::Linux => "serverBedrockLinux",
         BedrockPlatform::Windows => "serverBedrockWindows",
@@ -1370,7 +1387,15 @@ mod tests {
         assert!(context.sources.bedrock_windows.is_none());
         assert_eq!(
             context.sources.bedrock_download_api.as_str(),
-            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
+            "https://net.web.minecraft-services.net/api/v1.0/download/links"
+        );
+        assert_eq!(
+            context
+                .sources
+                .bedrock_download_fallback_api
+                .as_ref()
+                .map(Url::as_str),
+            Some("https://net-secondary.web.minecraft-services.net/api/v1.0/download/links")
         );
     }
 
@@ -1390,6 +1415,26 @@ mod tests {
             .unwrap();
         assert_eq!(resolved.version, "1.26.33.2");
         assert!(resolved.expected_sha256.is_none());
+    }
+
+    #[tokio::test]
+    async fn official_download_catalog_uses_the_secondary_endpoint_on_failure() {
+        let base = Url::parse("http://127.0.0.1:32123/").unwrap();
+        let mut sources = InstallerSources::fixture(&base);
+        let primary = sources.bedrock_download_api.to_string();
+        let fallback = base.join("bedrock/downloads-secondary.json").unwrap();
+        sources.bedrock_download_fallback_api = Some(fallback.clone());
+        let mut responses = BTreeMap::new();
+        responses.insert(primary, b"invalid-json".to_vec());
+        responses.insert(
+            fallback.to_string(),
+            br#"{"result":{"links":[{"downloadType":"serverBedrockLinux","downloadUrl":"https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.33.2.zip"}]}}"#.to_vec(),
+        );
+        let context = InstallContext::with_fixture_responses(sources, responses).unwrap();
+        let resolved = discover_official_source(&context, BedrockPlatform::Linux)
+            .await
+            .unwrap();
+        assert_eq!(resolved.version, "1.26.33.2");
     }
 
     #[test]

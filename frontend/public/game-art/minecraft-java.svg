@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title">
+  <title id="title">Block landscape</title>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#72b8e8"/><stop offset="1" stop-color="#d4edff"/></linearGradient></defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <rect x="475" y="45" width="66" height="66" fill="#fff1a6"/>
+  <path d="M0 223h128v-44h92v67h91v-89h91v43h105v-69h133v229H0Z" fill="#4f8b43"/>
+  <path d="M0 246h128v-44h92v67h91v-89h91v43h105v-69h133v206H0Z" fill="#76503a"/>
+  <g fill="#91664a" opacity=".8"><rect x="22" y="267" width="36" height="30"/><rect x="166" y="228" width="31" height="30"/><rect x="340" y="207" width="35" height="31"/><rect x="535" y="185" width="38" height="32"/></g>
+  <path d="M90 179v-53h22v-28h22v28h23v53Z" fill="#326e3c"/>
+  <rect x="119" y="179" width="14" height="67" fill="#523821"/>
+</svg>

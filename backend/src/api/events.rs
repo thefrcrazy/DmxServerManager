@@ -375,7 +375,7 @@ mod tests {
                 "job_id": "job-id",
                 "interaction": {
                     "kind": "oauth_device",
-                    "verification_uri": "https://oauth.accounts.hytale.com/oauth2/device/verify",
+                    "verification_uri": "https://accounts.hytale.com/device?user_code=SECRET-CODE",
                     "user_code": "SECRET-CODE"
                 }
             }),

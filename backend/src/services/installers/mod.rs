@@ -81,6 +81,7 @@ pub struct InstallerSources {
     pub hytale_downloader: Url,
     pub adoptium_api_base: Url,
     pub bedrock_download_api: Url,
+    pub bedrock_download_fallback_api: Option<Url>,
     /// Optional administrator pins override dynamic official Bedrock discovery.
     /// The public Minecraft link service does not publish a provider checksum.
     pub bedrock_linux: Option<VerifiedSource>,
@@ -130,9 +131,15 @@ impl InstallerSources {
             adoptium_api_base: Url::parse("https://api.adoptium.net/v3/")
                 .expect("constant Adoptium API URL is valid"),
             bedrock_download_api: Url::parse(
-                "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links",
+                "https://net.web.minecraft-services.net/api/v1.0/download/links",
             )
             .expect("constant Minecraft download API URL is valid"),
+            bedrock_download_fallback_api: Some(
+                Url::parse(
+                    "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links",
+                )
+                .expect("constant secondary Minecraft download API URL is valid"),
+            ),
             bedrock_linux: None,
             bedrock_windows: None,
             allowed_hosts: [
@@ -151,6 +158,7 @@ impl InstallerSources {
                 "hub.spigotmc.org",
                 "downloader.hytale.com",
                 "api.adoptium.net",
+                "net.web.minecraft-services.net",
                 "net-secondary.web.minecraft-services.net",
                 "github.com",
                 "release-assets.githubusercontent.com",
@@ -189,6 +197,7 @@ impl InstallerSources {
             hytale_downloader: base.join("hytale/downloader.zip").unwrap(),
             adoptium_api_base: base.join("adoptium/").unwrap(),
             bedrock_download_api: base.join("bedrock/downloads.json").unwrap(),
+            bedrock_download_fallback_api: None,
             bedrock_linux: None,
             bedrock_windows: None,
             allowed_hosts: [host].into_iter().collect(),

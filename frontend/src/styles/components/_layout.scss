@@ -29,9 +29,10 @@
         .page-container {
             flex: 1;
             width: 100%;
-            max-width: 100%;
+            max-width: 1440px;
+            margin: 0 auto;
             overflow-y: auto; // Scroll happens here
-            padding: var(--spacing-5); // Content padding
+            padding: 1.75rem 2rem 3rem;
         }
     }
 
@@ -72,6 +73,7 @@
             padding-top: var(--header-height);
 
             .page-container {
+                max-width: 100%;
                 padding: var(--spacing-4);
             }
         }

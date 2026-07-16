@@ -232,7 +232,7 @@ mod tests {
             started_at: Some("2026-07-13T00:00:01Z".into()),
             finished_at: None,
             interaction: Some(JobInteraction::OauthDevice {
-                verification_uri: "https://oauth.accounts.hytale.com/oauth2/device/verify".into(),
+                verification_uri: "https://accounts.hytale.com/device?user_code=SECRET-CODE".into(),
                 user_code: Some("SECRET-CODE".into()),
             }),
         }

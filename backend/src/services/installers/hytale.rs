@@ -420,10 +420,11 @@ pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> 
         r"https://(?:accounts\.hytale\.com/device|oauth\.accounts\.hytale\.com/oauth2/device/verify)[^\s\x00-\x1f]*",
     )
     .ok()?;
-    let url = url_pattern
+    let url_match = url_pattern
         .find_iter(&sanitized)
         .last()
         .and_then(|matched| {
+            let output_end = matched.end();
             let matched = matched
                 .as_str()
                 .trim_end_matches(['.', ',', ';', ':', ')', ']', '}', '"', '\'']);
@@ -437,8 +438,13 @@ pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> 
                 && url.username().is_empty()
                 && url.password().is_none()
                 && url.fragment().is_none())
-            .then_some(url)
+            .then_some((url, output_end))
         });
+    let url = url_match.as_ref().map(|(url, _)| url);
+    let code_output = url_match
+        .as_ref()
+        .and_then(|(_, end)| sanitized.get(*end..))
+        .unwrap_or(&sanitized);
     let query_code = url
         .as_ref()
         .and_then(|url| {
@@ -450,15 +456,15 @@ pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> 
         r"(?i)(?:authorization|user[_ ]?|device|verification)\s*code\s*[:=]\s*([A-Z0-9-]{4,32})",
     )
     .ok()?
-    .captures_iter(&sanitized)
+    .captures_iter(code_output)
     .last()
     .and_then(|captures| captures.get(1))
     .map(|value| value.as_str().to_ascii_uppercase())
     .filter(|value| valid_user_code(value));
-    let standalone_code = url.as_ref().and_then(|_| {
+    let standalone_code = url.and_then(|_| {
         Regex::new(r"(?m)^\s*([A-Z0-9-]{6,16})\s*$")
             .ok()?
-            .captures_iter(&sanitized)
+            .captures_iter(code_output)
             .last()
             .and_then(|captures| captures.get(1))
             .map(|value| value.as_str().to_ascii_uppercase())
@@ -467,12 +473,17 @@ pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> 
     if url.is_none() && text_code.is_none() {
         return None;
     }
+    let user_code = query_code.or(text_code).or(standalone_code)?;
+    let mut verification_uri = Url::parse(HYTALE_DEVICE_VERIFICATION_URI).ok()?;
+    verification_uri
+        .query_pairs_mut()
+        .append_pair("user_code", &user_code);
     Some(DeviceAuthorization {
         // The downloader currently prints an internal OAuth verification route
         // on some releases. Hypixel's public device-flow contract documents this
-        // stable page and optional user_code query instead.
-        verification_uri: HYTALE_DEVICE_VERIFICATION_URI.to_string(),
-        user_code: query_code.or(text_code).or(standalone_code),
+        // stable verification_uri_complete page instead.
+        verification_uri: verification_uri.to_string(),
+        user_code: Some(user_code),
     })
 }
 
@@ -782,6 +793,10 @@ mod tests {
             "Visit https://accounts.hytale.com/device?user_code=ABCD-1234\nWaiting...",
         )
         .unwrap();
+        assert_eq!(
+            detected.verification_uri,
+            "https://accounts.hytale.com/device?user_code=ABCD-1234"
+        );
         assert_eq!(detected.user_code.as_deref(), Some("ABCD-1234"));
         assert!(
             detect_device_authorization("https://accounts.hytale.com.evil/device?user_code=X")
@@ -797,7 +812,7 @@ mod tests {
         let detected = detect_device_authorization("Authorization code: ABCD-1234").unwrap();
         assert_eq!(
             detected.verification_uri,
-            "https://accounts.hytale.com/device"
+            "https://accounts.hytale.com/device?user_code=ABCD-1234"
         );
         assert_eq!(detected.user_code.as_deref(), Some("ABCD-1234"));
         assert!(detect_device_authorization("Process exit code: 8").is_none());
@@ -811,8 +826,17 @@ mod tests {
              ABCD1234\n",
         )
         .unwrap();
-        assert_eq!(detected.verification_uri, HYTALE_DEVICE_VERIFICATION_URI);
+        assert_eq!(
+            detected.verification_uri,
+            "https://accounts.hytale.com/device?user_code=ABCD1234"
+        );
         assert_eq!(detected.user_code.as_deref(), Some("ABCD1234"));
+        assert!(
+            detect_device_authorization(
+                "OLD-CODE\nhttps://oauth.accounts.hytale.com/oauth2/device/verify\n"
+            )
+            .is_none()
+        );
     }
 
     #[test]

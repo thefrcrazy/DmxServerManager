@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title">
+  <title id="title">Fantasy crystal landscape</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#10182f"/><stop offset="1" stop-color="#33205d"/></linearGradient>
+    <linearGradient id="crystal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#82e6ff"/><stop offset="1" stop-color="#8467ff"/></linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <circle cx="500" cy="72" r="42" fill="#f5e4ac" opacity=".9"/>
+  <path d="M0 270 104 158l64 62 72-105 83 116 70-74 102 108 65-70 80 75v90H0Z" fill="#171d34"/>
+  <path d="m271 275 36-139 42 55 29-80 48 164Z" fill="url(#crystal)" opacity=".95"/>
+  <path d="m307 136 11 139m31-84-9 84m38-164 11 164" stroke="#d8f7ff" stroke-width="5" opacity=".55"/>
+  <path d="M0 296c112-28 197-19 292 4 105 25 205 24 348-11v71H0Z" fill="#0b1021"/>
+</svg>

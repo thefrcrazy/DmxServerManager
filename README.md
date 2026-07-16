@@ -16,7 +16,7 @@ Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version
 - sessions opaques, CSRF, RBAC, affectation des instances et journal d’audit ;
 - sauvegardes locales vérifiées, gestionnaire de fichiers cloisonné et imports ZIP sécurisés ;
 - tâches planifiées, notifications, chat d’équipe, webhooks Discord et catalogue local `.dmxpack` ;
-- interface React responsive en français et en anglais, pilotée par les capacités de chaque profil.
+- interface React responsive en français et en anglais, pilotée par les capacités de chaque profil, avec sélecteur visuel et illustrations locales des jeux.
 
 ## Profils 1.0
 
@@ -31,9 +31,9 @@ Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version
 
 Les binaires de jeux ne sont jamais inclus dans l’image ou les releases. Les installateurs officiels et SteamCMD les téléchargent à la demande, selon leurs licences.
 
-Pendant une installation ou une mise à jour, la page de l’instance bascule sur l’onglet Terminal et affiche les sorties de l’installateur en temps réel. L’historique borné est relu depuis le disque après une navigation, un rechargement ou une reconnexion SSE ; les invites sans saut de ligne sont également affichées. Lorsqu’une action humaine est nécessaire, le job passe à `waiting_for_user` et conserve une action explicite dans la page Jobs et sur l’instance. Pour Hytale, le code expiré est remplacé automatiquement dans la carte dès que le downloader en émet un nouveau. Les installateurs n’acceptent jamais de saisie shell arbitraire.
+Pendant une installation ou une mise à jour, la page de l’instance bascule sur l’onglet Terminal et affiche les sorties de l’installateur en temps réel. L’historique borné est relu depuis le disque après une navigation, un rechargement ou une reconnexion SSE ; les invites sans saut de ligne sont également affichées. Lorsqu’une action humaine est nécessaire, le job passe à `waiting_for_user` et conserve une action explicite dans la page Jobs et sur l’instance. Pour Hytale, le code expiré est remplacé automatiquement dans la carte dès que le downloader en émet un nouveau, et le bouton ouvre l’URL officielle complète liée exactement au code affiché. Les installateurs n’acceptent jamais de saisie shell arbitraire.
 
-La création d’une instance Minecraft utilise des sélecteurs alimentés côté serveur : manifest Mojang, Fill Paper, Fabric Meta, Maven Forge/NeoForge, API Purpur et Quilt Meta. Minecraft Bedrock utilise l’endpoint public consommé par le site officiel pour découvrir l’archive stable correspondant à l’OS, valide strictement l’URL officielle, calcule le SHA-256 téléchargé puis contrôle le ZIP avant activation.
+La création d’une instance Minecraft utilise des sélecteurs alimentés côté serveur : manifest Mojang, Fill Paper, Fabric Meta, Maven Forge/NeoForge, API Purpur et Quilt Meta. Minecraft Bedrock essaie les deux endpoints officiels du catalogue Microsoft pour découvrir l’archive stable correspondant à l’OS, valide strictement l’URL officielle, calcule le SHA-256 téléchargé puis contrôle le ZIP avant activation.
 
 Un AppID Steam personnalisé n’est pas automatiquement compatible. Le dépôt doit autoriser la connexion anonyme, fournir un exécutable natif AMD64 pour l’OS hôte et réussir la validation du profil. Les comptes Steam privés, Wine et Proton ne sont pas pris en charge en 1.0.
 

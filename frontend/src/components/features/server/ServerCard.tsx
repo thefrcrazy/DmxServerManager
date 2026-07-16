@@ -1,8 +1,9 @@
-import { AlertTriangle, Download, Play, RotateCw, Server as ServerIcon, Skull, Square } from "lucide-react";
+import { AlertTriangle, Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Instance } from "@/schemas/api";
 import type { ServerAction } from "@/services/api/server.client";
 import { Button, Card, Tooltip } from "@/components/ui";
+import { gameProfileVisual } from "@/constants/gameProfiles";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePermission } from "@/hooks";
 
@@ -28,6 +29,7 @@ export default function ServerCard({ server, capabilities, onAction }: ServerCar
     const installed = server.installation_state === "installed";
     const canInstall = capabilities.has("install") && hasPermission("server.update_game");
     const canStartStop = capabilities.has("lifecycle");
+    const visual = gameProfileVisual(server.profile_id);
 
     const handleCardClick = (event: React.MouseEvent) => {
         if (!(event.target as HTMLElement).closest("button")) navigate(`/servers/${server.id}`);
@@ -51,52 +53,54 @@ export default function ServerCard({ server, capabilities, onAction }: ServerCar
                 }
             }}
         >
-            <div className="server-card__header">
-                <div className={`server-card__icon ${running ? "server-card__icon--running" : ""}`}>
-                    {server.runtime_state === "crashed" || server.installation_state === "failed"
-                        ? <AlertTriangle size={20} />
-                        : transitioning ? <RotateCw size={20} className="spin" /> : <ServerIcon size={20} />}
-                </div>
-                <div>
-                    <h3 className="server-card__title">{server.name}</h3>
-                    <div className="server-card__meta">
-                        <span>{server.profile_id}</span><span>•</span>
-                        <span className={`badge badge--${running ? "success" : needsInstall ? "warning" : "info"}`}>
-                            {stateLabel(server, t)}
-                        </span>
+            <div className="server-card__artwork">
+                <img src={visual.artwork} alt="" loading="lazy" />
+                <span className={`server-card__state badge badge--${running ? "success" : needsInstall ? "warning" : "info"}`}>
+                    {transitioning && <RotateCw size={13} className="spin" aria-hidden="true" />}
+                    {(server.runtime_state === "crashed" || server.installation_state === "failed")
+                        && <AlertTriangle size={13} aria-hidden="true" />}
+                    {stateLabel(server, t)}
+                </span>
+            </div>
+            <div className="server-card__body">
+                <div className="server-card__header">
+                    <div>
+                        <span className="server-card__profile">{visual.label}</span>
+                        <h3 className="server-card__title">{server.name}</h3>
                     </div>
+                    <span className={`server-card__live-dot ${running ? "server-card__live-dot--running" : ""}`} aria-hidden="true" />
                 </div>
-            </div>
 
-            <div className="server-card__stats">
-                <div className="server-card__stat-row"><span>{t("servers.profile")}</span><span>r{server.profile_revision}</span></div>
-                <div className="server-card__stat-row"><span>{t("servers.configuration")}</span><span>v{server.config_version}</span></div>
-                {server.installed_version && <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version}{server.installed_build ? ` · ${server.installed_build}` : ""}</span></div>}
-                <div className="server-card__stat-row"><span>{t("servers.watchdog")}</span><span>{server.watchdog_enabled ? t("common.active") : t("common.inactive")}</span></div>
-            </div>
+                <div className="server-card__stats">
+                    <div className="server-card__stat-row"><span>{t("servers.profile")}</span><span>r{server.profile_revision}</span></div>
+                    <div className="server-card__stat-row"><span>{t("servers.configuration")}</span><span>v{server.config_version}</span></div>
+                    {server.installed_version && <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version}{server.installed_build ? ` · ${server.installed_build}` : ""}</span></div>}
+                    <div className="server-card__stat-row"><span>{t("servers.watchdog")}</span><span>{server.watchdog_enabled ? t("common.active") : t("common.inactive")}</span></div>
+                </div>
 
-            <div className="server-card__actions">
-                {needsInstall && canInstall ? (
-                    <Button variant="success" size="sm" fullWidth onClick={(event) => action(event, "install")}>
-                        <Download size={16} aria-hidden="true" />{t("servers.install")}
-                    </Button>
-                ) : running && canStartStop ? (
-                    <>
-                        {hasPermission("server.start") && hasPermission("server.stop") && <Tooltip content={t("servers.restart")} position="top">
-                            <Button aria-label={t("servers.restart")} variant="ghost" size="icon" onClick={(event) => action(event, "restart")}><RotateCw size={18} /></Button>
-                        </Tooltip>}
-                        {hasPermission("server.stop") && <Tooltip content={t("servers.stop")} position="top">
-                            <Button aria-label={t("servers.stop")} variant="ghost" size="icon" onClick={(event) => action(event, "stop")}><Square size={18} /></Button>
-                        </Tooltip>}
-                        {hasPermission("server.kill") && <Tooltip content={t("servers.kill")} position="top">
-                            <Button aria-label={t("servers.kill")} variant="ghost" size="icon" onClick={(event) => action(event, "kill")}><Skull size={18} /></Button>
-                        </Tooltip>}
-                    </>
-                ) : !running && canStartStop && installed && hasPermission("server.start") ? (
-                    <Button variant="success" size="sm" fullWidth disabled={transitioning} onClick={(event) => action(event, "start")}>
-                        <Play size={16} />{t("servers.start")}
-                    </Button>
-                ) : null}
+                <div className="server-card__actions">
+                    {needsInstall && canInstall ? (
+                        <Button variant="success" size="sm" fullWidth onClick={(event) => action(event, "install")}>
+                            <Download size={16} aria-hidden="true" />{t("servers.install")}
+                        </Button>
+                    ) : running && canStartStop ? (
+                        <>
+                            {hasPermission("server.start") && hasPermission("server.stop") && <Tooltip content={t("servers.restart")} position="top">
+                                <Button aria-label={t("servers.restart")} variant="ghost" size="icon" onClick={(event) => action(event, "restart")}><RotateCw size={18} /></Button>
+                            </Tooltip>}
+                            {hasPermission("server.stop") && <Tooltip content={t("servers.stop")} position="top">
+                                <Button aria-label={t("servers.stop")} variant="ghost" size="icon" onClick={(event) => action(event, "stop")}><Square size={18} /></Button>
+                            </Tooltip>}
+                            {hasPermission("server.kill") && <Tooltip content={t("servers.kill")} position="top">
+                                <Button aria-label={t("servers.kill")} variant="ghost" size="icon" onClick={(event) => action(event, "kill")}><Skull size={18} /></Button>
+                            </Tooltip>}
+                        </>
+                    ) : !running && canStartStop && installed && hasPermission("server.start") ? (
+                        <Button variant="success" size="sm" fullWidth disabled={transitioning} onClick={(event) => action(event, "start")}>
+                            <Play size={16} />{t("servers.start")}
+                        </Button>
+                    ) : null}
+                </div>
             </div>
         </Card>
     );

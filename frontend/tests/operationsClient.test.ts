@@ -435,6 +435,10 @@ describe("clients opérationnels", () => {
             interaction: { kind: "oauth_device", verification_uri: "https://accounts.hytale.com/device?user_code=ABCD-1234", user_code: "ABCD-1234" },
         };
         expect(HytaleDeviceAuthorizationSchema.safeParse(payload).success).toBe(true);
+        expect(HytaleDeviceAuthorizationSchema.safeParse({
+            ...payload,
+            interaction: { ...payload.interaction, user_code: "EXPIRED1" },
+        }).success).toBe(false);
         expect(HytaleDeviceAuthorizationSchema.safeParse({ ...payload, interaction: { ...payload.interaction, verification_uri: "https://accounts.hytale.com.evil.example/device" } }).success).toBe(false);
         expect(HytaleDeviceAuthorizationSchema.safeParse({ ...payload, interaction: { ...payload.interaction, verification_uri: "https://accounts.hytale.com/other" } }).success).toBe(false);
         expect(HytaleDeviceAuthorizationSchema.safeParse({ ...payload, token: "must-not-pass" }).success).toBe(false);

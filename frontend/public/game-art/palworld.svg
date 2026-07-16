@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title">
+  <title id="title">Colorful creature island</title>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#37a7c7"/><stop offset="1" stop-color="#7546a8"/></linearGradient><radialGradient id="orb"><stop stop-color="#fff"/><stop offset=".32" stop-color="#80e4ff"/><stop offset=".38" stop-color="#172341"/><stop offset=".48" stop-color="#ff6a9d"/><stop offset="1" stop-color="#6e2f88"/></radialGradient></defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <circle cx="110" cy="75" r="45" fill="#f9e6a0" opacity=".92"/>
+  <path d="M0 274c98-92 190-67 263-34 78 35 147 18 212-30 56-41 107-27 165 15v135H0Z" fill="#174d49"/>
+  <path d="M0 309c124-31 226-22 319-2 109 23 202 18 321-20v73H0Z" fill="#102d35"/>
+  <circle cx="455" cy="166" r="72" fill="url(#orb)"/>
+  <path d="M154 260c-5-46 3-90 34-126m-33 34-35-25m50 6 32-32m-49 75-44 15" fill="none" stroke="#1b3b35" stroke-width="12" stroke-linecap="round"/>
+  <path d="M111 256c22-37 57-51 94-39-11 35-42 53-94 39Z" fill="#54b75d"/>
+</svg>
