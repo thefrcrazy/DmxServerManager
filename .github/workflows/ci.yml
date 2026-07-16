@@ -248,6 +248,10 @@ jobs:
             sh install/linux/install-docker.sh
           cmp install/linux/docker-compose.yml "$INSTALL_DIR/docker-compose.yml"
           sudo cmp install/linux/config.docker.example.toml "$INSTALL_DIR/config/config.toml"
+          if stat "$INSTALL_DIR/config/master.key" >/dev/null 2>&1; then
+            echo "The protected Docker master key is unexpectedly readable by the runner user." >&2
+            exit 1
+          fi
           test "$(sudo stat -c '%u:%g:%a' "$INSTALL_DIR/config/master.key")" = "10001:10001:400"
           test "$(stat -c '%a' "$INSTALL_DIR/.env")" = "600"
           docker compose --project-directory "$INSTALL_DIR" \
@@ -305,7 +309,11 @@ jobs:
             DMX_IMAGE=ghcr.io/thefrcrazy/dmx-server-manager:ci \
             DMX_NO_START=1 \
             sh install/linux/install-docker.sh
-          test "$(stat -c '%u:%g:%a' "$install_dir/config/master.key")" = "10001:10001:400"
+          if stat "$install_dir/config/master.key" >/dev/null 2>&1; then
+            echo "The protected Docker master key is unexpectedly readable by the runner user." >&2
+            exit 1
+          fi
+          test "$(sudo stat -c '%u:%g:%a' "$install_dir/config/master.key")" = "10001:10001:400"
           docker tag dmx-server-manager:ci ghcr.io/thefrcrazy/dmx-server-manager:ci
           # shellcheck disable=SC2329
           cleanup() {
