@@ -304,7 +304,8 @@ fn profile_paths() -> Value {
                 "operationId": "getGameProfileVersionCatalog", "tags": ["game profiles"],
                 "parameters": [
                     {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 64}},
-                    {"name": "game_version", "in": "query", "required": false, "schema": {"type": "string", "minLength": 1, "maxLength": 96}}
+                    {"name": "game_version", "in": "query", "required": false, "schema": {"type": "string", "minLength": 1, "maxLength": 96}},
+                    {"name": "loader", "in": "query", "required": false, "schema": {"type": "string", "enum": ["vanilla", "paper", "fabric", "forge", "neoforge", "spigot", "purpur", "quilt"]}}
                 ],
                 "responses": {"200": {"description": "Current official game and loader versions available to the selected built-in profile.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProfileVersionCatalog"}}}}}
             }

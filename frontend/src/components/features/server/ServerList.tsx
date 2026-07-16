@@ -7,7 +7,7 @@ import { Table, Tooltip } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePermission } from "@/hooks";
 import { useToast } from "@/contexts/ToastContext";
-import { gameProfileVisual } from "@/constants/gameProfiles";
+import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles";
 import ServerCard from "./ServerCard";
 
 interface ServerListProps {
@@ -72,7 +72,19 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                 const canStartStop = capabilities.has("lifecycle");
                 return (
                     <tr key={server.id} onClick={() => navigate(`/servers/${server.id}`)} style={{ cursor: "pointer" }}>
-                        <td><div className="server-name"><img className="server-game-thumb" src={visual.artwork} alt="" loading="lazy" /><span>{server.name}</span></div></td>
+                        <td>
+                            <div className="server-name">
+                                <img
+                                    className="server-game-thumb"
+                                    src={visual.artwork}
+                                    alt=""
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    onError={fallbackGameArtwork}
+                                />
+                                <span>{server.name}</span>
+                            </div>
+                        </td>
                         <td>{visual.label} <span className="text-muted">r{server.profile_revision}</span></td>
                         <td>
                             <span className={`badge badge--${server.installation_state === "installed" ? "success" : "warning"}`}>{t(`servers.installation_states.${server.installation_state}`)}</span>

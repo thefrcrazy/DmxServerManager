@@ -9,7 +9,7 @@ La version 1.0 supporte exclusivement Linux AMD64, Windows AMD64 et les conteneu
 Téléchargez l’installateur et le checksum d’archive depuis les assets de la release, puis vérifiez séparément leurs bundles Sigstore produits par GitHub Actions. Ne lancez jamais directement un script distant via un pipe. `cosign` 3 est requis pour cette vérification initiale.
 
 ```bash
-version=1.0.14
+version=1.0.15
 asset="dmx-server-manager-v${version}-x86_64-unknown-linux-gnu.tar.gz"
 installer="dmx-server-manager-install-linux.sh"
 base="https://github.com/thefrcrazy/DmxServerManager/releases/download/v${version}"
@@ -48,7 +48,7 @@ Le panneau écoute par défaut sur `127.0.0.1:5500`; ouvrez-le via `http://local
 Dans PowerShell 5.1 ou 7 lancé en administrateur :
 
 ```powershell
-$Version = '1.0.14'
+$Version = '1.0.15'
 $Asset = "dmx-server-manager-v$Version-x86_64-pc-windows-msvc.zip"
 $Installer = 'dmx-server-manager-install-windows.ps1'
 $Base = "https://github.com/thefrcrazy/DmxServerManager/releases/download/v$Version"
@@ -186,11 +186,20 @@ services:
     expose:
       - "5500"
     ports:
+      - "7770-7799:7770-7799/tcp"
+      - "7770-7799:7770-7799/udp"
+      - "8766-8799:8766-8799/udp"
+      - "8880-8899:8880-8899/tcp"
       - "5520-5530:5520-5530/udp"
+      - "16260-16279:16260-16279/udp"
       - "25600-25649:25600-25649/tcp"
       - "19140-19159:19140-19159/udp"
       - "24600-24649:24600-24649/udp"
+      - "26900-26949:26900-26949/tcp"
+      - "26900-26949:26900-26949/udp"
       - "8220-8240:8220-8240/udp"
+      - "28015-28049:28015-28049/tcp"
+      - "28015-28049:28015-28049/udp"
       - "27020-27119:27020-27119/tcp"
       - "27020-27119:27020-27119/udp"
     labels:

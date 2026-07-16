@@ -5,7 +5,7 @@ Le panneau détecte un manifeste de release signé mais ne se remplace jamais pe
 ## Linux natif
 
 ```bash
-sudo DMX_VERSION=1.0.14 \
+sudo DMX_VERSION=1.0.15 \
   DMX_EXPECTED_ARCHIVE_SHA256='<checksum-archive-du-manifeste-signé>' \
   sh ./dmx-server-manager-install-linux.sh
 ```
@@ -15,7 +15,7 @@ Utilisez l’asset d’installateur dont le SHA-256 est inclus dans le manifeste
 ```bash
 sudo systemctl stop dmx-server-manager
 ls -1 /usr/lib/dmx-server-manager/releases
-sudo ln -sfn /usr/lib/dmx-server-manager/releases/1.0.14-<sha256> /usr/lib/dmx-server-manager/current
+sudo ln -sfn /usr/lib/dmx-server-manager/releases/1.0.15-<sha256> /usr/lib/dmx-server-manager/current
 sudo systemctl start dmx-server-manager
 ```
 
@@ -23,7 +23,7 @@ Ne rétrogradez pas après une migration de schéma déclarée irréversible; re
 
 ## Windows natif
 
-Relancez la commande proposée par le panneau, qui appelle `install.ps1 -Version 1.0.14 -ExpectedArchiveSha256 <checksum-signé>`. Lorsque ce paramètre est présent, aucun fichier `.sha256` distant n’est consulté. Chaque archive reste sous `%ProgramFiles%\DmxServerManager\releases\<version>-<sha256>` et `current` est une jonction vers la release active. L’installateur restaure la jonction, la configuration SCM, l’environnement et l’état antérieur si le service ou son healthcheck HTTP échoue.
+Relancez la commande proposée par le panneau, qui appelle `install.ps1 -Version 1.0.15 -ExpectedArchiveSha256 <checksum-signé>`. Lorsque ce paramètre est présent, aucun fichier `.sha256` distant n’est consulté. Chaque archive reste sous `%ProgramFiles%\DmxServerManager\releases\<version>-<sha256>` et `current` est une jonction vers la release active. L’installateur restaure la jonction, la configuration SCM, l’environnement et l’état antérieur si le service ou son healthcheck HTTP échoue.
 
 ## Docker
 
@@ -69,13 +69,13 @@ Chaque tag `v*` publie les archives Linux/Windows, les installateurs natifs, leu
 
 ```bash
 cosign verify-blob \
-  --bundle dmx-server-manager-v1.0.14-x86_64-unknown-linux-gnu.tar.gz.sha256.sigstore.json \
-  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.14 \
+  --bundle dmx-server-manager-v1.0.15-x86_64-unknown-linux-gnu.tar.gz.sha256.sigstore.json \
+  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.15 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  dmx-server-manager-v1.0.14-x86_64-unknown-linux-gnu.tar.gz.sha256
+  dmx-server-manager-v1.0.15-x86_64-unknown-linux-gnu.tar.gz.sha256
 cosign verify-blob \
   --bundle dmx-server-manager-install-linux.sh.sigstore.json \
-  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.14 \
+  --certificate-identity https://github.com/thefrcrazy/DmxServerManager/.github/workflows/release.yml@refs/tags/v1.0.15 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   dmx-server-manager-install-linux.sh
 ```

@@ -3230,7 +3230,15 @@ impl InstanceActor {
         }
         let steam_profile = steam_profile_for_instance(&self.inner.pool, &instance).await?;
         if !installers::native_install_supported(&instance.profile_id)
-            && !matches!(instance.profile_id.as_str(), "valheim" | "palworld")
+            && !matches!(
+                instance.profile_id.as_str(),
+                "valheim"
+                    | "palworld"
+                    | "satisfactory"
+                    | "seven-days-to-die"
+                    | "project-zomboid"
+                    | "rust"
+            )
             && steam_profile.is_none()
         {
             return Err(OperationFailure::new(
@@ -3594,7 +3602,9 @@ impl InstanceActor {
         let token = uuid::Uuid::new_v4().to_string();
         self.backup_token = Some(token.clone());
         self.backup_restart_after = true;
-        if instance.profile_id.starts_with("minecraft-java-") {
+        if instance.profile_id == "minecraft-java"
+            || instance.profile_id.starts_with("minecraft-java-")
+        {
             let freeze = async {
                 let process = self
                     .process
@@ -4148,6 +4158,120 @@ impl InstanceActor {
                     },
                 )
             }
+            "satisfactory" => {
+                let port = integer_setting(&settings, "port", 7777)?;
+                let reliable_port = integer_setting(&settings, "reliable_port", 8888)?;
+                (
+                    platform_executable("game/FactoryServer.sh", "game/FactoryServer.exe")?,
+                    vec![
+                        "-unattended".into(),
+                        "-log".into(),
+                        format!("-Port={port}"),
+                        format!("-ReliablePort={reliable_port}"),
+                        format!("-ExternalReliablePort={reliable_port}"),
+                    ],
+                    StopStrategy::Interrupt {
+                        timeout_seconds: 90,
+                    },
+                )
+            }
+            "seven-days-to-die" => {
+                self.write_seven_days_settings(&root, &settings).await?;
+                (
+                    platform_executable(
+                        "game/7DaysToDieServer.x86_64",
+                        "game/7DaysToDieServer.exe",
+                    )?,
+                    vec![
+                        "-logfile".into(),
+                        "-".into(),
+                        "-quit".into(),
+                        "-batchmode".into(),
+                        "-nographics".into(),
+                        "-configfile=dmx-serverconfig.xml".into(),
+                        "-dedicated".into(),
+                    ],
+                    StopStrategy::Stdin {
+                        command: "shutdown".into(),
+                        timeout_seconds: 90,
+                    },
+                )
+            }
+            "project-zomboid" => {
+                let admin_password = self
+                    .inner
+                    .secrets
+                    .get(&self.inner.pool, &self.instance_id, "admin_password")
+                    .await
+                    .map_err(OperationFailure::internal)?
+                    .ok_or_else(|| {
+                        OperationFailure::new("secret_missing", "servers.required_secret_missing")
+                    })?;
+                self.write_project_zomboid_settings(&root, &settings)
+                    .await?;
+                (
+                    platform_executable("game/start-server.sh", "game/ProjectZomboid64.exe")?,
+                    vec![
+                        "-servername".into(),
+                        required_string(&settings, "server_name")?,
+                        "-adminpassword".into(),
+                        admin_password,
+                    ],
+                    StopStrategy::Stdin {
+                        command: "quit".into(),
+                        timeout_seconds: 90,
+                    },
+                )
+            }
+            "rust" => {
+                let rcon_password = self
+                    .inner
+                    .secrets
+                    .get(&self.inner.pool, &self.instance_id, "rcon_password")
+                    .await
+                    .map_err(OperationFailure::internal)?
+                    .ok_or_else(|| {
+                        OperationFailure::new("secret_missing", "servers.required_secret_missing")
+                    })?;
+                let port = integer_setting(&settings, "port", 28_015)?;
+                let rcon_port = integer_setting(&settings, "rcon_port", 28_016)?;
+                let query_port = integer_setting(&settings, "query_port", 28_017)?;
+                let max_players = integer_setting(&settings, "max_players", 50)?;
+                let world_size = integer_setting(&settings, "world_size", 3500)?;
+                let seed = settings
+                    .get("seed")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(12_345);
+                (
+                    platform_executable("game/RustDedicated", "game/RustDedicated.exe")?,
+                    vec![
+                        "-batchmode".into(),
+                        "+server.port".into(),
+                        port.to_string(),
+                        "+server.queryport".into(),
+                        query_port.to_string(),
+                        "+rcon.port".into(),
+                        rcon_port.to_string(),
+                        "+rcon.password".into(),
+                        rcon_password,
+                        "+rcon.web".into(),
+                        "1".into(),
+                        "+server.hostname".into(),
+                        required_string(&settings, "server_name")?,
+                        "+server.identity".into(),
+                        required_string(&settings, "identity")?,
+                        "+server.maxplayers".into(),
+                        max_players.to_string(),
+                        "+server.worldsize".into(),
+                        world_size.to_string(),
+                        "+server.seed".into(),
+                        seed.to_string(),
+                    ],
+                    StopStrategy::Interrupt {
+                        timeout_seconds: 90,
+                    },
+                )
+            }
             _ => {
                 return Err(OperationFailure::new(
                     "runtime_not_implemented",
@@ -4177,6 +4301,9 @@ impl InstanceActor {
         let game = tokio::fs::canonicalize(root.join("game"))
             .await
             .map_err(OperationFailure::internal)?;
+        installers::apply_runtime_configuration(&instance.profile_id, settings, &game)
+            .await
+            .map_err(installer_failure)?;
         let plan = installers::native_launch_plan(&instance.profile_id, settings, &game)
             .await
             .map_err(installer_failure)?;
@@ -4299,6 +4426,83 @@ impl InstanceActor {
         ));
         write_private_runtime_file(&temporary, contents.as_bytes()).await?;
         replace_runtime_file(&temporary, &destination).await
+    }
+
+    async fn write_seven_days_settings(
+        &self,
+        root: &Path,
+        settings: &Value,
+    ) -> Result<(), OperationFailure> {
+        let game = root.join("game");
+        let data = root.join("data/7days-to-die");
+        tokio::fs::create_dir_all(&data)
+            .await
+            .map_err(OperationFailure::internal)?;
+        let password = self
+            .inner
+            .secrets
+            .get(&self.inner.pool, &self.instance_id, "server_password")
+            .await
+            .map_err(OperationFailure::internal)?
+            .unwrap_or_default();
+        let values = [
+            ("ServerName", required_string(settings, "server_name")?),
+            ("ServerPassword", password),
+            (
+                "ServerMaxPlayerCount",
+                integer_setting(settings, "max_players", 8)?.to_string(),
+            ),
+            (
+                "ServerPort",
+                integer_setting(settings, "port", 26_900)?.to_string(),
+            ),
+            (
+                "ServerVisibility",
+                if settings
+                    .get("public_server")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    "2".to_string()
+                } else {
+                    "0".to_string()
+                },
+            ),
+            ("GameWorld", required_string(settings, "world_name")?),
+            ("GameName", required_string(settings, "game_name")?),
+            ("UserDataFolder", data.to_string_lossy().into_owned()),
+            ("TelnetEnabled", "false".to_string()),
+            ("WebDashboardEnabled", "false".to_string()),
+        ];
+        let mut contents = String::from("<?xml version=\"1.0\"?>\n<ServerSettings>\n");
+        for (name, value) in values {
+            contents.push_str("  <property name=\"");
+            contents.push_str(name);
+            contents.push_str("\" value=\"");
+            contents.push_str(&xml_attribute(&value));
+            contents.push_str("\" />\n");
+        }
+        contents.push_str("</ServerSettings>\n");
+        write_runtime_configuration(&game, "dmx-serverconfig.xml", contents.as_bytes()).await
+    }
+
+    async fn write_project_zomboid_settings(
+        &self,
+        root: &Path,
+        settings: &Value,
+    ) -> Result<(), OperationFailure> {
+        let name = required_string(settings, "server_name")?;
+        let directory = root.join("data/Zomboid/Server");
+        tokio::fs::create_dir_all(&directory)
+            .await
+            .map_err(OperationFailure::internal)?;
+        let contents = format!(
+            "DefaultPort={}\nSteamPort1={}\nSteamPort2={}\nPublic=false\nPauseEmpty=true\n",
+            integer_setting(settings, "port", 16_261)?,
+            integer_setting(settings, "steam_port", 8_766)?,
+            integer_setting(settings, "steam_query_port", 8_767)?,
+        );
+        write_runtime_configuration(&directory, &format!("{name}.ini"), contents.as_bytes()).await
     }
 
     async fn instance(&self) -> Result<RuntimeInstance, OperationFailure> {
@@ -5265,6 +5469,10 @@ fn steam_install_target(
     match instance.profile_id.as_str() {
         "valheim" => Ok((896_660, None)),
         "palworld" => Ok((2_394_010, None)),
+        "satisfactory" => Ok((1_690_800, None)),
+        "seven-days-to-die" => Ok((294_420, None)),
+        "project-zomboid" => Ok((380_870, None)),
+        "rust" => Ok((258_550, None)),
         _ => steam_profile
             .map(|profile| (profile.app_id, profile.branch.clone()))
             .ok_or_else(|| {
@@ -5331,6 +5539,9 @@ async fn preserve_instance_data(
     }
     let save_paths = match instance.profile_id.as_str() {
         "palworld" => vec!["Pal/Saved".to_string()],
+        "satisfactory" => vec!["FactoryGame/Saved".to_string()],
+        "seven-days-to-die" => vec!["dmx-serverconfig.xml".to_string(), "Mods".to_string()],
+        "rust" => vec!["server".to_string()],
         _ => steam_profile
             .map(|profile| profile.save_paths.clone())
             .unwrap_or_default(),
@@ -5475,6 +5686,12 @@ async fn validate_installed_files(
     let relative = match instance.profile_id.as_str() {
         "valheim" => platform_executable("valheim_server.x86_64", "valheim_server.exe")?,
         "palworld" => platform_executable("PalServer.sh", "PalServer.exe")?,
+        "satisfactory" => platform_executable("FactoryServer.sh", "FactoryServer.exe")?,
+        "seven-days-to-die" => {
+            platform_executable("7DaysToDieServer.x86_64", "7DaysToDieServer.exe")?
+        }
+        "project-zomboid" => platform_executable("start-server.sh", "ProjectZomboid64.exe")?,
+        "rust" => platform_executable("RustDedicated", "RustDedicated.exe")?,
         _ => steam_profile
             .map(platform_steam_executable)
             .transpose()?
@@ -5535,9 +5752,15 @@ async fn validate_launch_paths(root: &Path, spec: &mut LaunchSpec) -> Result<(),
 fn filtered_environment(root: &Path, profile_id: &str) -> Vec<(OsString, OsString)> {
     let mut environment = Vec::new();
     for name in ["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL"] {
+        if profile_id == "project-zomboid" && name == "HOME" {
+            continue;
+        }
         if let Some(value) = std::env::var_os(name) {
             environment.push((OsString::from(name), value));
         }
+    }
+    if profile_id == "project-zomboid" {
+        environment.push((OsString::from("HOME"), root.join("data").into_os_string()));
     }
     if profile_id == "valheim" {
         environment.push((OsString::from("SteamAppId"), OsString::from("892970")));
@@ -6137,6 +6360,45 @@ async fn write_private_runtime_file(path: &Path, contents: &[u8]) -> Result<(), 
     .await
     .map_err(OperationFailure::internal)?
     .map_err(OperationFailure::internal)
+}
+
+async fn write_runtime_configuration(
+    directory: &Path,
+    name: &str,
+    contents: &[u8],
+) -> Result<(), OperationFailure> {
+    if name.is_empty()
+        || name.chars().any(char::is_control)
+        || Path::new(name).file_name().and_then(|value| value.to_str()) != Some(name)
+    {
+        return Err(OperationFailure::new(
+            "configuration_path_invalid",
+            "servers.invalid_settings",
+        ));
+    }
+    let destination = directory.join(name);
+    let temporary = directory.join(format!(".{name}-{}.tmp", uuid::Uuid::new_v4().as_simple()));
+    write_private_runtime_file(&temporary, contents).await?;
+    if let Err(error) = replace_runtime_file(&temporary, &destination).await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn xml_attribute(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&apos;"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 async fn ensure_staging_parent(root: &Path) -> Result<PathBuf, OperationFailure> {

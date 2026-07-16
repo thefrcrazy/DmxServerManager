@@ -179,6 +179,8 @@ export const JobStateSchema = z.enum([
 
 const officialHytaleUri = z.url().refine((value) => {
     const uri = new URL(value);
+    const userCodes = uri.searchParams.getAll("user_code");
+    const challenges = uri.searchParams.getAll("device_challenge");
     return uri.protocol === "https:"
         && uri.hostname === "accounts.hytale.com"
         && uri.port === ""
@@ -186,7 +188,10 @@ const officialHytaleUri = z.url().refine((value) => {
         && uri.username === ""
         && uri.password === ""
         && uri.hash === ""
-        && [...uri.searchParams.keys()].every((key) => key === "user_code");
+        && [...uri.searchParams.keys()].every((key) => key === "user_code" || key === "device_challenge")
+        && userCodes.length <= 1
+        && challenges.length <= 1
+        && challenges.every((challenge) => /^[A-Za-z0-9._~=-]{16,4096}$/.test(challenge));
 });
 
 export const HytaleDeviceInteractionSchema = z.object({
@@ -195,7 +200,7 @@ export const HytaleDeviceInteractionSchema = z.object({
     user_code: z.string().min(4).max(32).regex(/^[A-Z0-9-]+$/).nullable(),
 }).strict().superRefine((value, context) => {
     const queryCode = new URL(value.verification_uri).searchParams.get("user_code");
-    if (queryCode !== value.user_code) {
+    if (queryCode !== null && queryCode !== value.user_code) {
         context.addIssue({
             code: "custom",
             path: ["verification_uri"],

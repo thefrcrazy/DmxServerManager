@@ -7,6 +7,10 @@
 | Minecraft Bedrock | archive officielle Windows/Linux vérifiée par SHA-256 | UDP 19132 et 19133 | commande `stop` |
 | Valheim | SteamCMD anonyme, AppID `896660` | UDP `N` et `N+1` | Ctrl+C |
 | Palworld | SteamCMD anonyme, AppID `2394010` | UDP 8211 | arrêt contrôlé |
+| Satisfactory | SteamCMD anonyme, AppID `1690800` | TCP/UDP 7777, TCP 8888 | interruption native |
+| 7 Days to Die | SteamCMD anonyme, AppID `294420` | TCP/UDP 26900, UDP 26901-26902 | commande `shutdown` |
+| Project Zomboid | SteamCMD anonyme, AppID `380870` | UDP 16261, 8766-8767 | commande `quit`, Linux AMD64 |
+| Rust | SteamCMD anonyme, AppID `258550` | UDP 28015/28017, TCP 28016 | interruption native |
 | Steam personnalisé | dépôt anonyme natif | déclaré par profil | stdin ou signal déclaré |
 
 Les ports sont réservés en SQLite puis vérifiés contre l’hôte avant démarrage. DmxServerManager ne modifie jamais le pare-feu; ouvrez uniquement les ports des instances réellement publiées.
@@ -15,13 +19,17 @@ Un profil intégré est immuable. Une instance reste liée à une révision pré
 
 ## Hytale
 
-L’installation utilise exclusivement le [downloader officiel Hytale](https://support.hytale.com/hc/en-us/articles/45326769420827-Hytale-Server-Manual). Le job passe à `waiting_for_user` pendant l’authentification device et publie uniquement la page publique `accounts.hytale.com/device` et le code utilisateur à durée courte. Certaines versions du downloader affichent une route OAuth interne : elle n’est jamais proposée directement à l’utilisateur. Lorsqu’une demande expire, le dernier code remplace atomiquement l’ancien dans le Job et dans l’instance. Les jetons persistants sont chiffrés dans le magasin de secrets; le fichier temporaire du downloader est supprimé avant la fin du job.
+L’installation utilise exclusivement le [downloader officiel Hytale](https://support.hytale.com/hc/en-us/articles/45326769420827-Hytale-Server-Manual). Le job passe à `waiting_for_user` pendant l’authentification device. Lorsque le downloader fournit une URL publique complète `accounts.hytale.com/device`, DmxServerManager la conserve exactement avec son challenge éphémère au lieu de reconstruire une URL à partir du seul code. Si seule la route OAuth interne et un code sont disponibles, le panneau affiche la page publique et le code séparément. Lorsqu’une demande expire, le dernier code remplace atomiquement l’ancien dans le Job et dans l’instance. Les jetons persistants sont chiffrés dans le magasin de secrets; le fichier temporaire du downloader est supprimé avant la fin du job.
+
+La page Hytale utilise une protection navigateur. Un bloqueur de contenu peut empêcher l’affichage du challenge même avec une URL valide : autorisez temporairement `accounts.hytale.com`, ouvrez le lien dans un onglet normal, puis vérifiez que le code affiché correspond exactement à la carte du job.
 
 Le driver impose Java 25, lance `HytaleServer.jar` depuis `game/Server/` avec `../Assets.zip` et `HytaleServer.aot`, et n’exécute aucun script fourni par le serveur. Une sortie documentée avec le code `8` adopte uniquement un arbre complet validé depuis `game/updater/staging`. La bascule conserve mondes, configuration et mods, maintient un rollback persistant, puis confirme la mise à jour après 30 secondes stables. Un crash pendant cette fenêtre restaure automatiquement la version précédente sans perdre les changements de monde intervenus pendant l’essai.
 
 ## Minecraft Java
 
-Chaque instance fixe une version exacte de Minecraft. L’écran de création interroge les catalogues officiels et propose les versions de jeu et de loader compatibles dans des sélecteurs. Fabric, Forge, NeoForge, Quilt et Purpur exigent aussi `loader_version`; cette valeur désigne respectivement une version exacte du loader ou un numéro de build Purpur. Les alias flottants tels que `latest`, `recommended` et `stable` sont refusés. Spigot n’expose pas ce champ : la version de BuildTools est une constante de maintenance du panneau. Changer de version ou de loader nécessite une nouvelle installation; le lancement refuse un marqueur d’installation qui ne correspond plus à la configuration.
+La création n’affiche qu’un seul profil `Minecraft Java`. Le loader — Vanilla, Paper, Fabric, Forge, NeoForge, Spigot, Purpur ou Quilt — et la version sont des sous-configurations de cette instance. Les anciens identifiants de profils restent chargés uniquement afin que les instances créées avant la version 1.0.15 continuent de fonctionner; ils ne sont plus proposés dans le catalogue.
+
+Chaque instance fixe une version exacte de Minecraft. L’écran de création interroge les catalogues officiels et propose les versions de jeu et de loader compatibles dans des sélecteurs. Fabric, Forge, NeoForge, Quilt et Purpur exigent aussi `loader_version`; cette valeur désigne respectivement une version exacte du loader ou un numéro de build Purpur. Les alias flottants tels que `latest`, `recommended` et `stable` sont refusés. Spigot n’expose pas ce champ : la version de BuildTools est une constante de maintenance du panneau. Seul un changement de version, de loader ou de version du loader exige une réinstallation. Un changement de port, mémoire ou autre réglage appliqué au démarrage ne remet pas l’instance en état « à réinstaller ».
 
 | Variante | Source et validation | Contenu utilisateur |
 |---|---|---|
@@ -85,6 +93,34 @@ Le profil installe anonymement l’AppID SteamCMD `2394010` et valide `PalServer
 Les sauvegardes couvrent uniquement `game/Pal/Saved`. Si le serveur tourne, le superviseur lui envoie d’abord l’interruption native avec un délai maximal de 60 secondes afin qu’il vide son monde sur disque, puis le redémarre après l’archive. Le profil 1.0 n’active ni ne configure REST/RCON et ne les utilise pas comme mécanismes de gestion. Le mode serveur public ne crée aucune règle de pare-feu : ouvrez explicitement le port UDP réservé si l’instance doit être joignable depuis Internet.
 
 Référence primaire : [guide officiel du serveur dédié Palworld](https://docs.palworldgame.com/getting-started/deploy-dedicated-server/).
+
+## Satisfactory
+
+Le profil installe anonymement l’AppID SteamCMD `1690800` et valide `FactoryServer.sh` sous Linux ou `FactoryServer.exe` sous Windows. Il réserve le port principal en TCP et UDP — `7777` par défaut — ainsi que le port de messagerie fiable TCP — `8888` par défaut. Les arguments `-Port`, `-ReliablePort` et `-ExternalReliablePort` sont construits par le backend et ne passent jamais par un shell.
+
+Les sauvegardes couvrent uniquement `game/FactoryGame/Saved`. Le nom et le mot de passe administrateur sont réclamés depuis le jeu lors de la première prise de contrôle du serveur, conformément au fonctionnement officiel, et ne sont donc pas simulés par des options sans effet dans le panneau.
+
+Référence primaire : [wiki officiel Satisfactory — serveurs dédiés](https://satisfactory.wiki.gg/wiki/Dedicated_servers).
+
+## 7 Days to Die
+
+Le profil installe anonymement l’AppID SteamCMD `294420`, lance directement `7DaysToDieServer.x86_64` ou `7DaysToDieServer.exe` et génère atomiquement `dmx-serverconfig.xml`. Les ports `26900`, `26901` et `26902` doivent rester adjacents. Le mot de passe est chiffré; Telnet et le dashboard web restent désactivés afin de ne pas exposer une seconde surface d’administration.
+
+Les données persistantes sont forcées sous `data/7days-to-die`, en dehors des binaires remplaçables. L’arrêt utilise la commande console `shutdown`; les sauvegardes incluent les données, le XML géré et le répertoire `Mods` s’il existe.
+
+## Project Zomboid
+
+Le profil installe anonymement l’AppID SteamCMD `380870`. Il est limité à Linux AMD64 car Steam déclare `start-server.sh` comme point d’entrée Linux mais uniquement des fichiers batch sous Windows; DmxServerManager n’exécute volontairement ni shell arbitraire ni `.bat`. Le nom interne est limité aux caractères alphanumériques, tiret et underscore, et le mot de passe administrateur est chiffré.
+
+Le profil utilise les ports UDP `16261`, `8766` et `8767`, place `HOME` dans le stockage isolé de l’instance et écrit la configuration sous `data/Zomboid/Server`. L’arrêt envoie `quit` sur stdin et les sauvegardes couvrent `data/Zomboid`.
+
+## Rust
+
+Le profil installe anonymement l’AppID SteamCMD `258550` et lance directement `RustDedicated` ou `RustDedicated.exe`. Le backend construit une liste fermée d’arguments pour le port de jeu UDP `28015`, le query port UDP `28017`, le RCON TCP `28016`, le nom, l’identité, la limite de joueurs, la taille et la graine du monde. Le mot de passe RCON est chiffré et expurgé des logs.
+
+Les sauvegardes couvrent le répertoire `game/server`, qui contient mondes, configuration, utilisateurs et identité de l’instance. DmxServerManager n’installe pas automatiquement uMod/Carbon et ne modifie pas le pare-feu.
+
+Référence primaire : [wiki officiel Facepunch — création d’un serveur Rust](https://wiki.facepunch.com/rust/Creating-a-server).
 
 ## Steam personnalisé
 

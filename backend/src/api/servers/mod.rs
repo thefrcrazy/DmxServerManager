@@ -877,10 +877,10 @@ fn parse_if_match(headers: &HeaderMap) -> Result<u32, AppError> {
 
 fn reinstall_required_for_settings(profile_id: &str, current: &Value, next: &Value) -> bool {
     if profile_id == "minecraft-bedrock" {
-        return current != next;
+        return current.get("version") != next.get("version");
     }
-    if profile_id.starts_with("minecraft-java-") {
-        return ["version", "loader_version", "port"]
+    if profile_id == "minecraft-java" || profile_id.starts_with("minecraft-java-") {
+        return ["version", "loader", "loader_version"]
             .iter()
             .any(|key| current.get(*key) != next.get(*key));
     }
@@ -974,7 +974,8 @@ mod tests {
         let cosmetic = serde_json::json!({
             "version": "1.21.4",
             "loader_version": "0.16.10",
-            "motd": "after"
+            "motd": "after",
+            "port": 25566
         });
         let upgraded = serde_json::json!({
             "version": "1.21.5",
@@ -991,7 +992,7 @@ mod tests {
             &current,
             &upgraded,
         ));
-        assert!(reinstall_required_for_settings(
+        assert!(!reinstall_required_for_settings(
             "minecraft-bedrock",
             &current,
             &cosmetic,

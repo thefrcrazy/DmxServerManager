@@ -3512,7 +3512,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.14"
+    "version": "1.0.15"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5629,6 +5629,24 @@
             "schema": {
               "maxLength": 96,
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "loader",
+            "required": false,
+            "schema": {
+              "enum": [
+                "vanilla",
+                "paper",
+                "fabric",
+                "forge",
+                "neoforge",
+                "spigot",
+                "purpur",
+                "quilt"
+              ],
               "type": "string"
             }
           }

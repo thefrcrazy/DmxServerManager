@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useEffect, useState } from "react";
+import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } from "react";
 import { EventEnvelopeSchema, JobSchema, RuntimeStateSchema } from "@/schemas/api";
 import {
     BedrockArchiveAuthorization,
@@ -37,6 +37,19 @@ function formatLogLine(stream: string, message: string): string {
     return stream === "stderr" || stream.endsWith("_error") ? `[stderr] ${message}` : message;
 }
 
+function mergeLogHistory(history: string[], live: string[]): string[] {
+    if (live.length === 0) return history.slice(-MAX_VISIBLE_LOG_LINES);
+    const maxOverlap = Math.min(history.length, live.length);
+    let overlap = 0;
+    for (let size = maxOverlap; size > 0; size -= 1) {
+        if (history.slice(-size).every((line, index) => line === live[index])) {
+            overlap = size;
+            break;
+        }
+    }
+    return [...history, ...live.slice(overlap)].slice(-MAX_VISIBLE_LOG_LINES);
+}
+
 export function useServerEvents({ serverId, serverStatus, logSource, onServerUpdate, onStatusChange }: UseServerEventsOptions): UseServerEventsReturn {
     const [logs, setLogs] = useState<string[]>([]);
     const [isConnected, setIsConnected] = useState(false);
@@ -44,6 +57,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
     const [scheduleRevision, setScheduleRevision] = useState(0);
     const [pendingDeviceAuthorization, setPendingDeviceAuthorization] = useState<HytaleDeviceAuthorization | null>(null);
     const [pendingBedrockArchive, setPendingBedrockArchive] = useState<BedrockArchiveAuthorization | null>(null);
+    const historyRequest = useRef(0);
 
     const applyEvent = useCallback((event: MessageEvent<string>) => {
         let raw: unknown;
@@ -96,9 +110,14 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
 
     const loadHistory = useCallback(async () => {
         if (!serverId) return;
+        const request = ++historyRequest.current;
         const response = await apiService.servers.getLogHistory(serverId, logSource);
-        if (!response.success) return;
-        setLogs(response.data.items.map(({ stream, message }) => formatLogLine(stream, message)).slice(-MAX_VISIBLE_LOG_LINES));
+        if (!response.success || request !== historyRequest.current) return;
+        const history = response.data.items.map(({ stream, message }) => formatLogLine(stream, message));
+        // Installation and startup output can arrive while the REST history is
+        // in flight. Merge instead of replacing so the initial synchronization
+        // never erases fresh SSE lines.
+        setLogs((current) => mergeLogHistory(history, current));
     }, [logSource, serverId]);
 
     const resynchronize = useCallback(() => {
@@ -117,7 +136,11 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         if (!serverId) return;
         const source = new EventSource(`${API_BASE_URL}/events?server_id=${encodeURIComponent(serverId)}`, { withCredentials: true });
         source.onopen = () => setIsConnected(true);
-        source.onerror = () => setIsConnected(false);
+        source.onerror = () => {
+            setIsConnected(false);
+            void loadHistory();
+            onServerUpdate();
+        };
         source.onmessage = applyEvent;
         for (const type of [
             "server.log", "server.updated", "server.state", "job.updated", "job.waiting_for_user",
@@ -132,7 +155,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         source.addEventListener("stream.reset", resynchronize);
         source.addEventListener("stream.lagged", resynchronize);
         return () => source.close();
-    }, [applyEvent, resynchronize, serverId]);
+    }, [applyEvent, loadHistory, onServerUpdate, resynchronize, serverId]);
 
     useEffect(() => {
         if (serverStatus !== "running") setLogs((current) => current.slice(-MAX_VISIBLE_LOG_LINES));

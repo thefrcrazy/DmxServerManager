@@ -12,7 +12,7 @@ import { apiService } from "@/services";
 import { ImportUploadTask } from "@/services/api/imports.client";
 import { formatBytes } from "@/utils/formatters";
 import { initialProfileSettings, partitionProfileValues, ProfileValue } from "@/utils/profileSettings";
-import { gameProfileVisual } from "@/constants/gameProfiles";
+import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles";
 
 type CreationMode = "install" | "zip" | "copy" | "attach";
 
@@ -25,6 +25,19 @@ function isZipSignature(bytes: Uint8Array): boolean {
         && ((bytes[2] === 0x03 && bytes[3] === 0x04)
             || (bytes[2] === 0x05 && bytes[3] === 0x06)
             || (bytes[2] === 0x07 && bytes[3] === 0x08));
+}
+
+function isLegacyMinecraftProfile(profile: GameProfile): boolean {
+    return [
+        "minecraft-java-vanilla",
+        "minecraft-java-paper",
+        "minecraft-java-fabric",
+        "minecraft-java-forge",
+        "minecraft-java-neoforge",
+        "minecraft-java-spigot",
+        "minecraft-java-purpur",
+        "minecraft-java-quilt",
+    ].includes(profile.id);
 }
 
 export default function CreateServer() {
@@ -76,8 +89,9 @@ export default function CreateServer() {
                 setError(response.error.message);
                 return;
             }
-            setProfiles(response.data);
-            const first = response.data[0];
+            const selectableProfiles = response.data.filter((profile) => !isLegacyMinecraftProfile(profile));
+            setProfiles(selectableProfiles);
+            const first = selectableProfiles[0];
             if (first) {
                 setProfileId(first.id);
                 setSettings(initialProfileSettings(first));
@@ -92,6 +106,7 @@ export default function CreateServer() {
     useEffect(() => {
         const profile = selectedProfile;
         const usesVersionCatalog = profile?.id === "minecraft-bedrock"
+            || profile?.id === "minecraft-java"
             || profile?.id.startsWith("minecraft-java-");
         if (!profile || !usesVersionCatalog) {
             setProfileOptions({});
@@ -102,14 +117,20 @@ export default function CreateServer() {
         const requestedVersion = typeof settings.version === "string" && settings.version
             ? settings.version
             : undefined;
+        const selectedLoader = profile.id === "minecraft-java" && typeof settings.loader === "string"
+            ? settings.loader
+            : undefined;
+        const loaderNeedsVersion = selectedLoader
+            ? ["fabric", "forge", "neoforge", "purpur", "quilt"].includes(selectedLoader)
+            : Boolean(profile.settings_schema.properties.loader_version);
         setProfileOptions({
             version: [],
-            ...(profile.settings_schema.properties.loader_version
+            ...(loaderNeedsVersion
                 ? { loader_version: [] }
                 : {}),
         });
         setCatalogLoading(true);
-        void apiService.profiles.getVersionCatalog(profile.id, requestedVersion).then((response) => {
+        void apiService.profiles.getVersionCatalog(profile.id, requestedVersion, selectedLoader).then((response) => {
             if (!active) return;
             if (!response.success) {
                 // Keep creation usable if an upstream catalog is temporarily
@@ -120,7 +141,7 @@ export default function CreateServer() {
             }
             setProfileOptions({
                 version: response.data.game_versions,
-                ...(profile.settings_schema.properties.loader_version
+                ...(loaderNeedsVersion
                     ? { loader_version: response.data.loader_versions }
                     : {}),
             });
@@ -130,11 +151,13 @@ export default function CreateServer() {
                 if (selectedVersion && !response.data.game_versions.includes(String(current.version ?? ""))) {
                     next.version = selectedVersion;
                 }
-                if (profile.settings_schema.properties.loader_version) {
+                if (loaderNeedsVersion) {
                     const currentLoader = String(current.loader_version ?? "");
                     if (!response.data.loader_versions.includes(currentLoader)) {
                         next.loader_version = response.data.loader_versions[0] ?? "";
                     }
+                } else {
+                    delete next.loader_version;
                 }
                 return next;
             });
@@ -144,7 +167,7 @@ export default function CreateServer() {
         return () => {
             active = false;
         };
-    }, [selectedProfile, settings.version]);
+    }, [selectedProfile, settings.loader, settings.version]);
 
     useEffect(() => () => uploadTask.current?.cancel(), []);
 
@@ -347,7 +370,15 @@ export default function CreateServer() {
                                             aria-checked={selected}
                                             onClick={() => selectProfile(profile.id)}
                                         >
-                                            <img src={visual.artwork} alt="" loading="lazy" />
+                                            <span className="profile-picker__artwork">
+                                                <img
+                                                    src={visual.artwork}
+                                                    alt=""
+                                                    loading="lazy"
+                                                    referrerPolicy="no-referrer"
+                                                    onError={fallbackGameArtwork}
+                                                />
+                                            </span>
                                             <span className="profile-picker__content">
                                                 <strong>{visual.label}</strong>
                                                 <small>{profile.description}</small>
@@ -362,15 +393,19 @@ export default function CreateServer() {
                             <label htmlFor="server-name">{t("servers.server_name")}</label>
                             <input id="server-name" className="input" value={name} onChange={(event) => setName(event.target.value)} minLength={1} maxLength={80} required autoFocus />
                         </div>
-                        {selectedProfile && <ProfileSettingsFields
-                            profile={selectedProfile}
-                            values={{ ...settings, ...secrets }}
-                            options={profileOptions}
-                            loadingOptions={catalogLoading ? ["version", "loader_version"] : []}
-                            onChange={(key, value, secret) => secret
-                                ? setSecrets((current) => ({ ...current, [key]: String(value) }))
-                                : setSettings((current) => ({ ...current, [key]: value }))}
-                        />}
+                        {selectedProfile && (
+                            <div className="server-settings-grid">
+                                <ProfileSettingsFields
+                                    profile={selectedProfile}
+                                    values={{ ...settings, ...secrets }}
+                                    options={profileOptions}
+                                    loadingOptions={catalogLoading ? ["version", "loader_version"] : []}
+                                    onChange={(key, value, secret) => secret
+                                        ? setSecrets((current) => ({ ...current, [key]: String(value) }))
+                                        : setSettings((current) => ({ ...current, [key]: value }))}
+                                />
+                            </div>
+                        )}
                         <label className="form-checkbox">
                             <input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} />
                             <span>{t("server_creation.auto_start")}</span>

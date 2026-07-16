@@ -161,6 +161,9 @@ pub fn allowed_secret_names(profile_id: &str) -> &'static [&'static str] {
     match profile_id {
         "valheim" => &["server_password"],
         "palworld" => &["server_password", "admin_password"],
+        "seven-days-to-die" => &["server_password"],
+        "project-zomboid" => &["admin_password"],
+        "rust" => &["rcon_password"],
         _ => &[],
     }
 }
@@ -168,6 +171,8 @@ pub fn allowed_secret_names(profile_id: &str) -> &'static [&'static str] {
 pub fn required_secret_names(profile_id: &str) -> &'static [&'static str] {
     match profile_id {
         "valheim" => &["server_password"],
+        "project-zomboid" => &["admin_password"],
+        "rust" => &["rcon_password"],
         _ => &[],
     }
 }
@@ -303,6 +308,8 @@ mod tests {
     fn secret_names_are_closed_per_profile() {
         assert!(validate_profile_secret("valheim", "server_password").is_ok());
         assert!(validate_profile_secret("valheim", "steam_password").is_err());
+        assert!(validate_profile_secret("rust", "rcon_password").is_ok());
+        assert!(validate_profile_secret("project-zomboid", "admin_password").is_ok());
         assert!(validate_profile_secret("steam-custom", "password").is_err());
     }
 

@@ -3127,6 +3127,7 @@ export interface operations {
         parameters: {
             query?: {
                 game_version?: string;
+                loader?: "vanilla" | "paper" | "fabric" | "forge" | "neoforge" | "spigot" | "purpur" | "quilt";
             };
             header?: never;
             path: {

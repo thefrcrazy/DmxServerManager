@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Instance } from "@/schemas/api";
 import type { ServerAction } from "@/services/api/server.client";
 import { Button, Card, Tooltip } from "@/components/ui";
-import { gameProfileVisual } from "@/constants/gameProfiles";
+import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePermission } from "@/hooks";
 
@@ -54,7 +54,13 @@ export default function ServerCard({ server, capabilities, onAction }: ServerCar
             }}
         >
             <div className="server-card__artwork">
-                <img src={visual.artwork} alt="" loading="lazy" />
+                <img
+                    src={visual.artwork}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onError={fallbackGameArtwork}
+                />
                 <span className={`server-card__state badge badge--${running ? "success" : needsInstall ? "warning" : "info"}`}>
                     {transitioning && <RotateCw size={13} className="spin" aria-hidden="true" />}
                     {(server.runtime_state === "crashed" || server.installation_state === "failed")

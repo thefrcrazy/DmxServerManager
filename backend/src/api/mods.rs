@@ -199,6 +199,7 @@ async fn list(
         &state,
         &authorized.context.profile_id,
         authorized.context.profile_revision,
+        &authorized.context.settings,
     )?;
     let items = sqlx::query_as::<_, InstalledMod>(
         "SELECT id, instance_id, source, display_name, checksum_sha256, size_bytes, \
@@ -221,7 +222,12 @@ async fn upload_manual(
 ) -> Result<(StatusCode, Json<InstalledMod>), AppError> {
     let authorized = authorize_mods(&state, &auth, &id, true).await?;
     let context = &authorized.context;
-    let directory = require_mod_capability(&state, &context.profile_id, context.profile_revision)?;
+    let directory = require_mod_capability(
+        &state,
+        &context.profile_id,
+        context.profile_revision,
+        &context.settings,
+    )?;
     let extension = validate_filename(&query.filename)?;
     validate_upload_headers(&headers)?;
 
@@ -322,7 +328,12 @@ async fn install_provider(
 ) -> Result<(StatusCode, Json<InstalledMod>), AppError> {
     let authorized = authorize_mods(&state, &auth, &id, true).await?;
     let context = &authorized.context;
-    let directory = require_mod_capability(&state, &context.profile_id, context.profile_revision)?;
+    let directory = require_mod_capability(
+        &state,
+        &context.profile_id,
+        context.profile_revision,
+        &context.settings,
+    )?;
     let compatibility = provider_compatibility(context)?;
     let artifact = match body.provider {
         ProviderRequestKind::Modrinth => {
@@ -529,7 +540,9 @@ async fn release_mod_lease(lease: Option<FilesystemLease>) -> Result<(), AppErro
 fn provider_compatibility(context: &InstanceModContext) -> Result<Compatibility, AppError> {
     let settings: serde_json::Value = serde_json::from_str(&context.settings)
         .map_err(|_| AppError::Internal("instance settings are invalid".into()))?;
-    let game_version = if context.profile_id.starts_with("minecraft-java-") {
+    let game_version = if context.profile_id == "minecraft-java"
+        || context.profile_id.starts_with("minecraft-java-")
+    {
         Some(
             settings
                 .get("version")
@@ -541,8 +554,25 @@ fn provider_compatibility(context: &InstanceModContext) -> Result<Compatibility,
     } else {
         None
     };
+    let profile_id = if context.profile_id == "minecraft-java" {
+        let loader = settings
+            .get("loader")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| AppError::BadRequest("servers.minecraft_loader_invalid".into()))?;
+        if !matches!(
+            loader,
+            "paper" | "fabric" | "forge" | "neoforge" | "spigot" | "purpur" | "quilt"
+        ) {
+            return Err(AppError::BadRequest(
+                "mods.provider_not_supported_by_profile".into(),
+            ));
+        }
+        format!("minecraft-java-{loader}")
+    } else {
+        context.profile_id.clone()
+    };
     Ok(Compatibility {
-        profile_id: context.profile_id.clone(),
+        profile_id,
         game_version,
     })
 }
@@ -587,6 +617,7 @@ fn require_mod_capability(
     state: &AppState,
     profile_id: &str,
     profile_revision: i64,
+    settings: &str,
 ) -> Result<&'static str, AppError> {
     let revision = u32::try_from(profile_revision)
         .map_err(|_| AppError::Internal("instance profile revision is invalid".into()))?;
@@ -601,7 +632,18 @@ fn require_mod_capability(
     {
         return Err(AppError::BadRequest("mods.profile_not_supported".into()));
     }
-    mod_directory(profile_id)
+    let logical_profile = if profile_id == "minecraft-java" {
+        let settings: serde_json::Value = serde_json::from_str(settings)
+            .map_err(|_| AppError::Internal("instance settings are invalid".into()))?;
+        let loader = settings
+            .get("loader")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| AppError::BadRequest("servers.minecraft_loader_invalid".into()))?;
+        format!("minecraft-java-{loader}")
+    } else {
+        profile_id.to_string()
+    };
+    mod_directory(&logical_profile)
         .ok_or_else(|| AppError::Internal("profile declares an invalid mods capability".into()))
 }
 

@@ -26,6 +26,7 @@ export default function HytaleDeviceAuthorizationNotice({ authorization }: { aut
             <div className="hytale-device-auth__content">
                 <h2 id="hytale-device-auth-title">{t("hytale_device.title")}</h2>
                 <p>{t("hytale_device.description")}</p>
+                <p className="helper-text">{t("hytale_device.content_blocker_hint")}</p>
                 {code && <div className="hytale-device-auth__code"><span>{t("hytale_device.user_code")}</span><code>{code}</code><Button type="button" size="sm" variant="secondary" onClick={() => void copy()} icon={copied ? <Check size={15} /> : <Clipboard size={15} />}>{t(copied ? "hytale_device.copied" : "hytale_device.copy")}</Button></div>}
             </div>
             <a className="btn btn--primary" href={authorization.interaction.verification_uri} target="_blank" rel="noopener noreferrer">

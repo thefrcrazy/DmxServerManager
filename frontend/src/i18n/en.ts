@@ -189,6 +189,7 @@ export const en: TranslationType = {
     hytale_device: {
         title: "Hytale authentication required",
         description: "Open the official Hytale page and enter the displayed code if requested to continue installation.",
+        content_blocker_hint: "If the Cloudflare challenge does not appear, temporarily disable the content blocker for accounts.hytale.com and reopen this link.",
         user_code: "User code", copy: "Copy", copied: "Copied", open: "Open Hytale"
     },
     chat: {

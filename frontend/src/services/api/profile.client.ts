@@ -22,8 +22,11 @@ export class ProfileClient extends BaseClient {
         return this.request(`/game-profiles/${encodeURIComponent(id)}/revisions`, SteamProfileRevisionListSchema);
     }
 
-    async getVersionCatalog(id: string, gameVersion?: string): Promise<ClientResponse<ProfileVersionCatalog>> {
-        const query = gameVersion ? `?game_version=${encodeURIComponent(gameVersion)}` : "";
+    async getVersionCatalog(id: string, gameVersion?: string, loader?: string): Promise<ClientResponse<ProfileVersionCatalog>> {
+        const params = new URLSearchParams();
+        if (gameVersion) params.set("game_version", gameVersion);
+        if (loader) params.set("loader", loader);
+        const query = params.size > 0 ? `?${params.toString()}` : "";
         return this.request(
             `/game-profiles/${encodeURIComponent(id)}/version-catalog${query}`,
             ProfileVersionCatalogSchema,

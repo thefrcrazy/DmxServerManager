@@ -888,6 +888,21 @@ pub(super) async fn validate_installed(
     launch_plan_for(settings, platform)
 }
 
+pub(super) async fn apply_configuration(
+    game_root: &Path,
+    settings: &Value,
+) -> Result<(), InstallerError> {
+    validate_eula(settings)?;
+    validate_settings(settings)?;
+    let instance_root = game_root.parent().ok_or_else(|| {
+        InstallerError::new(
+            "configuration_path_invalid",
+            "servers.configuration_invalid",
+        )
+    })?;
+    write_configuration(instance_root, game_root, settings).await
+}
+
 pub(super) fn validate_configured_source(
     url: &Url,
     version: &str,

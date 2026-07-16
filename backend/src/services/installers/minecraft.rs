@@ -487,6 +487,70 @@ pub(super) async fn write_java_configuration(
     write_new(staging.join("eula.txt").as_path(), b"eula=true\n").await
 }
 
+pub(super) async fn apply_java_configuration(
+    game_root: &Path,
+    settings: &Value,
+) -> Result<(), InstallerError> {
+    let port = settings
+        .get("port")
+        .and_then(Value::as_u64)
+        .unwrap_or(25_565);
+    if !(1..=65_535).contains(&port) {
+        return Err(InstallerError::new(
+            "minecraft_port_invalid",
+            "servers.settings_invalid",
+        ));
+    }
+    let current = read_bounded_regular_text(game_root, "server.properties", 1024 * 1024)
+        .await?
+        .unwrap_or_default();
+    let properties = merge_properties(&current, &[("server-port", port.to_string())]);
+    replace_regular_file_atomic(
+        game_root,
+        "server.properties",
+        properties.as_bytes(),
+        "configuration_write_failed",
+    )
+    .await
+}
+
+async fn replace_regular_file_atomic(
+    root: &Path,
+    name: &str,
+    contents: &[u8],
+    code: &'static str,
+) -> Result<(), InstallerError> {
+    let destination = root.join(name);
+    let temporary = root.join(format!(".{name}-{}.tmp", uuid::Uuid::new_v4().as_simple()));
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .await
+        .map_err(|error| InstallerError::internal(code, error))?;
+    if let Err(error) = file.write_all(contents).await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(InstallerError::internal(code, error));
+    }
+    if let Err(error) = file.sync_all().await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(InstallerError::internal(code, error));
+    }
+    drop(file);
+    if tokio::fs::try_exists(&destination)
+        .await
+        .map_err(|error| InstallerError::internal(code, error))?
+    {
+        // The existing file was opened with the bounded no-follow reader above.
+        tokio::fs::remove_file(&destination)
+            .await
+            .map_err(|error| InstallerError::internal(code, error))?;
+    }
+    tokio::fs::rename(&temporary, &destination)
+        .await
+        .map_err(|error| InstallerError::internal(code, error))
+}
+
 /// Reads a configuration file through the same no-follow/hardlink checks used by
 /// the file manager. A game process must not be able to make an update copy a
 /// host file into the next release by replacing a configuration file with a link.

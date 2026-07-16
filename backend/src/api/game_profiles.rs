@@ -29,6 +29,7 @@ pub fn routes() -> Router<AppState> {
 #[serde(deny_unknown_fields)]
 struct VersionCatalogQuery {
     game_version: Option<String>,
+    loader: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,17 +109,21 @@ async fn version_catalog(
     if state.profiles.get(&id).is_none() {
         return Err(AppError::NotFound("profiles.not_found".into()));
     }
-    let catalog = installers::profile_version_catalog(&id, query.game_version.as_deref())
-        .await
-        .map_err(|error| {
-            tracing::warn!(
-                profile_id = %id,
-                code = error.code,
-                detail = ?error.internal,
-                "game profile version catalog failed"
-            );
-            AppError::Internal(error.client_message.into())
-        })?;
+    let catalog = installers::profile_version_catalog(
+        &id,
+        query.game_version.as_deref(),
+        query.loader.as_deref(),
+    )
+    .await
+    .map_err(|error| {
+        tracing::warn!(
+            profile_id = %id,
+            code = error.code,
+            detail = ?error.internal,
+            "game profile version catalog failed"
+        );
+        AppError::Internal(error.client_message.into())
+    })?;
     Ok(Json(catalog))
 }
 

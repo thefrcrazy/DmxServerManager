@@ -24,6 +24,7 @@ impl ProfileRegistry {
     pub fn builtins() -> Self {
         let profiles = [
             hytale(),
+            minecraft_java_unified(),
             minecraft_java("minecraft-java-vanilla", "Minecraft Java — Vanilla"),
             minecraft_java("minecraft-java-paper", "Minecraft Java — Paper"),
             minecraft_java("minecraft-java-fabric", "Minecraft Java — Fabric"),
@@ -35,6 +36,10 @@ impl ProfileRegistry {
             minecraft_bedrock(),
             valheim(),
             palworld(),
+            satisfactory(),
+            seven_days_to_die(),
+            project_zomboid(),
+            rust_server(),
         ]
         .into_iter()
         .map(|profile| ((profile.id.clone(), profile.revision), profile))
@@ -604,14 +609,15 @@ fn validate_profile_settings(profile: &GameProfile, settings: &Value) -> Result<
         ));
     }
 
-    if matches!(
-        profile_id,
-        "minecraft-java-fabric"
-            | "minecraft-java-forge"
-            | "minecraft-java-neoforge"
-            | "minecraft-java-purpur"
-            | "minecraft-java-quilt"
-    ) {
+    let minecraft_loader = if profile_id == "minecraft-java" {
+        object.get("loader").and_then(Value::as_str)
+    } else {
+        profile_id.strip_prefix("minecraft-java-")
+    };
+    if minecraft_loader.is_some_and(|loader| {
+        matches!(loader, "fabric" | "forge" | "neoforge" | "purpur" | "quilt")
+    }) {
+        let loader_name = minecraft_loader.expect("checked above");
         let loader = object
             .get("loader_version")
             .and_then(Value::as_str)
@@ -631,7 +637,7 @@ fn validate_profile_settings(profile: &GameProfile, settings: &Value) -> Result<
                 "servers.minecraft_loader_invalid".into(),
             ));
         }
-        if profile_id == "minecraft-java-purpur"
+        if loader_name == "purpur"
             && (loader.len() > 12
                 || !loader.bytes().all(|byte| byte.is_ascii_digit())
                 || loader.starts_with('0'))
@@ -640,6 +646,25 @@ fn validate_profile_settings(profile: &GameProfile, settings: &Value) -> Result<
                 "servers.minecraft_loader_invalid".into(),
             ));
         }
+    }
+    if profile_id == "minecraft-java"
+        && !matches!(
+            minecraft_loader,
+            Some(
+                "vanilla"
+                    | "paper"
+                    | "fabric"
+                    | "forge"
+                    | "neoforge"
+                    | "spigot"
+                    | "purpur"
+                    | "quilt"
+            )
+        )
+    {
+        return Err(AppError::BadRequest(
+            "servers.minecraft_loader_invalid".into(),
+        ));
     }
 
     if profile_id == "valheim" {
@@ -683,6 +708,82 @@ fn validate_profile_settings(profile: &GameProfile, settings: &Value) -> Result<
         return Err(AppError::BadRequest(
             "servers.palworld_server_name_invalid".into(),
         ));
+    }
+    if matches!(profile_id, "seven-days-to-die" | "project-zomboid" | "rust")
+        && let Some(name) = object.get("server_name").and_then(Value::as_str)
+        && (name.trim() != name || name.is_empty() || name.chars().any(char::is_control))
+    {
+        return Err(AppError::BadRequest("servers.server_name_invalid".into()));
+    }
+    if profile_id == "satisfactory" {
+        let port = object.get("port").and_then(Value::as_u64).unwrap_or(7777);
+        let reliable_port = object
+            .get("reliable_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(8888);
+        if port == reliable_port {
+            return Err(AppError::BadRequest(
+                "servers.distinct_ports_required".into(),
+            ));
+        }
+    }
+    if profile_id == "seven-days-to-die" {
+        let port = object.get("port").and_then(Value::as_u64).unwrap_or(26_900);
+        let query_port = object
+            .get("query_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(26_901);
+        let steam_port = object
+            .get("steam_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(26_902);
+        if query_port != port + 1 || steam_port != port + 2 {
+            return Err(AppError::BadRequest(
+                "servers.adjacent_ports_required".into(),
+            ));
+        }
+    }
+    if profile_id == "project-zomboid" {
+        let server_name = object
+            .get("server_name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !server_name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(AppError::BadRequest(
+                "servers.project_zomboid_server_name_invalid".into(),
+            ));
+        }
+    }
+    if profile_id == "rust" {
+        let identity = object
+            .get("identity")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if identity.is_empty()
+            || identity.len() > 48
+            || !identity
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(AppError::BadRequest("servers.rust_identity_invalid".into()));
+        }
+        let game_port = object.get("port").and_then(Value::as_u64).unwrap_or(28_015);
+        let query_port = object
+            .get("query_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(28_017);
+        let rcon_port = object
+            .get("rcon_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(28_016);
+        if BTreeSet::from([game_port, query_port, rcon_port]).len() != 3 {
+            return Err(AppError::BadRequest(
+                "servers.distinct_ports_required".into(),
+            ));
+        }
     }
     if profile_id == "minecraft-bedrock" {
         let port = object.get("port").and_then(Value::as_u64).unwrap_or(19_132);
@@ -811,6 +912,65 @@ fn hytale() -> GameProfile {
             "auth_mode": {"type": "string", "enum": ["authenticated", "offline"], "default": "authenticated"}
         }),
         &[],
+    )
+}
+
+fn minecraft_java_unified() -> GameProfile {
+    base_profile(
+        "minecraft-java",
+        "Minecraft Java",
+        "Serveur Minecraft Java avec loader, version et runtime Java configurables.",
+        vec![
+            SupportedPlatform::LinuxX86_64,
+            SupportedPlatform::WindowsX86_64,
+        ],
+        vec![game_port("port", PortProtocol::Tcp, 25565)],
+        &[
+            "settings",
+            "install",
+            "lifecycle",
+            "console",
+            "files",
+            "backups",
+            "metrics",
+            "mods",
+        ],
+        LifecycleSpec {
+            stop: StopStrategy::Stdin {
+                command: "stop".into(),
+                timeout_seconds: 60,
+            },
+            ready_log_pattern: Some("Done \\(.+\\)! For help".into()),
+        },
+        json!({
+            "loader": {
+                "type": "string",
+                "enum": ["vanilla", "paper", "fabric", "forge", "neoforge", "spigot", "purpur", "quilt"],
+                "default": "vanilla",
+                "title": "Loader",
+                "x-dmx-immutable-after-install": true
+            },
+            "version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "title": "Minecraft version",
+                "x-dmx-immutable-after-install": true
+            },
+            "loader_version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 96,
+                "pattern": "^[A-Za-z0-9._+-]+$",
+                "title": "Loader version",
+                "description": "Exact immutable provider version when the selected loader requires one.",
+                "x-dmx-immutable-after-install": true
+            },
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 25565},
+            "max_memory_mb": {"type": "integer", "minimum": 512, "maximum": 131072, "default": 4096},
+            "eula_accepted": {"type": "boolean", "const": true}
+        }),
+        &["loader", "version", "eula_accepted"],
     )
 }
 
@@ -1029,6 +1189,178 @@ fn palworld() -> GameProfile {
     profile
 }
 
+fn satisfactory() -> GameProfile {
+    base_profile(
+        "satisfactory",
+        "Satisfactory",
+        "Serveur Satisfactory installé anonymement par SteamCMD (AppID 1690800).",
+        vec![
+            SupportedPlatform::LinuxX86_64,
+            SupportedPlatform::WindowsX86_64,
+        ],
+        vec![
+            game_port("port", PortProtocol::Udp, 7777),
+            game_port("port", PortProtocol::Tcp, 7777),
+            game_port("reliable_port", PortProtocol::Tcp, 8888),
+        ],
+        &[
+            "settings",
+            "install",
+            "lifecycle",
+            "console",
+            "files",
+            "backups",
+            "metrics",
+        ],
+        LifecycleSpec {
+            stop: StopStrategy::Interrupt {
+                timeout_seconds: 90,
+            },
+            ready_log_pattern: Some("Game Engine Initialized".into()),
+        },
+        json!({
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 7777},
+            "reliable_port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 8888}
+        }),
+        &[],
+    )
+}
+
+fn seven_days_to_die() -> GameProfile {
+    let mut query_port = game_port("query_port", PortProtocol::Udp, 26901);
+    query_port.adjacent_to = Some("port".into());
+    let mut steam_port = game_port("steam_port", PortProtocol::Udp, 26902);
+    steam_port.adjacent_to = Some("query_port".into());
+    base_profile(
+        "seven-days-to-die",
+        "7 Days to Die",
+        "Serveur 7 Days to Die installé anonymement par SteamCMD (AppID 294420).",
+        vec![
+            SupportedPlatform::LinuxX86_64,
+            SupportedPlatform::WindowsX86_64,
+        ],
+        vec![
+            game_port("port", PortProtocol::Tcp, 26900),
+            game_port("port", PortProtocol::Udp, 26900),
+            query_port,
+            steam_port,
+        ],
+        &[
+            "settings",
+            "secrets",
+            "install",
+            "lifecycle",
+            "console",
+            "files",
+            "backups",
+            "metrics",
+        ],
+        LifecycleSpec {
+            stop: StopStrategy::Stdin {
+                command: "shutdown".into(),
+                timeout_seconds: 90,
+            },
+            ready_log_pattern: Some("INF GameServer.LogOn successful".into()),
+        },
+        json!({
+            "server_name": {"type": "string", "minLength": 1, "maxLength": 64, "default": "7 Days to Die Server"},
+            "world_name": {"type": "string", "minLength": 1, "maxLength": 64, "default": "Navezgane"},
+            "game_name": {"type": "string", "minLength": 1, "maxLength": 64, "default": "DmxWorld"},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 26900},
+            "query_port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 26901},
+            "steam_port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 26902},
+            "max_players": {"type": "integer", "minimum": 1, "maximum": 64, "default": 8},
+            "public_server": {"type": "boolean", "default": false},
+            "server_password": {"type": "string", "minLength": 1, "maxLength": 64, "secret": true, "writeOnly": true}
+        }),
+        &["server_name", "world_name", "game_name"],
+    )
+}
+
+fn project_zomboid() -> GameProfile {
+    base_profile(
+        "project-zomboid",
+        "Project Zomboid",
+        "Serveur Project Zomboid installé anonymement par SteamCMD (AppID 380870).",
+        vec![SupportedPlatform::LinuxX86_64],
+        vec![
+            game_port("port", PortProtocol::Udp, 16261),
+            game_port("steam_port", PortProtocol::Udp, 8766),
+            game_port("steam_query_port", PortProtocol::Udp, 8767),
+        ],
+        &[
+            "settings",
+            "secrets",
+            "install",
+            "lifecycle",
+            "console",
+            "files",
+            "backups",
+            "metrics",
+        ],
+        LifecycleSpec {
+            stop: StopStrategy::Stdin {
+                command: "quit".into(),
+                timeout_seconds: 90,
+            },
+            ready_log_pattern: Some("SERVER STARTED".into()),
+        },
+        json!({
+            "server_name": {"type": "string", "minLength": 1, "maxLength": 48, "pattern": "^[A-Za-z0-9_-]+$", "default": "dmxserver"},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 16261},
+            "steam_port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 8766},
+            "steam_query_port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 8767},
+            "admin_password": {"type": "string", "minLength": 8, "maxLength": 64, "secret": true, "writeOnly": true}
+        }),
+        &["server_name", "admin_password"],
+    )
+}
+
+fn rust_server() -> GameProfile {
+    base_profile(
+        "rust",
+        "Rust",
+        "Serveur Rust installé anonymement par SteamCMD (AppID 258550).",
+        vec![
+            SupportedPlatform::LinuxX86_64,
+            SupportedPlatform::WindowsX86_64,
+        ],
+        vec![
+            game_port("port", PortProtocol::Udp, 28015),
+            game_port("rcon_port", PortProtocol::Tcp, 28016),
+            game_port("query_port", PortProtocol::Udp, 28017),
+        ],
+        &[
+            "settings",
+            "secrets",
+            "install",
+            "lifecycle",
+            "console",
+            "files",
+            "backups",
+            "metrics",
+        ],
+        LifecycleSpec {
+            stop: StopStrategy::Interrupt {
+                timeout_seconds: 90,
+            },
+            ready_log_pattern: Some("Server startup complete".into()),
+        },
+        json!({
+            "server_name": {"type": "string", "minLength": 1, "maxLength": 128, "default": "Rust Server"},
+            "identity": {"type": "string", "minLength": 1, "maxLength": 48, "pattern": "^[A-Za-z0-9_-]+$", "default": "dmxserver"},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 28015},
+            "rcon_port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 28016},
+            "query_port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 28017},
+            "max_players": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
+            "world_size": {"type": "integer", "minimum": 1000, "maximum": 6000, "default": 3500},
+            "seed": {"type": "integer", "minimum": 0, "maximum": 2147483647, "default": 12345},
+            "rcon_password": {"type": "string", "minLength": 12, "maxLength": 128, "secret": true, "writeOnly": true}
+        }),
+        &["server_name", "identity", "rcon_password"],
+    )
+}
+
 fn validate_json_schema(value: &Value, schema: &Value, path: &str) -> Result<(), AppError> {
     let expected_type = schema.get("type").and_then(Value::as_str);
     let type_matches = match expected_type {
@@ -1163,6 +1495,7 @@ mod tests {
         let registry = ProfileRegistry::builtins();
         for id in [
             "hytale",
+            "minecraft-java",
             "minecraft-java-vanilla",
             "minecraft-java-paper",
             "minecraft-java-fabric",
@@ -1174,6 +1507,10 @@ mod tests {
             "minecraft-bedrock",
             "valheim",
             "palworld",
+            "satisfactory",
+            "seven-days-to-die",
+            "project-zomboid",
+            "rust",
         ] {
             assert!(registry.get(id).is_some(), "missing profile {id}");
         }
@@ -1268,6 +1605,11 @@ mod tests {
         }
         let spigot = registry.get("minecraft-java-spigot").unwrap();
         assert!(spigot.settings_schema["properties"]["loader_version"].is_null());
+        let unified = registry.get("minecraft-java").unwrap();
+        assert_eq!(
+            unified.settings_schema["properties"]["loader"]["default"],
+            "vanilla"
+        );
     }
 
     #[test]
@@ -1281,6 +1623,29 @@ mod tests {
         registry
             .validate_settings("minecraft-java-fabric", &base)
             .unwrap();
+        registry
+            .validate_settings(
+                "minecraft-java",
+                &json!({
+                    "loader": "fabric",
+                    "version": "1.21.1",
+                    "loader_version": "0.16.14",
+                    "eula_accepted": true
+                }),
+            )
+            .unwrap();
+        assert!(
+            registry
+                .validate_settings(
+                    "minecraft-java",
+                    &json!({
+                        "loader": "fabric",
+                        "version": "1.21.1",
+                        "eula_accepted": true
+                    }),
+                )
+                .is_err()
+        );
         for value in ["latest", "../loader", "loader/version", "loader version"] {
             let mut invalid = base.clone();
             invalid["loader_version"] = json!(value);

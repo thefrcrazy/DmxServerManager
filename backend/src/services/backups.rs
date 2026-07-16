@@ -600,7 +600,7 @@ async fn declared_backup_paths_at_root(
     root: &Path,
 ) -> Result<Vec<PathBuf>, AppError> {
     let mut declared = declared_backup_paths_for_profile(profile, settings)?;
-    if profile.id.starts_with("minecraft-java-") {
+    if profile.id == "minecraft-java" || profile.id.starts_with("minecraft-java-") {
         let properties = root.join("game/server.properties");
         match tokio::fs::symlink_metadata(&properties).await {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}

@@ -868,6 +868,14 @@ fn interaction_is_safe(interaction: &JobInteraction, job_instance_id: Option<&st
             let Ok(uri) = reqwest::Url::parse(verification_uri) else {
                 return false;
             };
+            let query_codes = uri
+                .query_pairs()
+                .filter_map(|(key, value)| (key == "user_code").then(|| value.into_owned()))
+                .collect::<Vec<_>>();
+            let challenges = uri
+                .query_pairs()
+                .filter_map(|(key, value)| (key == "device_challenge").then(|| value.into_owned()))
+                .collect::<Vec<_>>();
             let valid_uri = uri.scheme() == "https"
                 && uri.host_str() == Some("accounts.hytale.com")
                 && uri.port().is_none()
@@ -877,15 +885,25 @@ fn interaction_is_safe(interaction: &JobInteraction, job_instance_id: Option<&st
                 && uri.fragment().is_none()
                 && uri
                     .query_pairs()
-                    .all(|(key, value)| key == "user_code" && valid_user_code(value.as_ref()));
-            let query_code = uri
-                .query_pairs()
-                .find_map(|(key, value)| (key == "user_code").then(|| value.into_owned()));
+                    .all(|(key, _)| matches!(key.as_ref(), "user_code" | "device_challenge"))
+                && query_codes.len() <= 1
+                && query_codes
+                    .first()
+                    .is_none_or(|value| valid_user_code(value))
+                && challenges.len() <= 1
+                && challenges.first().is_none_or(|value| {
+                    (16..=4096).contains(&value.len())
+                        && value.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric()
+                                || matches!(byte, b'-' | b'_' | b'=' | b'.' | b'~')
+                        })
+                });
+            let query_code = query_codes.first().map(String::as_str);
             valid_uri
                 && user_code.as_deref().is_none_or(valid_user_code)
-                && match (query_code.as_deref(), user_code.as_deref()) {
+                && match (query_code, user_code.as_deref()) {
                     (Some(query), Some(code)) => query == code,
-                    (None, None) => true,
+                    (None, Some(_)) | (None, None) => true,
                     _ => false,
                 }
         }

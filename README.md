@@ -27,6 +27,10 @@ Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version
 | Minecraft Bedrock | archive officielle Linux ou Windows découverte automatiquement | UDP 19132 et 19133 | mondes, allowlist, permissions et packs |
 | Valheim | SteamCMD anonyme, AppID `896660` | UDP `N` et `N+1` | Crossplay optionnel et sauvegardes isolées |
 | Palworld | SteamCMD anonyme, AppID `2394010` | UDP 8211 | paramètres INI sûrs, REST/RCON désactivés par défaut |
+| Satisfactory | SteamCMD anonyme, AppID `1690800` | TCP/UDP 7777, TCP 8888 | installation native Linux/Windows et sauvegardes `FactoryGame/Saved` |
+| 7 Days to Die | SteamCMD anonyme, AppID `294420` | TCP/UDP 26900, UDP 26901-26902 | configuration XML gérée sans Telnet ni dashboard |
+| Project Zomboid | SteamCMD anonyme, AppID `380870` | UDP 16261, 8766-8767 | Linux AMD64 uniquement, données isolées et mot de passe admin chiffré |
+| Rust | SteamCMD anonyme, AppID `258550` | UDP 28015/28017, TCP 28016 | identité isolée, RCON Web et mot de passe chiffré |
 | Steam personnalisé | dépôt anonyme natif | déclarés par le profil | AppID numérique, exécutable relatif, aucun shell |
 
 Les binaires de jeux ne sont jamais inclus dans l’image ou les releases. Les installateurs officiels et SteamCMD les téléchargent à la demande, selon leurs licences.
@@ -176,11 +180,20 @@ services:
     expose:
       - "5500"
     ports:
+      - "7770-7799:7770-7799/tcp"
+      - "7770-7799:7770-7799/udp"
+      - "8766-8799:8766-8799/udp"
+      - "8880-8899:8880-8899/tcp"
       - "5520-5530:5520-5530/udp"
+      - "16260-16279:16260-16279/udp"
       - "25600-25649:25600-25649/tcp"
       - "19140-19159:19140-19159/udp"
       - "24600-24649:24600-24649/udp"
+      - "26900-26949:26900-26949/tcp"
+      - "26900-26949:26900-26949/udp"
       - "8220-8240:8220-8240/udp"
+      - "28015-28049:28015-28049/tcp"
+      - "28015-28049:28015-28049/udp"
       - "27020-27119:27020-27119/tcp"
       - "27020-27119:27020-27119/udp"
     labels:

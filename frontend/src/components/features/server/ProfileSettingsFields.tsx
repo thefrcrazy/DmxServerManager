@@ -128,15 +128,21 @@ export function ProfileSettingsFields({ profile, values, onChange, includeSecret
     options?: Record<string, readonly string[]>;
     loadingOptions?: readonly string[];
 }) {
+    const selectedMinecraftLoader = profile.id === "minecraft-java" && typeof values.loader === "string"
+        ? values.loader
+        : null;
+    const loaderVersionRequired = selectedMinecraftLoader !== null
+        && ["fabric", "forge", "neoforge", "purpur", "quilt"].includes(selectedMinecraftLoader);
     return Object.entries(profile.settings_schema.properties)
         .filter(([, property]) => includeSecrets || (!property.secret && !property.writeOnly))
+        .filter(([name]) => name !== "loader_version" || selectedMinecraftLoader === null || loaderVersionRequired)
         .map(([name, property]) => (
             <ProfileSettingField
                 key={name}
                 name={name}
                 property={property}
                 value={values[name]}
-                required={profile.settings_schema.required.includes(name)}
+                required={profile.settings_schema.required.includes(name) || (name === "loader_version" && loaderVersionRequired)}
                 options={options[name]}
                 optionsLoading={loadingOptions.includes(name)}
                 onChange={(value) => onChange(name, value, Boolean(property.secret || property.writeOnly))}

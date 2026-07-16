@@ -187,6 +187,7 @@ export const fr = {
     hytale_device: {
         title: "Authentification Hytale requise",
         description: "Ouvrez la page officielle Hytale et saisissez le code affiché s’il est demandé pour poursuivre l’installation.",
+        content_blocker_hint: "Si le challenge Cloudflare ne s’affiche pas, désactivez temporairement le bloqueur de contenu pour accounts.hytale.com puis rouvrez ce lien.",
         user_code: "Code utilisateur", copy: "Copier", copied: "Copié", open: "Ouvrir Hytale"
     },
     chat: {

@@ -410,7 +410,16 @@ struct PurpurBuildCatalog {
 pub async fn profile_version_catalog(
     profile_id: &str,
     requested_game_version: Option<&str>,
+    loader: Option<&str>,
 ) -> Result<ProfileVersionCatalog, InstallerError> {
+    let requested_profile_id = profile_id;
+    let logical_profile_id = if profile_id == "minecraft-java" {
+        let loader = loader.unwrap_or("vanilla");
+        minecraft_variant_profile_id(profile_id, &serde_json::json!({"loader": loader}))?
+    } else {
+        profile_id.to_string()
+    };
+    let profile_id = logical_profile_id.as_str();
     if profile_id != "minecraft-bedrock" && !profile_id.starts_with("minecraft-java-") {
         return Err(InstallerError::new(
             "profile_catalog_unavailable",
@@ -590,7 +599,7 @@ pub async fn profile_version_catalog(
         _ => Vec::new(),
     };
     Ok(ProfileVersionCatalog {
-        profile_id: profile_id.to_string(),
+        profile_id: requested_profile_id.to_string(),
         game_versions,
         selected_game_version,
         loader_versions: unique_safe_versions(loader_versions),
@@ -766,6 +775,7 @@ pub fn native_install_supported(profile_id: &str) -> bool {
     matches!(
         profile_id,
         "hytale"
+            | "minecraft-java"
             | "minecraft-java-vanilla"
             | "minecraft-java-paper"
             | "minecraft-java-fabric"
@@ -816,7 +826,8 @@ pub async fn install_native(
     staging: &Path,
     context: &InstallContext,
 ) -> Result<InstallResult, InstallerError> {
-    let result = match profile_id {
+    let logical_profile_id = minecraft_variant_profile_id(profile_id, settings)?;
+    let result = match logical_profile_id.as_str() {
         "minecraft-java-vanilla" => {
             minecraft::install_vanilla(settings, instance_root, staging, context).await
         }
@@ -871,8 +882,9 @@ pub async fn adopt_imported(
     game_root: &Path,
     context: &InstallContext,
 ) -> Result<Option<InstallResult>, InstallerError> {
+    let logical_profile_id = minecraft_variant_profile_id(profile_id, settings)?;
     if !matches!(
-        profile_id,
+        logical_profile_id.as_str(),
         "minecraft-java-vanilla"
             | "minecraft-java-paper"
             | "minecraft-java-fabric"
@@ -890,7 +902,7 @@ pub async fn adopt_imported(
         toolchains::ensure_java(root, java_major, context).await?;
     }
     let (plan, installed_build) = if matches!(
-        profile_id,
+        logical_profile_id.as_str(),
         "minecraft-java-vanilla" | "minecraft-java-paper"
     ) {
         let metadata = tokio::fs::symlink_metadata(game_root.join("server.jar"))
@@ -905,10 +917,14 @@ pub async fn adopt_imported(
         (minecraft::launch_plan(settings, java_major)?, None)
     } else {
         let plan = minecraft_loaders::validate_import(
-            profile_id, settings, game_root, java_major, context,
+            &logical_profile_id,
+            settings,
+            game_root,
+            java_major,
+            context,
         )
         .await?;
-        let build = if profile_id == "minecraft-java-spigot" {
+        let build = if logical_profile_id == "minecraft-java-spigot" {
             "imported".to_string()
         } else {
             settings
@@ -958,6 +974,7 @@ pub async fn resume_native_install(
 ) -> Result<InstallResult, InstallerError> {
     validate_resumable_staging_tree(staging).await?;
     let marker = read_installation_marker(profile_id, staging).await?;
+    let logical_profile_id = minecraft_variant_profile_id(profile_id, settings)?;
     if profile_id.starts_with("minecraft-") {
         let requested_version = settings
             .get("version")
@@ -970,7 +987,7 @@ pub async fn resume_native_install(
             ));
         }
     }
-    let plan = match profile_id {
+    let plan = match logical_profile_id.as_str() {
         "hytale" => {
             hytale::validate_game_layout(staging).await?;
             if marker.required_java_major != Some(25) {
@@ -999,14 +1016,14 @@ pub async fn resume_native_install(
                 InstallerError::new("java_version_missing", "servers.install_metadata_invalid")
             })?;
             let plan = minecraft_loaders::validate_installed(
-                profile_id,
+                &logical_profile_id,
                 settings,
                 staging,
                 java,
                 marker.installed_build.as_deref(),
             )
             .await?;
-            for artifact in runtime_artifacts(profile_id) {
+            for artifact in runtime_artifacts(&logical_profile_id) {
                 verify_marked_artifact(staging, &marker.artifacts, artifact).await?;
             }
             plan
@@ -1171,7 +1188,8 @@ pub async fn native_launch_plan(
     settings: &serde_json::Value,
     game_root: &Path,
 ) -> Result<InstallerPlan, InstallerError> {
-    match profile_id {
+    let logical_profile_id = minecraft_variant_profile_id(profile_id, settings)?;
+    match logical_profile_id.as_str() {
         "minecraft-java-vanilla" | "minecraft-java-paper" => {
             let marker = read_installation_marker(profile_id, game_root).await?;
             let java = marker.required_java_major.ok_or_else(|| {
@@ -1190,7 +1208,7 @@ pub async fn native_launch_plan(
                 InstallerError::new("java_version_missing", "servers.install_metadata_invalid")
             })?;
             minecraft_loaders::validate_installed(
-                profile_id,
+                &logical_profile_id,
                 settings,
                 game_root,
                 java,
@@ -1216,15 +1234,45 @@ pub async fn native_launch_plan(
     }
 }
 
+pub async fn apply_runtime_configuration(
+    profile_id: &str,
+    settings: &serde_json::Value,
+    game_root: &Path,
+) -> Result<(), InstallerError> {
+    match profile_id {
+        "minecraft-java"
+        | "minecraft-java-vanilla"
+        | "minecraft-java-paper"
+        | "minecraft-java-fabric"
+        | "minecraft-java-forge"
+        | "minecraft-java-neoforge"
+        | "minecraft-java-spigot"
+        | "minecraft-java-purpur"
+        | "minecraft-java-quilt" => minecraft::apply_java_configuration(game_root, settings).await,
+        "minecraft-bedrock" => bedrock::apply_configuration(game_root, settings).await,
+        _ => Ok(()),
+    }
+}
+
 #[allow(dead_code)]
 pub fn declared_backup_paths(
     profile_id: &str,
-    _settings: &serde_json::Value,
+    settings: &serde_json::Value,
 ) -> Result<Vec<PathBuf>, AppError> {
     let literal = |paths: &[&str]| paths.iter().map(PathBuf::from).collect::<Vec<_>>();
-    match profile_id {
+    let logical_profile_id = minecraft_variant_profile_id(profile_id, settings)
+        .map_err(|error| AppError::BadRequest(error.client_message.into()))?;
+    match logical_profile_id.as_str() {
         "valheim" => Ok(literal(&["data"])),
         "palworld" => Ok(literal(&["game/Pal/Saved"])),
+        "satisfactory" => Ok(literal(&["game/FactoryGame/Saved"])),
+        "seven-days-to-die" => Ok(literal(&[
+            "data/7days-to-die",
+            "game/dmx-serverconfig.xml",
+            "game/Mods",
+        ])),
+        "project-zomboid" => Ok(literal(&["data/Zomboid"])),
+        "rust" => Ok(literal(&["game/server"])),
         "minecraft-java-vanilla" => Ok(literal(&[
             "game/world",
             "game/world_nether",
@@ -1291,6 +1339,29 @@ pub fn declared_backup_paths(
         ])),
         _ => Ok(Vec::new()),
     }
+}
+
+fn minecraft_variant_profile_id(
+    profile_id: &str,
+    settings: &serde_json::Value,
+) -> Result<String, InstallerError> {
+    if profile_id != "minecraft-java" {
+        return Ok(profile_id.to_string());
+    }
+    let loader = settings
+        .get("loader")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("vanilla");
+    if !matches!(
+        loader,
+        "vanilla" | "paper" | "fabric" | "forge" | "neoforge" | "spigot" | "purpur" | "quilt"
+    ) {
+        return Err(InstallerError::new(
+            "minecraft_loader_invalid",
+            "servers.minecraft_loader_invalid",
+        ));
+    }
+    Ok(format!("minecraft-java-{loader}"))
 }
 
 pub fn declared_backup_paths_for_profile(
@@ -1506,9 +1577,23 @@ async fn get_with_safe_redirects(
     let mut url = initial.clone();
     for _ in 0..=5 {
         context.sources.validate_url(&url)?;
-        let response = context
-            .client
-            .get(url.clone())
+        let mut request = context.client.get(url.clone());
+        if is_official_bedrock_archive(&url) {
+            // The Minecraft CDN currently resets HTTP/2 streams for generic
+            // tool User-Agents while serving the exact same official archive
+            // to browser-compatible clients. Keep this override scoped to the
+            // catalog-provided Bedrock path.
+            request = request
+                .header(
+                    reqwest::header::USER_AGENT,
+                    format!("Mozilla/5.0 DmxServerManager/{}", env!("CARGO_PKG_VERSION")),
+                )
+                .header(
+                    reqwest::header::ACCEPT,
+                    "application/zip,application/octet-stream;q=0.9,*/*;q=0.8",
+                );
+        }
+        let response = request
             .send()
             .await
             .map_err(|error| InstallerError::internal("provider_request_failed", error))?;
@@ -1536,6 +1621,15 @@ async fn get_with_safe_redirects(
         "provider_redirect_limit",
         "servers.provider_response_invalid",
     ))
+}
+
+fn is_official_bedrock_archive(url: &Url) -> bool {
+    url.scheme() == "https"
+        && url.host_str() == Some("www.minecraft.net")
+        && url.path().starts_with("/bedrockdedicatedserver/bin-")
+        && url.path().ends_with(".zip")
+        && url.query().is_none()
+        && url.fragment().is_none()
 }
 
 #[cfg(test)]

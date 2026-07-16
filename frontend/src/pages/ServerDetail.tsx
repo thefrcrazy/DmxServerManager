@@ -45,6 +45,8 @@ export default function ServerDetail() {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [fallbackBedrockArchive, setFallbackBedrockArchive] = useState<BedrockArchiveAuthorization | null>(null);
     const [fallbackDeviceAuthorization, setFallbackDeviceAuthorization] = useState<HytaleDeviceAuthorization | null>(null);
+    const [profileOptions, setProfileOptions] = useState<Record<string, readonly string[]>>({});
+    const [catalogLoading, setCatalogLoading] = useState(false);
 
     const loadInstance = useCallback(async () => {
         if (!id) return;
@@ -79,6 +81,62 @@ export default function ServerDetail() {
             if (response.success) setSecretStatuses(response.data.items.map((item) => SecretStatusSchema.parse(item)));
         });
     }, [id, profile]);
+
+    const configuredGameVersion = settings.version;
+    const configuredLoader = settings.loader;
+    const configuredLoaderVersion = settings.loader_version;
+    const hasConfiguredLoaderVersion = Object.hasOwn(settings, "loader_version");
+
+    useEffect(() => {
+        const usesCatalog = profile?.id === "minecraft-bedrock"
+            || profile?.id === "minecraft-java"
+            || profile?.id.startsWith("minecraft-java-");
+        if (!profile || !usesCatalog) {
+            setProfileOptions({});
+            setCatalogLoading(false);
+            return;
+        }
+        let active = true;
+        const gameVersion = typeof configuredGameVersion === "string" ? configuredGameVersion : undefined;
+        const loaderVersion = typeof configuredLoaderVersion === "string"
+            ? configuredLoaderVersion
+            : "";
+        const loader = profile.id === "minecraft-java" && typeof configuredLoader === "string"
+            ? configuredLoader
+            : undefined;
+        const loaderNeedsVersion = loader
+            ? ["fabric", "forge", "neoforge", "purpur", "quilt"].includes(loader)
+            : Boolean(profile.settings_schema.properties.loader_version);
+        setCatalogLoading(true);
+        void apiService.profiles.getVersionCatalog(profile.id, gameVersion, loader).then((response) => {
+            if (!active || !response.success) return;
+            setProfileOptions({
+                version: gameVersion && !response.data.game_versions.includes(gameVersion)
+                    ? [gameVersion, ...response.data.game_versions]
+                    : response.data.game_versions,
+                ...(loaderNeedsVersion
+                    ? {
+                        loader_version: loaderVersion
+                            && !response.data.loader_versions.includes(loaderVersion)
+                            ? [loaderVersion, ...response.data.loader_versions]
+                            : response.data.loader_versions,
+                    }
+                    : {}),
+            });
+            if (!loaderNeedsVersion && hasConfiguredLoaderVersion) {
+                setSettings((current) => {
+                    const next = { ...current };
+                    delete next.loader_version;
+                    return next;
+                });
+            }
+        }).finally(() => {
+            if (active) setCatalogLoading(false);
+        });
+        return () => {
+            active = false;
+        };
+    }, [configuredGameVersion, configuredLoader, configuredLoaderVersion, hasConfiguredLoaderVersion, profile]);
 
     const onStatusChange = useCallback((runtimeState: string) => {
         setInstance((current) => current ? { ...current, runtime_state: runtimeState as Instance["runtime_state"] } : current);
@@ -140,7 +198,13 @@ export default function ServerDetail() {
         if (profile?.capabilities.includes("metrics") && hasPermission("server.read")) {
             result.push({ id: "metrics", label: t("server_detail.tabs.metrics"), icon: <Activity size={18} /> });
         }
-        if (profile?.capabilities.includes("mods") && hasPermission("mods.manage")) {
+        const minecraftLoader = profile?.id === "minecraft-java"
+            ? instance?.settings.loader
+            : undefined;
+        const modsAvailable = profile?.capabilities.includes("mods")
+            && (profile.id !== "minecraft-java"
+                || (typeof minecraftLoader === "string" && minecraftLoader !== "vanilla"));
+        if (modsAvailable && hasPermission("mods.manage")) {
             result.push({ id: "mods", label: t("server_detail.tabs.mods"), icon: <Puzzle size={18} /> });
         }
         const supportsScheduledActions = profile?.capabilities.some((capability) =>
@@ -149,7 +213,7 @@ export default function ServerDetail() {
             result.push({ id: "schedules", label: t("server_detail.tabs.schedules"), icon: <CalendarClock size={18} /> });
         }
         return result;
-    }, [hasPermission, profile, t]);
+    }, [hasPermission, instance?.settings.loader, profile, t]);
 
     useEffect(() => {
         if (!tabs.some((tab) => tab.id === activeTab)) setActiveTab("configuration");
@@ -338,6 +402,8 @@ export default function ServerDetail() {
                         {profile ? <ProfileSettingsFields
                             profile={profile}
                             values={settings}
+                            options={profileOptions}
+                            loadingOptions={catalogLoading ? ["version", "loader_version"] : []}
                             includeSecrets={false}
                             onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
                         /> : <p className="text-muted">{t("server_detail.profile_unavailable")} {instance.profile_id}@{instance.profile_revision}</p>}
