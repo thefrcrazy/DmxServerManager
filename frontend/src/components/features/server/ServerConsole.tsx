@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import SafeAnsi from "@/components/shared/SafeAnsi";
-import { Terminal, Send } from "lucide-react";
+import { Check, Clipboard, Send, Terminal } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Tooltip, Button } from "@/components/ui";
 
@@ -10,6 +10,36 @@ interface ServerConsoleProps {
     isRunning: boolean;
     isInstalling?: boolean;
     onSendCommand: (command: string) => void;
+}
+
+async function copyTextToClipboard(value: string): Promise<boolean> {
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(value);
+            return true;
+        } catch {
+            // LAN deployments may not expose the Clipboard API outside HTTPS.
+        }
+    }
+
+    const activeElement = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.readOnly = true;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, value.length);
+    try {
+        return document.execCommand("copy");
+    } finally {
+        textarea.remove();
+        activeElement?.focus();
+    }
 }
 
 export default function ServerConsole({
@@ -22,6 +52,7 @@ export default function ServerConsole({
     const { t } = useLanguage();
     const consoleContentRef = useRef<HTMLDivElement>(null);
     const [command, setCommand] = React.useState("");
+    const [logsCopied, setLogsCopied] = React.useState(false);
     const isAtBottomRef = useRef(true);
 
     // Track scroll position
@@ -53,6 +84,16 @@ export default function ServerConsole({
         setCommand("");
     };
 
+    const copyLogs = async () => {
+        if (logs.length === 0) return;
+        if (await copyTextToClipboard(logs.join("\n"))) {
+            setLogsCopied(true);
+            window.setTimeout(() => setLogsCopied(false), 2_000);
+        } else {
+            setLogsCopied(false);
+        }
+    };
+
     return (
         <div className="console-wrapper">
             <div className="console-container">
@@ -62,7 +103,20 @@ export default function ServerConsole({
                         <Terminal size={14} />
                         <span>{isInstalling ? "installer@local:~/install" : "server@local:~/console"}</span>
                     </div>
-
+                    <div className="console-header__actions">
+                        <Tooltip content={t(logsCopied ? "server_detail.console.logs_copied" : "server_detail.console.copy_logs")} position="left">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={t(logsCopied ? "server_detail.console.logs_copied" : "server_detail.console.copy_logs")}
+                                disabled={logs.length === 0}
+                                onClick={() => void copyLogs()}
+                            >
+                                {logsCopied ? <Check size={15} /> : <Clipboard size={15} />}
+                            </Button>
+                        </Tooltip>
+                    </div>
                 </div>
 
                 {/* Console Viewport */}

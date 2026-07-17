@@ -42,7 +42,7 @@ Consultez le Job et son identifiant de trace. Vérifiez l’espace disque, le co
 
 ### Une installation semble bloquée
 
-Ouvrez le Job puis **Voir le terminal d’installation**. Le panneau relit l’historique persistant et continue avec le flux SSE en direct. Pour Hytale, le downloader officiel affiche une URL et un code d’autorisation : le panneau normalise l’action vers `https://accounts.hytale.com/device`, présente le code sur l’instance et dans la page Jobs, puis remplace la carte si le code expire. Ne réutilisez jamais un ancien code.
+Ouvrez le Job puis **Voir le terminal d’installation**. Le panneau relit jusqu’à 10 000 lignes persistantes de stdout/stderr, continue avec le flux SSE en direct et permet de copier toutes les lignes visibles. Pour Hytale, le terminal conserve les messages et erreurs réels du downloader et ajoute des diagnostics DMX sur la phase, les arguments non sensibles, le PID, la durée, le nombre de lignes, le nombre de demandes OAuth, l’état du fichier de credentials et la classification d’échec. Le code, les paramètres OAuth éphémères et les jetons restent masqués. La carte sécurisée conserve la route exacte du downloader `https://oauth.accounts.hytale.com/oauth2/device/verify`, sa casse de code et les paramètres de la session. Vérifiez le code, puis approuvez aussi l’écran des permissions. Si la demande expire et que le downloader quitte, relancez l’installation afin de créer une nouvelle session ; ne réutilisez jamais un ancien code.
 
 Le terminal d’installation reste volontairement en lecture seule : Hytale utilise son flux OAuth device, Minecraft exige l’EULA dans la configuration, SteamCMD est anonyme et les autres installateurs sont non interactifs. Aucune saisie shell arbitraire n’est transmise à un installateur.
 
@@ -50,7 +50,7 @@ Bedrock est téléchargé automatiquement depuis le lien stable publié par le s
 
 Les messages Palworld `SteamAPI ... before SteamAPI_Init succeeded` peuvent apparaître pendant l’initialisation Unreal. Le critère de disponibilité est la ligne `Running Palworld dedicated server on :PORT`. Une sortie `error code: 130` lors d’un arrêt demandé correspond à l’interruption gracieuse du processus et n’indique pas à elle seule une installation corrompue.
 
-En dernier recours, les journaux bornés se trouvent dans `instances/<id>/logs/` sous le dossier de données. `install.combined.log` conserve l’ordre combiné de stdout/stderr ; les codes OAuth et secrets y sont remplacés par une indication d’action, jamais écrits en clair.
+En dernier recours, les journaux bornés se trouvent dans `instances/<id>/logs/` sous le dossier de données. `install.combined.log` conserve l’ordre combiné de stdout/stderr ; les messages techniques restent intacts et seuls les codes OAuth, paramètres d’autorisation et secrets sont masqués, jamais écrits en clair.
 
 ### Docker Desktop Windows
 

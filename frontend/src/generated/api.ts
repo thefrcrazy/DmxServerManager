@@ -1664,7 +1664,7 @@ export interface components {
             user_code: string | null;
             /**
              * Format: uri
-             * @description HTTPS accounts.hytale.com/device URL with an optional validated user_code query.
+             * @description Validated HTTPS Hytale game-server or downloader device verification URL.
              */
             verification_uri: string;
         };

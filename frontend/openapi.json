@@ -2031,14 +2031,14 @@
           "user_code": {
             "maxLength": 32,
             "minLength": 4,
-            "pattern": "^[A-Z0-9-]+$",
+            "pattern": "^[A-Za-z0-9-]+$",
             "type": [
               "string",
               "null"
             ]
           },
           "verification_uri": {
-            "description": "HTTPS accounts.hytale.com/device URL with an optional validated user_code query.",
+            "description": "Validated HTTPS Hytale game-server or downloader device verification URL.",
             "format": "uri",
             "maxLength": 4096,
             "type": "string"
@@ -3512,7 +3512,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.15"
+    "version": "1.0.16"
   },
   "openapi": "3.1.0",
   "paths": {

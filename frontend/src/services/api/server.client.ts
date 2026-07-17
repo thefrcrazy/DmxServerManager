@@ -90,7 +90,7 @@ export class ServerClient extends BaseClient {
     }
 
     async getLogHistory(id: string, source: ServerLogSource): Promise<ClientResponse<z.infer<typeof LogHistoryResponseSchema>>> {
-        const query = new URLSearchParams({ source, limit: "500" });
+        const query = new URLSearchParams({ source, limit: source === "install" ? "10000" : "1000" });
         return this.request(
             `/servers/${encodeURIComponent(id)}/logs?${query.toString()}`,
             LogHistoryResponseSchema,

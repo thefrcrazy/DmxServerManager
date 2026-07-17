@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { ApiMock, OWNER } from "./api.fixture";
+import { ApiMock, INSTANCES, OWNER } from "./api.fixture";
 
 test("la connexion, le CSRF et la révocation de session fonctionnent sans JWT navigateur", async ({ page }) => {
     const api = new ApiMock({ authenticated: false });
@@ -143,10 +143,33 @@ test("la console reçoit server.log par SSE et échappe le HTML sans jeton dans 
     const output = page.locator(".console-output");
     await expect(output).toContainText("Serveur prêt <img src=x onerror=alert(1)>");
     await expect(output.locator("img")).toHaveCount(0);
+    await page.getByRole("button", { name: "Copier tous les logs visibles" }).click();
+    await expect(page.getByRole("button", { name: "Logs copiés" })).toBeVisible();
 
     const eventRequests = api.requests.filter((request) => request.path === "/events");
     expect(eventRequests[0]?.headers.cookie).toContain("dmx_session=e2e-opaque-session-token");
     expect(eventRequests[0]?.search).toBe("?server_id=11111111-1111-4111-8111-111111111111");
     expect(eventRequests[0]?.search).not.toMatch(/token|jwt/i);
     expect(eventRequests.every((request) => request.headers.authorization === undefined)).toBe(true);
+});
+
+test("démarrer après une installation rebascule immédiatement le terminal sur la console serveur", async ({ page }) => {
+    const stoppedServer = {
+        ...INSTANCES[0]!,
+        desired_state: "stopped" as const,
+        runtime_state: "stopped" as const,
+    };
+    const api = new ApiMock({ instances: [stoppedServer, INSTANCES[1]!] });
+    await api.install(page);
+    const serverId = stoppedServer.id;
+    await page.goto(`/servers/${serverId}?tab=console&source=install&job=dededede-dede-4ded-8ded-dededededede`);
+
+    const output = page.locator(".console-output");
+    await expect(output).toBeVisible();
+    await expect(output).not.toContainText("Serveur prêt");
+    await page.getByRole("button", { name: "Démarrer" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/servers/${serverId}\\?tab=console$`));
+    await expect(output).toContainText("Serveur prêt");
+    expect(api.findRequest("POST", `/servers/${serverId}/actions/start`)).toBeDefined();
 });

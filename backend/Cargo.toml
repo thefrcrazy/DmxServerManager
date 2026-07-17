@@ -1,6 +1,6 @@
 [package]
 name = "dmx-server-manager"
-version = "1.0.15"
+version = "1.0.16"
 edition = "2024"
 rust-version = "1.97"
 authors = ["Maxim"]

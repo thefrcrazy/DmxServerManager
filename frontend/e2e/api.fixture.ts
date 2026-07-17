@@ -1383,8 +1383,8 @@ export class ApiMock {
                     job_id: "56565656-5656-4565-8565-565656565656",
                     interaction: {
                         kind: "oauth_device",
-                        verification_uri: "https://accounts.hytale.com/device?user_code=ABCD-1234",
-                        user_code: "ABCD-1234",
+                        verification_uri: "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK",
+                        user_code: "x6nimECK",
                     },
                 },
                 created_at: NOW,

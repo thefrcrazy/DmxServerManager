@@ -80,7 +80,8 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                                     alt=""
                                     loading="lazy"
                                     referrerPolicy="no-referrer"
-                                    onError={fallbackGameArtwork}
+                                    style={{ objectPosition: visual.artworkPosition }}
+                                    onError={(event) => fallbackGameArtwork(event, visual.fallbackArtwork)}
                                 />
                                 <span>{server.name}</span>
                             </div>

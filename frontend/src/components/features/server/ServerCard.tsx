@@ -59,7 +59,8 @@ export default function ServerCard({ server, capabilities, onAction }: ServerCar
                     alt=""
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    onError={fallbackGameArtwork}
+                    style={{ objectPosition: visual.artworkPosition }}
+                    onError={(event) => fallbackGameArtwork(event, visual.fallbackArtwork)}
                 />
                 <span className={`server-card__state badge badge--${running ? "success" : needsInstall ? "warning" : "info"}`}>
                     {transitioning && <RotateCw size={13} className="spin" aria-hidden="true" />}

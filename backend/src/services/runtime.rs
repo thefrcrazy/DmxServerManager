@@ -6,7 +6,7 @@ use std::{
     panic::AssertUnwindSafe,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
 
@@ -37,8 +37,10 @@ const MAX_CONSOLE_COMMAND: usize = 4 * 1024;
 const MAX_LOG_LINE: usize = 16 * 1024;
 const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024;
 const LOG_GENERATIONS: usize = 5;
-const MAX_LOG_HISTORY_LINES: usize = 500;
-const MAX_LOG_HISTORY_BYTES: u64 = 1024 * 1024;
+const MAX_CONSOLE_LOG_HISTORY_LINES: usize = 1_000;
+const MAX_INSTALL_LOG_HISTORY_LINES: usize = 10_000;
+const MAX_CONSOLE_LOG_HISTORY_BYTES: u64 = 1024 * 1024;
+const MAX_INSTALL_LOG_HISTORY_BYTES: u64 = MAX_LOG_SIZE;
 const PARTIAL_LOG_FLUSH_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_WATCHDOG_RESTARTS: u8 = 5;
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
@@ -352,18 +354,38 @@ impl RuntimeManager {
     ) -> Result<Vec<RuntimeLogLine>, AppError> {
         let storage =
             instance_storage::resolve(&self.inner.pool, &self.inner.settings, instance_id).await?;
-        let limit = limit.clamp(1, MAX_LOG_HISTORY_LINES);
+        let max_lines = match source {
+            RuntimeLogSource::Install => MAX_INSTALL_LOG_HISTORY_LINES,
+            RuntimeLogSource::Console => MAX_CONSOLE_LOG_HISTORY_LINES,
+        };
+        let limit = limit.clamp(1, max_lines);
         if source == RuntimeLogSource::Install {
             let combined = storage.root.join("logs/install.combined.log");
             match tokio::fs::symlink_metadata(&combined).await {
-                Ok(_) => return read_log_tail(&combined, "install", limit).await,
+                Ok(_) => {
+                    return read_log_tail(
+                        &combined,
+                        "install",
+                        limit,
+                        MAX_INSTALL_LOG_HISTORY_BYTES,
+                    )
+                    .await;
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
         }
         let mut lines = Vec::with_capacity(limit.saturating_mul(2));
         for (relative, stream) in source.files() {
-            lines.extend(read_log_tail(&storage.root.join(relative), stream, limit).await?);
+            lines.extend(
+                read_log_tail(
+                    &storage.root.join(relative),
+                    stream,
+                    limit,
+                    MAX_CONSOLE_LOG_HISTORY_BYTES,
+                )
+                .await?,
+            );
         }
         Ok(lines)
     }
@@ -2537,10 +2559,14 @@ impl InstanceActor {
             .map_err(installer_failure)?;
         self.write_install_log(
             &root,
-            "[DMX] Official Hytale downloader ready. Checking the available server version.",
+            &format!(
+                "[DMX] Official Hytale downloader ready (sha256={}, size={} bytes, isolated environment=yes).",
+                plan.downloader_artifact.sha256, plan.downloader_artifact.size
+            ),
         )
         .await?;
         let mut redactions = Vec::new();
+        let mut restored_credentials = false;
         if let Some(document) = self
             .inner
             .secrets
@@ -2557,7 +2583,19 @@ impl InstanceActor {
             installers::hytale::write_plaintext_credentials(&plan.credential_file, &document)
                 .await
                 .map_err(installer_failure)?;
+            restored_credentials = true;
         }
+        self.write_install_log(
+            &root,
+            if restored_credentials {
+                "[DMX] Restored encrypted Hytale downloader credentials for this instance."
+            } else {
+                "[DMX] No stored Hytale downloader credentials; OAuth device authorization is expected."
+            },
+        )
+        .await?;
+        self.write_install_log(&root, "[DMX] Checking the available Hytale server version.")
+            .await?;
 
         let mut cancellation_rx = self.install_cancellation_receiver(job_id).await?;
         let mut result: Result<installers::InstallResult, OperationFailure> = async {
@@ -2565,7 +2603,7 @@ impl InstanceActor {
                 .run_hytale_downloader(
                     job_id,
                     &plan,
-                    plan.version_args(),
+                    HytaleDownloaderPhase::VersionCheck,
                     redactions.clone(),
                     &root,
                     &mut cancellation_rx,
@@ -2616,7 +2654,7 @@ impl InstanceActor {
             self.run_hytale_downloader(
                 job_id,
                 &plan,
-                plan.args.clone(),
+                HytaleDownloaderPhase::ServerDownload,
                 redactions,
                 &root,
                 &mut cancellation_rx,
@@ -2707,51 +2745,96 @@ impl InstanceActor {
         &self,
         job_id: &str,
         plan: &installers::hytale::HytaleDownloaderPlan,
-        args: Vec<OsString>,
+        phase: HytaleDownloaderPhase,
         redactions: Vec<String>,
         root: &Path,
         cancellation: &mut watch::Receiver<bool>,
     ) -> Result<String, OperationFailure> {
-        let mut command = Command::new(&plan.executable);
-        command
-            .current_dir(&plan.cwd)
-            .args(args)
-            .env_clear()
-            .envs(filtered_tool_environment())
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let spawned = spawn_contained(&mut command).map_err(|error| match error {
-            ContainedSpawnError::Spawn(error) => OperationFailure::with_internal(
-                "hytale_downloader_start_failed",
-                "servers.hytale_downloader_failed",
-                error,
-            ),
-            ContainedSpawnError::Containment(error) => OperationFailure::with_internal(
-                "process_containment_failed",
-                "servers.process_containment_failed",
-                error,
-            ),
-        })?;
-        let mut child = spawned.child;
-        #[cfg(windows)]
-        let windows_job = spawned.windows_job;
-        let pid = child.id().ok_or_else(|| {
-            OperationFailure::new(
-                "hytale_downloader_start_failed",
-                "servers.hytale_downloader_failed",
-            )
-        })?;
-        #[cfg(windows)]
-        let job_handle = Some(windows_job.handle);
-        #[cfg(not(windows))]
-        let job_handle = None;
-
         let combined_log = Arc::new(Mutex::new(
             RotatingLog::open(root.join("logs/install.combined.log"))
                 .await
                 .map_err(OperationFailure::internal)?,
         ));
+        let started_at = Instant::now();
+        let credentials_before = hytale_credential_file_state(&plan.credential_file).await;
+        self.write_hytale_diagnostic(
+            &combined_log,
+            &format!(
+                "[DMX] Starting Hytale downloader phase={} (arguments={}, credentials_before={}).",
+                phase.label(),
+                phase.safe_arguments(),
+                credentials_before
+            ),
+        )
+        .await;
+
+        let mut command = Command::new(&plan.executable);
+        command
+            .current_dir(&plan.cwd)
+            .args(phase.arguments(plan))
+            .env_clear()
+            .envs(filtered_tool_environment())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let spawned = match spawn_contained(&mut command) {
+            Ok(spawned) => spawned,
+            Err(error) => {
+                let category = match &error {
+                    ContainedSpawnError::Spawn(_) => "spawn-error",
+                    ContainedSpawnError::Containment(_) => "containment-error",
+                };
+                self.write_hytale_diagnostic(
+                    &combined_log,
+                    &format!(
+                        "[DMX] Hytale downloader phase={} failed to start (category={category}).",
+                        phase.label()
+                    ),
+                )
+                .await;
+                return Err(match error {
+                    ContainedSpawnError::Spawn(error) => OperationFailure::with_internal(
+                        "hytale_downloader_start_failed",
+                        "servers.hytale_downloader_failed",
+                        error,
+                    ),
+                    ContainedSpawnError::Containment(error) => OperationFailure::with_internal(
+                        "process_containment_failed",
+                        "servers.process_containment_failed",
+                        error,
+                    ),
+                });
+            }
+        };
+        let mut child = spawned.child;
+        #[cfg(windows)]
+        let windows_job = spawned.windows_job;
+        let Some(pid) = child.id() else {
+            self.write_hytale_diagnostic(
+                &combined_log,
+                &format!(
+                    "[DMX] Hytale downloader phase={} started without a process identifier.",
+                    phase.label()
+                ),
+            )
+            .await;
+            return Err(OperationFailure::new(
+                "hytale_downloader_start_failed",
+                "servers.hytale_downloader_failed",
+            ));
+        };
+        #[cfg(windows)]
+        let job_handle = Some(windows_job.handle);
+        #[cfg(not(windows))]
+        let job_handle = None;
+        self.write_hytale_diagnostic(
+            &combined_log,
+            &format!(
+                "[DMX] Hytale downloader phase={} process started (pid={pid}).",
+                phase.label()
+            ),
+        )
+        .await;
         let (line_tx, mut line_rx) = mpsc::channel(256);
         let stdout_task = child.stdout.take().map(|stdout| {
             tokio::spawn(pump_output_observed(
@@ -2789,13 +2872,16 @@ impl InstanceActor {
         let mut captured = String::new();
         let mut authorization_tail = String::new();
         let mut active_authorization: Option<installers::hytale::DeviceAuthorization> = None;
+        let mut observed_lines = 0_u64;
+        let mut authorization_requests = 0_u32;
         let (status, interrupted) = loop {
             tokio::select! {
                 status = child.wait() => break (status, None),
                 line = line_rx.recv() => {
                     if let Some(line) = line {
+                        observed_lines = observed_lines.saturating_add(1);
                         append_bounded_output(&mut captured, &line, 64 * 1024);
-                        append_bounded_output(&mut authorization_tail, &line, 16 * 1024);
+                        append_bounded_tail(&mut authorization_tail, &line, 16 * 1024);
                         if let Some(authorization) =
                             installers::hytale::detect_device_authorization(&authorization_tail)
                             && active_authorization.as_ref() != Some(&authorization)
@@ -2827,6 +2913,15 @@ impl InstanceActor {
                                 payload,
                             );
                             self.publish_job(job_id).await;
+                            authorization_requests = authorization_requests.saturating_add(1);
+                            self.write_hytale_diagnostic(
+                                &combined_log,
+                                &hytale_device_request_diagnostic(
+                                    &authorization,
+                                    authorization_requests,
+                                ),
+                            )
+                            .await;
                             active_authorization = Some(authorization);
                         }
                     }
@@ -2854,8 +2949,33 @@ impl InstanceActor {
             let _ = task.await;
         }
         while let Ok(line) = line_rx.try_recv() {
+            observed_lines = observed_lines.saturating_add(1);
             append_bounded_output(&mut captured, &line, 64 * 1024);
+            append_bounded_tail(&mut authorization_tail, &line, 16 * 1024);
         }
+        let credentials_after = hytale_credential_file_state(&plan.credential_file).await;
+        let outcome = match (interrupted, &status) {
+            (Some(InstallInterruption::Cancelled), _) => "cancelled".to_string(),
+            (Some(InstallInterruption::TimedOut), _) => "installation-timeout".to_string(),
+            (None, Ok(status)) if status.success() => "success".to_string(),
+            (None, Ok(status)) => status
+                .code()
+                .map_or_else(|| "signal".to_string(), |code| format!("exit-{code}")),
+            (None, Err(_)) => "wait-error".to_string(),
+        };
+        self.write_hytale_diagnostic(
+            &combined_log,
+            &format!(
+                "[DMX] Hytale downloader phase={} completed (outcome={}, elapsed_ms={}, output_lines={}, oauth_requests={}, credentials_after={}).",
+                phase.label(),
+                outcome,
+                started_at.elapsed().as_millis(),
+                observed_lines,
+                authorization_requests,
+                credentials_after
+            ),
+        )
+        .await;
         if active_authorization.is_some() {
             jobs::resume_from_user(&self.inner.pool, job_id)
                 .await
@@ -2880,11 +3000,15 @@ impl InstanceActor {
                 || "terminated by signal".to_string(),
                 |code| code.to_string(),
             );
-            self.write_install_log(
-                root,
+            if let Some(diagnostic) = hytale_downloader_failure_diagnostic(&authorization_tail) {
+                self.write_hytale_diagnostic(&combined_log, diagnostic)
+                    .await;
+            }
+            self.write_hytale_diagnostic(
+                &combined_log,
                 &format!("[DMX] Hytale downloader exited unsuccessfully ({exit})."),
             )
-            .await?;
+            .await;
             return Err(OperationFailure::with_internal(
                 "hytale_downloader_failed",
                 "servers.hytale_downloader_failed",
@@ -4541,6 +4665,21 @@ impl InstanceActor {
             serde_json::json!({"stream": "install", "message": message}),
         );
         Ok(())
+    }
+
+    async fn write_hytale_diagnostic(&self, combined_log: &Arc<Mutex<RotatingLog>>, message: &str) {
+        let write_result = {
+            let mut writer = combined_log.lock().await;
+            writer.write_line(message).await
+        };
+        if let Err(error) = write_result {
+            tracing::warn!(instance_id = %self.instance_id, %error, "Hytale diagnostic log write failed");
+        }
+        self.inner.events.publish(
+            "server.log",
+            Some(self.instance_id.clone()),
+            serde_json::json!({"stream": "install", "message": message}),
+        );
     }
 
     async fn set_runtime_state(
@@ -6455,6 +6594,19 @@ fn append_bounded_output(output: &mut String, line: &str, limit: usize) {
     }
 }
 
+fn append_bounded_tail(output: &mut String, line: &str, limit: usize) {
+    output.push_str(line);
+    output.push('\n');
+    if output.len() <= limit {
+        return;
+    }
+    let mut start = output.len() - limit;
+    while !output.is_char_boundary(start) {
+        start += 1;
+    }
+    output.drain(..start);
+}
+
 async fn reset_install_logs(root: &Path) -> Result<(), OperationFailure> {
     let logs = root.join("logs");
     match tokio::fs::symlink_metadata(&logs).await {
@@ -6503,6 +6655,7 @@ async fn read_log_tail(
     path: &Path,
     stream: &str,
     limit: usize,
+    max_bytes: u64,
 ) -> Result<Vec<RuntimeLogLine>, AppError> {
     let metadata = match tokio::fs::symlink_metadata(path).await {
         Ok(metadata) => metadata,
@@ -6512,13 +6665,12 @@ async fn read_log_tail(
     if !metadata.is_file() || runtime_metadata_is_link_like(&metadata) {
         return Err(AppError::Conflict("servers.instance_data_unsafe".into()));
     }
-    let start = metadata.len().saturating_sub(MAX_LOG_HISTORY_BYTES);
+    let start = metadata.len().saturating_sub(max_bytes);
     let mut file = tokio::fs::File::open(path).await?;
     if start > 0 {
         file.seek(SeekFrom::Start(start)).await?;
     }
-    let mut bytes =
-        Vec::with_capacity((metadata.len() - start).min(MAX_LOG_HISTORY_BYTES) as usize);
+    let mut bytes = Vec::with_capacity((metadata.len() - start).min(max_bytes) as usize);
     file.read_to_end(&mut bytes).await?;
     let contents = String::from_utf8_lossy(&bytes);
     let contents = if start > 0 {
@@ -6573,8 +6725,8 @@ where
         redactions: &config.redactions,
         observer: config.observer.as_ref(),
         combined_log: config.combined_log.as_ref(),
-        public_log_policy: config.public_log_policy,
     };
+    let mut public_log_sanitizer = PublicLogSanitizer::new(config.public_log_policy);
     loop {
         let read = match tokio::time::timeout(PARTIAL_LOG_FLUSH_INTERVAL, reader.read(&mut chunk))
             .await
@@ -6587,7 +6739,14 @@ where
             }
             Err(_) => {
                 if !line.is_empty() || truncated {
-                    emit_log_line(&mut writer, &mut line, &mut truncated, &context).await;
+                    emit_log_line(
+                        &mut writer,
+                        &mut line,
+                        &mut truncated,
+                        &context,
+                        &mut public_log_sanitizer,
+                    )
+                    .await;
                 }
                 continue;
             }
@@ -6595,7 +6754,14 @@ where
         for byte in &chunk[..read] {
             if matches!(*byte, b'\n' | b'\r') {
                 if !line.is_empty() || truncated {
-                    emit_log_line(&mut writer, &mut line, &mut truncated, &context).await;
+                    emit_log_line(
+                        &mut writer,
+                        &mut line,
+                        &mut truncated,
+                        &context,
+                        &mut public_log_sanitizer,
+                    )
+                    .await;
                 }
             } else if line.len() < MAX_LOG_LINE {
                 line.push(*byte);
@@ -6605,7 +6771,14 @@ where
         }
     }
     if !line.is_empty() || truncated {
-        emit_log_line(&mut writer, &mut line, &mut truncated, &context).await;
+        emit_log_line(
+            &mut writer,
+            &mut line,
+            &mut truncated,
+            &context,
+            &mut public_log_sanitizer,
+        )
+        .await;
     }
 }
 
@@ -6616,7 +6789,6 @@ struct LogLineContext<'a> {
     redactions: &'a [String],
     observer: Option<&'a mpsc::Sender<String>>,
     combined_log: Option<&'a Arc<Mutex<RotatingLog>>>,
-    public_log_policy: PublicLogPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6625,11 +6797,58 @@ enum PublicLogPolicy {
     HytaleDeviceFlow,
 }
 
+enum PublicLogSanitizer {
+    Normal,
+    HytaleDeviceFlow(HytaleDeviceLogSanitizer),
+}
+
+impl PublicLogSanitizer {
+    fn new(policy: PublicLogPolicy) -> Self {
+        match policy {
+            PublicLogPolicy::Normal => Self::Normal,
+            PublicLogPolicy::HytaleDeviceFlow => {
+                Self::HytaleDeviceFlow(HytaleDeviceLogSanitizer::default())
+            }
+        }
+    }
+
+    fn sanitize(&mut self, line: &str) -> String {
+        match self {
+            Self::Normal => line.to_string(),
+            Self::HytaleDeviceFlow(sanitizer) => sanitizer.sanitize(line),
+        }
+    }
+}
+
+#[derive(Default)]
+struct HytaleDeviceLogSanitizer {
+    authorization_tail: String,
+    user_codes: Vec<String>,
+}
+
+impl HytaleDeviceLogSanitizer {
+    fn sanitize(&mut self, line: &str) -> String {
+        append_bounded_tail(&mut self.authorization_tail, line, 16 * 1024);
+        if let Some(code) =
+            installers::hytale::detect_device_authorization(&self.authorization_tail)
+                .and_then(|authorization| authorization.user_code)
+            && !self.user_codes.iter().any(|known| known == &code)
+        {
+            self.user_codes.push(code);
+            if self.user_codes.len() > 4 {
+                self.user_codes.remove(0);
+            }
+        }
+        redact_hytale_device_authorization(line, &self.user_codes)
+    }
+}
+
 async fn emit_log_line(
     writer: &mut RotatingLog,
     bytes: &mut Vec<u8>,
     truncated: &mut bool,
     context: &LogLineContext<'_>,
+    public_log_sanitizer: &mut PublicLogSanitizer,
 ) {
     if bytes.last() == Some(&b'\r') {
         bytes.pop();
@@ -6641,9 +6860,7 @@ async fn emit_log_line(
     if let Some(observer) = context.observer {
         let _ = observer.try_send(line.clone());
     }
-    if context.public_log_policy == PublicLogPolicy::HytaleDeviceFlow {
-        line = redact_hytale_device_authorization(&line);
-    }
+    line = public_log_sanitizer.sanitize(&line);
     if *truncated {
         line.push_str(" …[truncated]");
     }
@@ -6670,25 +6887,49 @@ async fn emit_log_line(
     *truncated = false;
 }
 
-fn redact_hytale_device_authorization(line: &str) -> String {
-    let lowercase = line.to_ascii_lowercase();
-    let contains_device_url = lowercase.contains("accounts.hytale.com/device");
-    let contains_code = [
-        "user_code",
-        "user code",
-        "device code",
-        "verification code",
-        "code:",
-        "code =",
-        "code=",
-    ]
-    .iter()
-    .any(|marker| lowercase.contains(marker));
-    if contains_device_url || contains_code {
-        "[ACTION REQUIRED] Hytale authentication is waiting. Use the secure action card above the terminal or open the Jobs page to copy the authorization code.".into()
-    } else {
-        line.to_string()
+static HYTALE_DEVICE_LOG_URL_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"https://(?:accounts\.hytale\.com/device|oauth\.accounts\.hytale\.com/oauth2/device/verify)[^\s\x00-\x1f]*",
+    )
+    .expect("constant Hytale authorization URL regex is valid")
+});
+static HYTALE_LABELLED_CODE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)((?:authorization|user[_ ]?|device|verification|enter)\s*code\s*[:=]\s*)([A-Z0-9-]{4,32})",
+    )
+    .expect("constant labelled Hytale authorization code regex is valid")
+});
+static HYTALE_GENERIC_CODE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(\s*code\s*[:=]\s*)([A-Z0-9-]{4,32})")
+        .expect("constant generic Hytale authorization code regex is valid")
+});
+static HYTALE_STANDALONE_CODE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^\s*(?:[A-Z0-9]{8}|[A-Z0-9]{4}-[A-Z0-9]{4})\s*$")
+        .expect("constant standalone Hytale authorization code regex is valid")
+});
+
+fn redact_hytale_device_authorization(line: &str, user_codes: &[String]) -> String {
+    if HYTALE_STANDALONE_CODE_PATTERN.is_match(line) {
+        return "[REDACTED — use the secure action card]".to_string();
     }
+    let mut redacted = HYTALE_DEVICE_LOG_URL_PATTERN
+        .replace_all(line, |captures: &regex::Captures<'_>| {
+            let matched = captures.get(0).expect("full URL match").as_str();
+            let Some((base, _)) = matched.split_once('?') else {
+                return matched.to_string();
+            };
+            format!("{base}?[REDACTED]")
+        })
+        .into_owned();
+    for code in user_codes.iter().filter(|code| !code.is_empty()) {
+        redacted = redacted.replace(code, "[REDACTED — use the secure action card]");
+    }
+    redacted = HYTALE_LABELLED_CODE_PATTERN
+        .replace_all(&redacted, "${1}[REDACTED — use the secure action card]")
+        .into_owned();
+    HYTALE_GENERIC_CODE_PATTERN
+        .replace_all(&redacted, "${1}[REDACTED — use the secure action card]")
+        .into_owned()
 }
 
 struct RotatingLog {
@@ -6761,6 +7002,103 @@ fn numbered_log(path: &Path, generation: usize) -> PathBuf {
     let mut value = path.as_os_str().to_os_string();
     value.push(format!(".{generation}"));
     PathBuf::from(value)
+}
+
+#[derive(Clone, Copy)]
+enum HytaleDownloaderPhase {
+    VersionCheck,
+    ServerDownload,
+}
+
+impl HytaleDownloaderPhase {
+    fn arguments(self, plan: &installers::hytale::HytaleDownloaderPlan) -> Vec<OsString> {
+        match self {
+            Self::VersionCheck => plan.version_args(),
+            Self::ServerDownload => plan.args.clone(),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::VersionCheck => "version-check",
+            Self::ServerDownload => "server-download",
+        }
+    }
+
+    fn safe_arguments(self) -> &'static str {
+        match self {
+            Self::VersionCheck => "-print-version -skip-update-check",
+            Self::ServerDownload => {
+                "-download-path <ephemeral-session>/hytale-game.zip -skip-update-check"
+            }
+        }
+    }
+}
+
+async fn hytale_credential_file_state(path: &Path) -> String {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata.is_file() && !runtime_metadata_is_link_like(&metadata) => {
+            format!("present-{}-bytes", metadata.len())
+        }
+        Ok(_) => "unsafe-or-non-file".to_string(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "absent".to_string(),
+        Err(error) => format!("metadata-error-{:?}", error.kind()),
+    }
+}
+
+fn hytale_device_request_diagnostic(
+    authorization: &installers::hytale::DeviceAuthorization,
+    request_number: u32,
+) -> String {
+    let parsed = reqwest::Url::parse(&authorization.verification_uri).ok();
+    let flow =
+        parsed
+            .as_ref()
+            .and_then(reqwest::Url::host_str)
+            .map_or("unknown", |host| match host {
+                "oauth.accounts.hytale.com" => "downloader",
+                "accounts.hytale.com" => "game-server",
+                _ => "unknown",
+            });
+    let complete_uri = parsed
+        .as_ref()
+        .is_some_and(|uri| uri.query_pairs().any(|(key, _)| key == "user_code"));
+    let code_length = authorization.user_code.as_deref().map_or(0, str::len);
+    format!(
+        "[DMX] Hytale OAuth request #{request_number} published (flow={flow}, verification_uri_complete={}, code_length={code_length}).",
+        if complete_uri { "yes" } else { "no" }
+    )
+}
+
+fn hytale_downloader_failure_diagnostic(output: &str) -> Option<&'static str> {
+    let normalized = output.to_ascii_lowercase();
+    if normalized.contains("context deadline exceeded") || normalized.contains("expired_token") {
+        return Some(
+            "[DMX] Diagnostic classification=oauth-device-timeout: the downloader did not receive a completed browser approval before its OAuth session expired.",
+        );
+    }
+    if normalized.contains("access_denied") || normalized.contains("authorization denied") {
+        return Some(
+            "[DMX] Diagnostic classification=oauth-access-denied: the Hytale authorization request was denied in the browser.",
+        );
+    }
+    if normalized.contains("invalid_grant")
+        || normalized.contains("user_code session could not be found")
+    {
+        return Some(
+            "[DMX] Diagnostic classification=oauth-session-invalid: the Hytale authorization code and downloader session no longer match.",
+        );
+    }
+    if normalized.contains("certificate")
+        || normalized.contains("tls")
+        || normalized.contains("no such host")
+        || normalized.contains("connection refused")
+    {
+        return Some(
+            "[DMX] Diagnostic classification=network-or-tls: the downloader could not establish a valid connection to the Hytale service.",
+        );
+    }
+    None
 }
 
 #[derive(Clone, Copy)]
@@ -8804,7 +9142,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hytale_device_authorization_is_observable_internally_but_never_logged_or_published() {
+    async fn hytale_device_authorization_keeps_real_log_context_without_exposing_secrets() {
         let root = tempfile::tempdir().unwrap();
         let log = root.path().join("install.log");
         let combined = root.path().join("install.combined.log");
@@ -8827,34 +9165,102 @@ mod tests {
                 public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
             },
         ));
-        let sensitive =
-            "Visit https://accounts.hytale.com/device?user_code=ABCD-1234\nCode: ABCD-1234\n";
+        let sensitive = "Please visit the following URL to authenticate:\n\
+             https://accounts.hytale.com/device?device_challenge=challenge_123&user_code=ABCD-1234\n\
+             Authorization code: ABCD-1234\n\
+             Waiting for authorization...\n";
         writer.write_all(sensitive.as_bytes()).await.unwrap();
         drop(writer);
         task.await.unwrap();
 
-        let internal = [line_rx.recv().await.unwrap(), line_rx.recv().await.unwrap()].join("\n");
+        let internal = [
+            line_rx.recv().await.unwrap(),
+            line_rx.recv().await.unwrap(),
+            line_rx.recv().await.unwrap(),
+            line_rx.recv().await.unwrap(),
+        ]
+        .join("\n");
         assert!(internal.contains("ABCD-1234"));
         let contents = tokio::fs::read_to_string(log).await.unwrap();
         assert!(!contents.contains("ABCD-1234"));
-        assert!(!contents.contains("accounts.hytale.com/device"));
-        assert_eq!(
-            contents
-                .lines()
-                .filter(|line| line.contains("[ACTION REQUIRED] Hytale authentication is waiting"))
-                .count(),
-            2
-        );
+        assert!(!contents.contains("challenge_123"));
+        assert!(contents.contains("Please visit the following URL to authenticate:"));
+        assert!(contents.contains("https://accounts.hytale.com/device?[REDACTED]"));
+        assert!(contents.contains("Authorization code: [REDACTED — use the secure action card]"));
+        assert!(contents.contains("Waiting for authorization..."));
         let combined_contents = tokio::fs::read_to_string(combined).await.unwrap();
         assert!(!combined_contents.contains("ABCD-1234"));
-        assert!(!combined_contents.contains("accounts.hytale.com/device"));
-        assert!(combined_contents.contains("[ACTION REQUIRED] Hytale authentication is waiting"));
-        for _ in 0..2 {
+        assert!(!combined_contents.contains("challenge_123"));
+        assert!(combined_contents.contains("Please visit the following URL to authenticate:"));
+        assert!(combined_contents.contains("Waiting for authorization..."));
+        for _ in 0..4 {
             let event = receiver.recv().await.unwrap();
             let message = event.payload["message"].as_str().unwrap();
             assert!(!message.contains("ABCD-1234"));
-            assert!(!message.contains("accounts.hytale.com/device"));
+            assert!(!message.contains("challenge_123"));
         }
+    }
+
+    #[test]
+    fn hytale_log_sanitizer_redacts_a_standalone_code_after_the_downloader_url() {
+        let mut sanitizer = HytaleDeviceLogSanitizer::default();
+        assert_eq!(
+            sanitizer.sanitize("https://oauth.accounts.hytale.com/oauth2/device/verify"),
+            "https://oauth.accounts.hytale.com/oauth2/device/verify"
+        );
+        assert_eq!(
+            sanitizer.sanitize("CIGWERCQ"),
+            "[REDACTED — use the secure action card]"
+        );
+        assert_eq!(
+            sanitizer.sanitize("Token request failed: context deadline exceeded"),
+            "Token request failed: context deadline exceeded"
+        );
+        assert_eq!(
+            sanitizer.sanitize("Process exit code: DEAD"),
+            "Process exit code: DEAD"
+        );
+        assert_eq!(
+            HytaleDeviceLogSanitizer::default().sanitize("Code: CIGWERCQ"),
+            "Code: [REDACTED — use the secure action card]"
+        );
+    }
+
+    #[test]
+    fn hytale_diagnostics_explain_the_flow_without_exposing_the_code() {
+        let authorization = installers::hytale::DeviceAuthorization {
+            verification_uri:
+                "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK"
+                    .to_string(),
+            user_code: Some("x6nimECK".to_string()),
+        };
+        let diagnostic = hytale_device_request_diagnostic(&authorization, 2);
+        assert!(diagnostic.contains("request #2"));
+        assert!(diagnostic.contains("flow=downloader"));
+        assert!(diagnostic.contains("verification_uri_complete=yes"));
+        assert!(diagnostic.contains("code_length=8"));
+        assert!(!diagnostic.contains("x6nimECK"));
+
+        let timeout = hytale_downloader_failure_diagnostic(
+            "error obtaining token: context deadline exceeded",
+        )
+        .unwrap();
+        assert!(timeout.contains("classification=oauth-device-timeout"));
+        assert!(hytale_downloader_failure_diagnostic("unknown provider failure").is_none());
+    }
+
+    #[tokio::test]
+    async fn hytale_credential_diagnostic_reports_metadata_only() {
+        let root = tempfile::tempdir().unwrap();
+        let credentials = root.path().join("credentials.json");
+        assert_eq!(hytale_credential_file_state(&credentials).await, "absent");
+        tokio::fs::write(&credentials, b"secret-value")
+            .await
+            .unwrap();
+        assert_eq!(
+            hytale_credential_file_state(&credentials).await,
+            "present-12-bytes"
+        );
     }
 
     #[tokio::test]

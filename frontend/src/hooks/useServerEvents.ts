@@ -10,7 +10,8 @@ import { API_BASE_URL } from "@/services/api/base.client";
 import { apiService } from "@/services";
 import type { ServerLogSource } from "@/services/api/server.client";
 
-const MAX_VISIBLE_LOG_LINES = 1_000;
+const MAX_VISIBLE_CONSOLE_LOG_LINES = 1_000;
+const MAX_VISIBLE_INSTALL_LOG_LINES = 10_000;
 
 interface UseServerEventsOptions {
     serverId: string | undefined;
@@ -37,8 +38,12 @@ function formatLogLine(stream: string, message: string): string {
     return stream === "stderr" || stream.endsWith("_error") ? `[stderr] ${message}` : message;
 }
 
-function mergeLogHistory(history: string[], live: string[]): string[] {
-    if (live.length === 0) return history.slice(-MAX_VISIBLE_LOG_LINES);
+function visibleLogLimit(source: ServerLogSource): number {
+    return source === "install" ? MAX_VISIBLE_INSTALL_LOG_LINES : MAX_VISIBLE_CONSOLE_LOG_LINES;
+}
+
+function mergeLogHistory(history: string[], live: string[], limit: number): string[] {
+    if (live.length === 0) return history.slice(-limit);
     const maxOverlap = Math.min(history.length, live.length);
     let overlap = 0;
     for (let size = maxOverlap; size > 0; size -= 1) {
@@ -47,7 +52,7 @@ function mergeLogHistory(history: string[], live: string[]): string[] {
             break;
         }
     }
-    return [...history, ...live.slice(overlap)].slice(-MAX_VISIBLE_LOG_LINES);
+    return [...history, ...live.slice(overlap)].slice(-limit);
 }
 
 export function useServerEvents({ serverId, serverStatus, logSource, onServerUpdate, onStatusChange }: UseServerEventsOptions): UseServerEventsReturn {
@@ -90,7 +95,10 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
             const isRequestedSource = typeof stream !== "string"
                 || (logSource === "install" ? stream.startsWith("install") : !stream.startsWith("install"));
             if (typeof message === "string" && isRequestedSource) {
-                setLogs((current) => [...current, formatLogLine(typeof stream === "string" ? stream : "", message)].slice(-MAX_VISIBLE_LOG_LINES));
+                setLogs((current) => [
+                    ...current,
+                    formatLogLine(typeof stream === "string" ? stream : "", message),
+                ].slice(-visibleLogLimit(logSource)));
             }
             return;
         }
@@ -117,7 +125,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         // Installation and startup output can arrive while the REST history is
         // in flight. Merge instead of replacing so the initial synchronization
         // never erases fresh SSE lines.
-        setLogs((current) => mergeLogHistory(history, current));
+        setLogs((current) => mergeLogHistory(history, current, visibleLogLimit(logSource)));
     }, [logSource, serverId]);
 
     const resynchronize = useCallback(() => {
@@ -158,8 +166,10 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
     }, [applyEvent, loadHistory, onServerUpdate, resynchronize, serverId]);
 
     useEffect(() => {
-        if (serverStatus !== "running") setLogs((current) => current.slice(-MAX_VISIBLE_LOG_LINES));
-    }, [serverStatus]);
+        if (serverStatus !== "running") {
+            setLogs((current) => current.slice(-visibleLogLimit(logSource)));
+        }
+    }, [logSource, serverStatus]);
 
     useEffect(() => {
         setPendingDeviceAuthorization(null);
@@ -170,9 +180,9 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         if (!serverId || !command.trim()) return false;
         const response = await apiService.servers.sendCommand(serverId, command.trim());
         if (!response.success) return false;
-        setLogs((current) => [...current, `> ${command.trim()}`].slice(-MAX_VISIBLE_LOG_LINES));
+        setLogs((current) => [...current, `> ${command.trim()}`].slice(-visibleLogLimit(logSource)));
         return true;
-    }, [serverId]);
+    }, [logSource, serverId]);
 
     return {
         logs,

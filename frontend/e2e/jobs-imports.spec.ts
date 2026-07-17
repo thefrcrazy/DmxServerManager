@@ -106,8 +106,8 @@ test("la page Jobs affiche l’action humaine persistante et donne accès au ter
         started_at: "2026-07-13T12:01:00.000Z",
         interaction: {
             kind: "oauth_device",
-            verification_uri: "https://accounts.hytale.com/device?user_code=ABCD-1234",
-            user_code: "ABCD-1234",
+            verification_uri: "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK",
+            user_code: "x6nimECK",
         },
     });
     const api = new ApiMock({ jobs: [job] });
@@ -116,8 +116,8 @@ test("la page Jobs affiche l’action humaine persistante et donne accès au ter
     await page.goto("/jobs");
 
     await expect(page.getByRole("heading", { name: "Authentification Hytale requise" })).toBeVisible();
-    await expect(page.getByText("ABCD-1234", { exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Ouvrir Hytale" })).toHaveAttribute("href", "https://accounts.hytale.com/device?user_code=ABCD-1234");
+    await expect(page.getByText("x6nimECK", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Ouvrir Hytale" })).toHaveAttribute("href", "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK");
     await expect(page.getByRole("link", { name: "Voir le terminal d’installation" })).toHaveAttribute(
         "href",
         "/servers/22222222-2222-4222-8222-222222222222?tab=console&source=install&job=dededede-dede-4ded-8ded-dededededede",

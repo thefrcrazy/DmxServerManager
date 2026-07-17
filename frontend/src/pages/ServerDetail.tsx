@@ -249,6 +249,17 @@ export default function ServerDetail() {
             await loadInstance();
             return;
         }
+        const next = new URLSearchParams(searchParams);
+        next.delete("source");
+        next.delete("job");
+        if (["start", "restart"].includes(nextAction)
+            && profile?.capabilities.includes("console")
+            && hasPermission("server.console.read")) {
+            events.clearLogs();
+            setActiveTab("console");
+            next.set("tab", "console");
+        }
+        setSearchParams(next, { replace: true });
         await loadInstance();
     };
 

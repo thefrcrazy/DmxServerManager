@@ -376,7 +376,8 @@ export default function CreateServer() {
                                                     alt=""
                                                     loading="lazy"
                                                     referrerPolicy="no-referrer"
-                                                    onError={fallbackGameArtwork}
+                                                    style={{ objectPosition: visual.artworkPosition }}
+                                                    onError={(event) => fallbackGameArtwork(event, visual.fallbackArtwork)}
                                                 />
                                             </span>
                                             <span className="profile-picker__content">

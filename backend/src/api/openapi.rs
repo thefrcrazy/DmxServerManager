@@ -1648,8 +1648,8 @@ fn server_schemas() -> Value {
             "required": ["kind", "verification_uri", "user_code"],
             "properties": {
                 "kind": {"const": "oauth_device"},
-                "verification_uri": {"type": "string", "format": "uri", "maxLength": 4096, "description": "HTTPS accounts.hytale.com/device URL with an optional validated user_code query."},
-                "user_code": {"type": ["string", "null"], "minLength": 4, "maxLength": 32, "pattern": "^[A-Z0-9-]+$"}
+                "verification_uri": {"type": "string", "format": "uri", "maxLength": 4096, "description": "Validated HTTPS Hytale game-server or downloader device verification URL."},
+                "user_code": {"type": ["string", "null"], "minLength": 4, "maxLength": 32, "pattern": "^[A-Za-z0-9-]+$"}
             }
         },
         "BedrockArchiveUploadJobInteraction": {

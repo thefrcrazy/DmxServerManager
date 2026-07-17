@@ -2,15 +2,40 @@ import type { SyntheticEvent } from "react";
 
 export interface GameProfileVisual {
     artwork: string;
+    fallbackArtwork?: string;
+    artworkPosition?: string;
     label: string;
 }
 
 const visuals: Record<string, GameProfileVisual> = {
-    hytale: { artwork: "/game-art/hytale.svg", label: "Hytale" },
-    "minecraft-java": { artwork: "/game-art/minecraft-java.svg", label: "Minecraft Java" },
-    "minecraft-bedrock": { artwork: "/game-art/minecraft-bedrock.svg", label: "Minecraft Bedrock" },
-    valheim: { artwork: "/game-art/valheim.svg", label: "Valheim" },
-    palworld: { artwork: "/game-art/palworld.svg", label: "Palworld" },
+    hytale: {
+        artwork: "https://static-cdn.jtvnw.net/ttv-boxart/1003606006_IGDB-600x800.jpg",
+        fallbackArtwork: "/game-art/hytale.svg",
+        artworkPosition: "center top",
+        label: "Hytale",
+    },
+    "minecraft-java": {
+        artwork: "https://static-cdn.jtvnw.net/ttv-boxart/27471_IGDB-600x800.jpg",
+        fallbackArtwork: "/game-art/minecraft-java.svg",
+        artworkPosition: "center top",
+        label: "Minecraft Java",
+    },
+    "minecraft-bedrock": {
+        artwork: "https://static-cdn.jtvnw.net/ttv-boxart/27471_IGDB-600x800.jpg",
+        fallbackArtwork: "/game-art/minecraft-bedrock.svg",
+        artworkPosition: "center top",
+        label: "Minecraft Bedrock",
+    },
+    valheim: {
+        artwork: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/892970/header.jpg",
+        fallbackArtwork: "/game-art/valheim.svg",
+        label: "Valheim",
+    },
+    palworld: {
+        artwork: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1623730/capsule_616x353.jpg",
+        fallbackArtwork: "/game-art/palworld.svg",
+        label: "Palworld",
+    },
     satisfactory: {
         artwork: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/header.jpg",
         label: "Satisfactory",
@@ -34,7 +59,7 @@ export function gameProfileVisual(profileId: string, fallbackLabel?: string): Ga
     if (profileId.startsWith("minecraft-java-")) {
         const loader = profileId.slice("minecraft-java-".length);
         return {
-            artwork: "/game-art/minecraft-java.svg",
+            ...visuals["minecraft-java"],
             label: fallbackLabel ?? `Minecraft Java · ${loader.charAt(0).toUpperCase()}${loader.slice(1)}`,
         };
     }
@@ -45,8 +70,8 @@ export function gameProfileVisual(profileId: string, fallbackLabel?: string): Ga
     return { ...visual, label: fallbackLabel ?? visual.label };
 }
 
-export function fallbackGameArtwork(event: SyntheticEvent<HTMLImageElement>): void {
+export function fallbackGameArtwork(event: SyntheticEvent<HTMLImageElement>, fallbackArtwork = visuals.steam.artwork): void {
     const image = event.currentTarget;
     image.onerror = null;
-    image.src = visuals.steam.artwork;
+    image.src = fallbackArtwork;
 }

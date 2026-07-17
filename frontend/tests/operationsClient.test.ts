@@ -89,7 +89,7 @@ describe("clients opérationnels", () => {
         const response = await new ServerClient().getLogHistory(SERVER_ID, "install");
 
         expect(response.success).toBe(true);
-        expect(input).toBe(`/api/v1/servers/${SERVER_ID}/logs?source=install&limit=500`);
+        expect(input).toBe(`/api/v1/servers/${SERVER_ID}/logs?source=install&limit=10000`);
         if (response.success) expect(response.data.items).toHaveLength(2);
     });
 
@@ -432,7 +432,7 @@ describe("clients opérationnels", () => {
     test("n’accepte l’interaction OAuth appareil que depuis Hytale officiel", () => {
         const payload = {
             job_id: "55555555-5555-4555-8555-555555555555",
-            interaction: { kind: "oauth_device", verification_uri: "https://accounts.hytale.com/device?user_code=ABCD-1234", user_code: "ABCD-1234" },
+            interaction: { kind: "oauth_device", verification_uri: "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK", user_code: "x6nimECK" },
         };
         expect(HytaleDeviceAuthorizationSchema.safeParse(payload).success).toBe(true);
         expect(HytaleDeviceAuthorizationSchema.safeParse({
@@ -441,6 +441,7 @@ describe("clients opérationnels", () => {
         }).success).toBe(false);
         expect(HytaleDeviceAuthorizationSchema.safeParse({ ...payload, interaction: { ...payload.interaction, verification_uri: "https://accounts.hytale.com.evil.example/device" } }).success).toBe(false);
         expect(HytaleDeviceAuthorizationSchema.safeParse({ ...payload, interaction: { ...payload.interaction, verification_uri: "https://accounts.hytale.com/other" } }).success).toBe(false);
+        expect(HytaleDeviceAuthorizationSchema.safeParse({ ...payload, interaction: { ...payload.interaction, verification_uri: "https://oauth.accounts.hytale.com/oauth2/device/verify?redirect=https://evil.example" } }).success).toBe(false);
         expect(HytaleDeviceAuthorizationSchema.safeParse({ ...payload, token: "must-not-pass" }).success).toBe(false);
     });
 

@@ -188,8 +188,8 @@ export const en: TranslationType = {
     },
     hytale_device: {
         title: "Hytale authentication required",
-        description: "Open the official Hytale page and enter the displayed code if requested to continue installation.",
-        content_blocker_hint: "If the Cloudflare challenge does not appear, temporarily disable the content blocker for accounts.hytale.com and reopen this link.",
+        description: "Use the Open Hytale button, verify that the code matches, then also approve the permissions screen before the request expires.",
+        content_blocker_hint: "If the Cloudflare challenge does not appear, temporarily disable the content blocker for the accounts.hytale.com and oauth.accounts.hytale.com domains, then reopen this link.",
         user_code: "User code", copy: "Copy", copied: "Copied", open: "Open Hytale"
     },
     chat: {
@@ -962,6 +962,8 @@ export const en: TranslationType = {
             start_server_hint: "Start the server to see the console.",
             installation_running: "Installation in progress…",
             installation_hint: "Installer output appears here. Any required human action is shown above and on the Jobs page.",
+            copy_logs: "Copy all visible logs",
+            logs_copied: "Logs copied",
             command_placeholder: "Enter a command..."
         },
         config: {

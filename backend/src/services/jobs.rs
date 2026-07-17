@@ -876,16 +876,24 @@ fn interaction_is_safe(interaction: &JobInteraction, job_instance_id: Option<&st
                 .query_pairs()
                 .filter_map(|(key, value)| (key == "device_challenge").then(|| value.into_owned()))
                 .collect::<Vec<_>>();
+            let is_server_device_page =
+                uri.host_str() == Some("accounts.hytale.com") && uri.path() == "/device";
+            let is_downloader_device_page = uri.host_str() == Some("oauth.accounts.hytale.com")
+                && uri.path() == "/oauth2/device/verify";
+            let valid_query = (is_server_device_page
+                && uri
+                    .query_pairs()
+                    .all(|(key, _)| matches!(key.as_ref(), "user_code" | "device_challenge")))
+                || (is_downloader_device_page
+                    && challenges.is_empty()
+                    && uri.query_pairs().all(|(key, _)| key == "user_code"));
             let valid_uri = uri.scheme() == "https"
-                && uri.host_str() == Some("accounts.hytale.com")
+                && (is_server_device_page || is_downloader_device_page)
                 && uri.port().is_none()
-                && uri.path() == "/device"
                 && uri.username().is_empty()
                 && uri.password().is_none()
                 && uri.fragment().is_none()
-                && uri
-                    .query_pairs()
-                    .all(|(key, _)| matches!(key.as_ref(), "user_code" | "device_challenge"))
+                && valid_query
                 && query_codes.len() <= 1
                 && query_codes
                     .first()
@@ -935,7 +943,7 @@ fn valid_user_code(value: &str) -> bool {
     (4..=32).contains(&value.len())
         && value
             .bytes()
-            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'-')
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
 #[cfg(test)]
@@ -1238,8 +1246,8 @@ mod tests {
                 "job_id": job.id,
                 "interaction": {
                     "kind": "oauth_device",
-                    "verification_uri": "https://accounts.hytale.com/device?user_code=NEWCODE1",
-                    "user_code": "NEWCODE1"
+                    "verification_uri": "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK",
+                    "user_code": "x6nimECK"
                 }
             }),
         )
@@ -1249,7 +1257,7 @@ mod tests {
         assert!(matches!(
             refreshed.interaction,
             Some(JobInteraction::OauthDevice { ref user_code, .. })
-                if user_code.as_deref() == Some("NEWCODE1")
+                if user_code.as_deref() == Some("x6nimECK")
         ));
 
         append_event(

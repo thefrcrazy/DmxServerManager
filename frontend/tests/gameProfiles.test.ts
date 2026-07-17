@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { gameProfileVisual } from "../src/constants/gameProfiles";
 import { GameProfileSchema, InstanceSchema, ProfileVersionCatalogSchema } from "../src/schemas/api";
 import { initialProfileSettings, isSafeRelativeExecutable, partitionProfileValues } from "../src/utils/profileSettings";
 
@@ -31,6 +32,20 @@ const valheimProfile = GameProfileSchema.parse({
 });
 
 describe("contrats des profils", () => {
+    test("utilise les visuels publics Steam/Twitch avec un fallback local", () => {
+        const hytale = gameProfileVisual("hytale");
+        const minecraft = gameProfileVisual("minecraft-java-fabric");
+        const valheim = gameProfileVisual("valheim");
+        const palworld = gameProfileVisual("palworld");
+
+        expect(new URL(hytale.artwork).hostname).toBe("static-cdn.jtvnw.net");
+        expect(hytale.fallbackArtwork).toBe("/game-art/hytale.svg");
+        expect(new URL(minecraft.artwork).hostname).toBe("static-cdn.jtvnw.net");
+        expect(minecraft.fallbackArtwork).toBe("/game-art/minecraft-java.svg");
+        expect(new URL(valheim.artwork).hostname).toBe("shared.akamai.steamstatic.com");
+        expect(new URL(palworld.artwork).hostname).toBe("shared.akamai.steamstatic.com");
+    });
+
     test("valide le manifeste complet renvoyé par le backend", () => {
         expect(valheimProfile.ports[1]?.adjacent_to).toBe("port");
         expect(valheimProfile.lifecycle.stop.kind).toBe("interrupt");

@@ -161,11 +161,11 @@ test("l’autorisation appareil Hytale SSE reste éphémère et pointe uniquemen
     await page.goto(`/servers/${INSTANCES[0]!.id}`);
 
     await expect(page.getByRole("heading", { name: "Authentification Hytale requise" })).toBeVisible();
-    await expect(page.getByText("ABCD-1234", { exact: true })).toBeVisible();
+    await expect(page.getByText("x6nimECK", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Ouvrir Hytale" })).toHaveAttribute(
         "href",
-        "https://accounts.hytale.com/device?user_code=ABCD-1234",
+        "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK",
     );
     const persisted = await page.evaluate(() => `${JSON.stringify(localStorage)}${JSON.stringify(sessionStorage)}`);
-    expect(persisted).not.toContain("ABCD-1234");
+    expect(persisted).not.toContain("x6nimECK");
 });

@@ -181,14 +181,22 @@ const officialHytaleUri = z.url().refine((value) => {
     const uri = new URL(value);
     const userCodes = uri.searchParams.getAll("user_code");
     const challenges = uri.searchParams.getAll("device_challenge");
+    const isServerDevicePage = uri.hostname === "accounts.hytale.com"
+        && uri.pathname === "/device";
+    const isDownloaderDevicePage = uri.hostname === "oauth.accounts.hytale.com"
+        && uri.pathname === "/oauth2/device/verify";
+    const validQuery = (isServerDevicePage
+        && [...uri.searchParams.keys()].every((key) => key === "user_code" || key === "device_challenge"))
+        || (isDownloaderDevicePage
+            && challenges.length === 0
+            && [...uri.searchParams.keys()].every((key) => key === "user_code"));
     return uri.protocol === "https:"
-        && uri.hostname === "accounts.hytale.com"
+        && (isServerDevicePage || isDownloaderDevicePage)
         && uri.port === ""
-        && uri.pathname === "/device"
         && uri.username === ""
         && uri.password === ""
         && uri.hash === ""
-        && [...uri.searchParams.keys()].every((key) => key === "user_code" || key === "device_challenge")
+        && validQuery
         && userCodes.length <= 1
         && challenges.length <= 1
         && challenges.every((challenge) => /^[A-Za-z0-9._~=-]{16,4096}$/.test(challenge));
@@ -197,7 +205,7 @@ const officialHytaleUri = z.url().refine((value) => {
 export const HytaleDeviceInteractionSchema = z.object({
     kind: z.literal("oauth_device"),
     verification_uri: officialHytaleUri,
-    user_code: z.string().min(4).max(32).regex(/^[A-Z0-9-]+$/).nullable(),
+    user_code: z.string().min(4).max(32).regex(/^[A-Za-z0-9-]+$/).nullable(),
 }).strict().superRefine((value, context) => {
     const queryCode = new URL(value.verification_uri).searchParams.get("user_code");
     if (queryCode !== null && queryCode !== value.user_code) {

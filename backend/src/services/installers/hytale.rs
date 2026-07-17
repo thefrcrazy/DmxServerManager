@@ -22,7 +22,8 @@ const MAX_DOWNLOADER_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_CREDENTIAL_BYTES: u64 = 16 * 1024;
 
 pub const DOWNLOADER_CREDENTIAL_SECRET: &str = "hytale_downloader_credentials";
-const HYTALE_DEVICE_VERIFICATION_URI: &str = "https://accounts.hytale.com/device";
+const HYTALE_DOWNLOADER_VERIFICATION_URI: &str =
+    "https://oauth.accounts.hytale.com/oauth2/device/verify";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceAuthorization {
@@ -432,26 +433,26 @@ pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> 
                 url.host_str() == Some("accounts.hytale.com") && url.path() == "/device";
             let downloader_verification_page = url.host_str() == Some("oauth.accounts.hytale.com")
                 && url.path() == "/oauth2/device/verify";
+            let valid_query = (official_device_page
+                && url
+                    .query_pairs()
+                    .all(|(key, _)| matches!(key.as_ref(), "user_code" | "device_challenge")))
+                || (downloader_verification_page
+                    && url.query_pairs().all(|(key, _)| key == "user_code"));
             (url.scheme() == "https"
                 && (official_device_page || downloader_verification_page)
+                && url.port().is_none()
                 && url.username().is_empty()
                 && url.password().is_none()
-                && url.fragment().is_none())
-            .then_some((url, output_end))
+                && url.fragment().is_none()
+                && valid_query)
+                .then_some((url, output_end))
         })
         .collect::<Vec<_>>();
-    // Prefer the complete public device URL emitted by the downloader. It
-    // contains a short-lived device_challenge that must not be discarded.
-    // Some downloader versions print the generic OAuth page afterwards.
-    let url_match = matches
-        .iter()
-        .rev()
-        .find(|(url, _)| {
-            url.host_str() == Some("accounts.hytale.com")
-                && url.path() == "/device"
-                && url.query_pairs().any(|(key, _)| key == "device_challenge")
-        })
-        .or_else(|| matches.last());
+    // Always parse the latest authorization block. Keeping an older complete
+    // URL from the rolling output tail would surface an expired session after
+    // the downloader emits a fresh generic URL and code.
+    let url_match = matches.last();
     let url = url_match.map(|(url, _)| url);
     let code_output = url_match
         .and_then(|(_, end)| sanitized.get(*end..))
@@ -464,40 +465,51 @@ pub fn detect_device_authorization(output: &str) -> Option<DeviceAuthorization> 
         })
         .filter(|value| valid_user_code(value));
     let text_code = Regex::new(
-        r"(?i)(?:authorization|user[_ ]?|device|verification)\s*code\s*[:=]\s*([A-Z0-9-]{4,32})",
+        r"(?i)(?:authorization|user[_ ]?|device|verification)\s*code\s*[:=]\s*([A-Za-z0-9-]{4,32})",
     )
     .ok()?
     .captures_iter(code_output)
     .last()
     .and_then(|captures| captures.get(1))
-    .map(|value| value.as_str().to_ascii_uppercase())
+    .map(|value| value.as_str().to_string())
     .filter(|value| valid_user_code(value));
     let standalone_code = url.and_then(|_| {
-        Regex::new(r"(?m)^\s*([A-Z0-9-]{6,16})\s*$")
+        Regex::new(r"(?m)^\s*([A-Za-z0-9-]{6,16})\s*$")
             .ok()?
             .captures_iter(code_output)
             .last()
             .and_then(|captures| captures.get(1))
-            .map(|value| value.as_str().to_ascii_uppercase())
+            .map(|value| value.as_str().to_string())
             .filter(|value| valid_user_code(value))
     });
     if url.is_none() && text_code.is_none() {
         return None;
     }
-    let user_code = query_code.or(text_code).or(standalone_code)?;
-    let verification_uri = url
-        .filter(|url| {
-            url.host_str() == Some("accounts.hytale.com")
-                && url.path() == "/device"
-                && url.query_pairs().any(|(key, value)| {
-                    key == "user_code" && value.eq_ignore_ascii_case(&user_code)
-                })
-        })
-        .cloned()
-        .unwrap_or_else(|| {
-            Url::parse(HYTALE_DEVICE_VERIFICATION_URI)
-                .expect("constant Hytale device verification URL is valid")
-        });
+    // A labelled/standalone code printed after the URL is newer than a query
+    // value retained in the rolling tail.
+    let user_code = text_code.or(standalone_code).or(query_code)?;
+    let mut verification_uri = url.cloned().unwrap_or_else(|| {
+        Url::parse(HYTALE_DOWNLOADER_VERIFICATION_URI)
+            .expect("constant Hytale downloader verification URL is valid")
+    });
+    let query_codes = verification_uri
+        .query_pairs()
+        .filter_map(|(key, value)| (key == "user_code").then(|| value.into_owned()))
+        .collect::<Vec<_>>();
+    let has_matching_query_code = query_codes.len() == 1 && query_codes.first() == Some(&user_code);
+    if !has_matching_query_code {
+        let retained_query = verification_uri
+            .query_pairs()
+            .filter(|(key, _)| key != "user_code")
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect::<Vec<_>>();
+        verification_uri.set_query(None);
+        let mut query = verification_uri.query_pairs_mut();
+        for (key, value) in retained_query {
+            query.append_pair(&key, &value);
+        }
+        query.append_pair("user_code", &user_code);
+    }
     Some(DeviceAuthorization {
         verification_uri: verification_uri.to_string(),
         user_code: Some(user_code),
@@ -755,7 +767,7 @@ fn valid_user_code(value: &str) -> bool {
     (4..=32).contains(&value.len())
         && value
             .bytes()
-            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'-')
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
 fn metadata_is_link_like(metadata: &std::fs::Metadata) -> bool {
@@ -822,6 +834,22 @@ mod tests {
         assert!(
             detect_device_authorization("http://accounts.hytale.com/device?user_code=X").is_none()
         );
+        let sanitized_port = detect_device_authorization(
+            "https://oauth.accounts.hytale.com:444/oauth2/device/verify?user_code=ABCD1234",
+        )
+        .unwrap();
+        assert_eq!(
+            sanitized_port.verification_uri,
+            "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=ABCD1234"
+        );
+        let sanitized = detect_device_authorization(
+            "https://oauth.accounts.hytale.com/oauth2/device/verify?redirect=https://evil.example\nAuthorization code: ABCD1234",
+        )
+        .unwrap();
+        assert_eq!(
+            sanitized.verification_uri,
+            "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=ABCD1234"
+        );
     }
 
     #[test]
@@ -829,26 +857,43 @@ mod tests {
         let detected = detect_device_authorization("Authorization code: ABCD-1234").unwrap();
         assert_eq!(
             detected.verification_uri,
-            "https://accounts.hytale.com/device"
+            "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=ABCD-1234"
         );
         assert_eq!(detected.user_code.as_deref(), Some("ABCD-1234"));
         assert!(detect_device_authorization("Process exit code: 8").is_none());
     }
 
     #[test]
-    fn complete_device_url_wins_over_the_generic_oauth_route() {
+    fn official_downloader_complete_url_is_preserved_with_mixed_case_code() {
         let detected = detect_device_authorization(
-            "https://accounts.hytale.com/device?device_challenge=challenge_123&user_code=ABCD1234\n\
-             Please visit the following URL to authenticate:\n\
+            "Please visit the following URL to authenticate:\n\
+             https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK\n\
+             Or visit the following URL and enter the code:\n\
              https://oauth.accounts.hytale.com/oauth2/device/verify\n\
-             ABCD1234\n",
+             Authorization code: x6nimECK\n",
         )
         .unwrap();
         assert_eq!(
             detected.verification_uri,
-            "https://accounts.hytale.com/device?device_challenge=challenge_123&user_code=ABCD1234"
+            "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK"
         );
-        assert_eq!(detected.user_code.as_deref(), Some("ABCD1234"));
+        assert_eq!(detected.user_code.as_deref(), Some("x6nimECK"));
+    }
+
+    #[test]
+    fn latest_downloader_authorization_block_wins_over_an_older_device_url() {
+        let detected = detect_device_authorization(
+            "https://accounts.hytale.com/device?device_challenge=challenge_123&user_code=ABCD1234\n\
+             Please visit the following URL to authenticate:\n\
+             https://oauth.accounts.hytale.com/oauth2/device/verify\n\
+             x6nimECK\n",
+        )
+        .unwrap();
+        assert_eq!(
+            detected.verification_uri,
+            "https://oauth.accounts.hytale.com/oauth2/device/verify?user_code=x6nimECK"
+        );
+        assert_eq!(detected.user_code.as_deref(), Some("x6nimECK"));
         assert!(
             detect_device_authorization(
                 "OLD-CODE\nhttps://oauth.accounts.hytale.com/oauth2/device/verify\n"
