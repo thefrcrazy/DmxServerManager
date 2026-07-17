@@ -1,7 +1,7 @@
-import { Activity, Archive, CalendarClock, Download, FolderOpen, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Shield, Skull, Square, Terminal, TriangleAlert, Trash2, Wrench } from "lucide-react";
+import { Activity, Archive, CalendarClock, Download, FolderOpen, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Shield, Skull, Square, Terminal, TriangleAlert, Trash2, Users, Wrench } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerSchedules, profileSettingTitle } from "@/components/features/server";
+import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConfigFiles, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerPlayers, ServerSchedules, profileSettingTitle } from "@/components/features/server";
 import { EmptyState, LoadingScreen } from "@/components/shared";
 import { Button, StatPill, Tabs } from "@/components/ui";
 import { useDialog } from "@/contexts/DialogContext";
@@ -13,12 +13,12 @@ import { usePermission, useServerEvents } from "@/hooks";
 import { SecretStatusSchema } from "@/schemas/api";
 import type { GameProfile, Instance } from "@/schemas/api";
 import { BedrockArchiveAuthorizationSchema, HytaleDeviceAuthorizationSchema } from "@/schemas/operations";
-import type { BedrockArchiveAuthorization, HytaleDeviceAuthorization } from "@/schemas/operations";
+import type { BedrockArchiveAuthorization, HytaleDeviceAuthorization, PlayerSnapshot } from "@/schemas/operations";
 import { apiService } from "@/services";
 import type { ServerAction } from "@/services/api/server.client";
 import type { ProfileValue } from "@/utils/profileSettings";
 
-type TabId = "configuration" | "console" | "files" | "backups" | "metrics" | "mods" | "schedules";
+type TabId = "configuration" | "console" | "players" | "files" | "backups" | "metrics" | "mods" | "schedules";
 
 export default function ServerDetail() {
     const { id } = useParams<{ id: string }>();
@@ -47,6 +47,9 @@ export default function ServerDetail() {
     const [fallbackDeviceAuthorization, setFallbackDeviceAuthorization] = useState<HytaleDeviceAuthorization | null>(null);
     const [profileOptions, setProfileOptions] = useState<Record<string, readonly string[]>>({});
     const [catalogLoading, setCatalogLoading] = useState(false);
+    const [playerSnapshot, setPlayerSnapshot] = useState<PlayerSnapshot | null>(null);
+    const [playersLoading, setPlayersLoading] = useState(true);
+    const [playersError, setPlayersError] = useState<string | null>(null);
 
     const loadInstance = useCallback(async () => {
         if (!id) return;
@@ -61,6 +64,18 @@ export default function ServerDetail() {
         setAutoStart(response.data.auto_start);
         setWatchdog(response.data.watchdog_enabled);
         setLoadError(null);
+    }, [id]);
+
+    const loadPlayers = useCallback(async () => {
+        if (!id) return;
+        const response = await apiService.players.snapshot(id);
+        setPlayersLoading(false);
+        if (!response.success) {
+            setPlayersError(response.error.message);
+            return;
+        }
+        setPlayerSnapshot(response.data);
+        setPlayersError(null);
     }, [id]);
 
     useEffect(() => {
@@ -169,6 +184,11 @@ export default function ServerDetail() {
     });
 
     useEffect(() => {
+        setPlayersLoading(true);
+        void loadPlayers();
+    }, [events.playerRevision, loadPlayers]);
+
+    useEffect(() => {
         if (!id
             || !instance
             || !["installing", "updating"].includes(instance.installation_state)
@@ -205,6 +225,9 @@ export default function ServerDetail() {
         ];
         if (profile?.capabilities.includes("console") && hasPermission("server.console.read")) {
             result.unshift({ id: "console", label: t("server_detail.tabs.terminal"), icon: <Terminal size={18} /> });
+        }
+        if (hasPermission("server.read")) {
+            result.push({ id: "players", label: t("server_detail.tabs.players"), icon: <Users size={18} /> });
         }
         if (profile?.capabilities.includes("files") && hasPermission("server.files.read")) {
             result.push({ id: "files", label: t("server_detail.tabs.files"), icon: <FolderOpen size={18} /> });
@@ -364,6 +387,7 @@ export default function ServerDetail() {
                 <StatPill icon={<Download size={18} />} label={t("server_detail.installation_state")} value={t(`servers.installation_states.${instance.installation_state}`)} variant={installed ? "success" : "warning"} />
                 <StatPill icon={<Shield size={18} />} label={t("server_detail.desired_state")} value={t(`servers.desired_states.${instance.desired_state}`)} variant={instance.desired_state === "running" ? "success" : "muted"} />
                 <StatPill icon={<Wrench size={18} />} label={t("server_detail.configuration_version")} value={`v${instance.config_version}`} variant="default" />
+                <StatPill icon={<Users size={18} />} label={t("server_detail.players.online")} value={playerSnapshot?.online_count ?? "—"} variant={playerSnapshot?.online_count ? "success" : "muted"} />
                 {instance.installed_version && <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={instance.installed_version} variant="default" />}
                 {instance.installed_build && <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_build")} value={instance.installed_build} variant="default" />}
             </div>
@@ -402,8 +426,8 @@ export default function ServerDetail() {
             <div className="tab-content" id="server-detail-tabpanel" role="tabpanel" aria-labelledby={`server-detail-tab-${activeTab}`}>
                 {activeTab === "console" ? (
                     <ServerConsole
+                        historyKey={instance.id}
                         logs={events.logs}
-                        isConnected={events.isConnected}
                         isRunning={running}
                         isInstalling={["installing", "updating"].includes(instance.installation_state)}
                         onSendCommand={(command) => void events.sendCommand(command)}
@@ -414,6 +438,18 @@ export default function ServerDetail() {
                         canWrite={hasPermission("server.files.write")}
                         isStopped={fullyStopped}
                         refreshSignal={events.operationRevision}
+                    />
+                ) : activeTab === "players" ? (
+                    <ServerPlayers
+                        instanceId={instance.id}
+                        snapshot={playerSnapshot}
+                        loading={playersLoading}
+                        error={playersError}
+                        canReadAccess={hasPermission("server.files.read")}
+                        canWriteAccess={hasPermission("server.files.write")}
+                        isRunning={running}
+                        refreshSignal={events.operationRevision}
+                        onRefresh={() => void loadPlayers()}
                     />
                 ) : activeTab === "backups" ? (
                     <ServerBackups
@@ -501,6 +537,15 @@ export default function ServerDetail() {
                             {hasPermission("server.delete") && <Button variant="danger" onClick={() => void deleteInstance()} disabled={instance.runtime_state !== "stopped" || instance.desired_state !== "stopped"} icon={<Trash2 size={17} />}>{t("common.delete")}</Button>}
                             <Button onClick={() => void saveConfiguration()} isLoading={saving} disabled={!hasPermission("server.update")} icon={<Save size={17} />}>{t("common.save")}</Button>
                         </div>
+                        {hasPermission("server.files.read") && (
+                            <ServerConfigFiles
+                                instanceId={instance.id}
+                                category="configuration"
+                                canWrite={hasPermission("server.files.write")}
+                                isRunning={running}
+                                refreshSignal={events.operationRevision}
+                            />
+                        )}
                     </div>
                 )}
             </div>

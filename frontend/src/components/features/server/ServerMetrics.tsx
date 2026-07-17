@@ -1,4 +1,4 @@
-import { Activity, Clock3, HardDrive, LoaderCircle, MemoryStick } from "lucide-react";
+import { Activity, Clock3, HardDrive, LoaderCircle, MemoryStick, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -100,6 +100,7 @@ export default function ServerMetrics({ instanceId, isRunning, refreshSignal = 0
                     <div><MemoryStick aria-hidden="true" /><span>{t("server_detail.metrics.ram")}</span><strong>{formatBytes(latest.memory_bytes)}</strong></div>
                     <div><HardDrive aria-hidden="true" /><span>{t("server_detail.metrics.disk")}</span><strong>{formatBytes(latest.disk_bytes)}</strong></div>
                     <div><Clock3 aria-hidden="true" /><span>{t("server_detail.metrics.uptime")}</span><strong>{formatUptime(latest.uptime_seconds, t("server_detail.metrics.day_short"))}</strong></div>
+                    <div><Users aria-hidden="true" /><span>{t("server_detail.metrics.players")}</span><strong>{latest.player_count ?? 0}</strong></div>
                 </div>
                 <div className="metric-charts">
                     <Sparkline points={points} value={(point) => point.cpu_usage} label={t("server_detail.metrics.cpu_history")} format={(value) => `${value.toFixed(1)} %`} minimumMaximum={100} />
@@ -108,8 +109,8 @@ export default function ServerMetrics({ instanceId, isRunning, refreshSignal = 0
                 <details className="metric-samples">
                     <summary>{t("server_detail.metrics.samples")}</summary>
                     <div className="table-scroll"><table>
-                        <thead><tr><th>{t("server_detail.metrics.recorded_at")}</th><th>{t("server_detail.metrics.cpu")}</th><th>{t("server_detail.metrics.ram")}</th><th>{t("server_detail.metrics.disk")}</th></tr></thead>
-                        <tbody>{recent.map((point) => <tr key={point.id}><td><time dateTime={point.recorded_at}>{new Date(point.recorded_at).toLocaleString(language === "fr" ? "fr-FR" : "en-US")}</time></td><td>{point.cpu_usage.toFixed(1)} %</td><td>{formatBytes(point.memory_bytes)}</td><td>{formatBytes(point.disk_bytes)}</td></tr>)}</tbody>
+                        <thead><tr><th>{t("server_detail.metrics.recorded_at")}</th><th>{t("server_detail.metrics.cpu")}</th><th>{t("server_detail.metrics.ram")}</th><th>{t("server_detail.metrics.disk")}</th><th>{t("server_detail.metrics.players")}</th></tr></thead>
+                        <tbody>{recent.map((point) => <tr key={point.id}><td><time dateTime={point.recorded_at}>{new Date(point.recorded_at).toLocaleString(language === "fr" ? "fr-FR" : "en-US")}</time></td><td>{point.cpu_usage.toFixed(1)} %</td><td>{formatBytes(point.memory_bytes)}</td><td>{formatBytes(point.disk_bytes)}</td><td>{point.player_count ?? "—"}</td></tr>)}</tbody>
                     </table></div>
                 </details>
             </>}

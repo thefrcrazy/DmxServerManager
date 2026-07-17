@@ -28,6 +28,7 @@ struct MetricsSnapshot {
     memory_bytes: u64,
     disk_bytes: u64,
     uptime_seconds: u64,
+    player_count: i64,
 }
 
 /// Starts one bounded collector for a supervised process tree. Dropping the
@@ -75,11 +76,25 @@ pub fn spawn_collector(
                         Ok(value) => disk_bytes = value,
                         Err(error) => tracing::warn!(instance_id, %error, "instance disk metric unavailable"),
                     }
+                    let player_count: i64 = match sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM server_players WHERE instance_id = ? AND online = 1",
+                    )
+                    .bind(&instance_id)
+                    .fetch_one(&pool)
+                    .await
+                    {
+                        Ok(count) => count,
+                        Err(error) => {
+                            tracing::warn!(instance_id, %error, "player count metric unavailable");
+                            0
+                        }
+                    };
                     let snapshot = MetricsSnapshot {
                         cpu_usage: process.cpu_usage,
                         memory_bytes: process.memory_bytes,
                         disk_bytes,
                         uptime_seconds: process.uptime_seconds,
+                        player_count,
                     };
                     if let Err(error) = persist(&pool, &instance_id, &snapshot).await {
                         tracing::warn!(instance_id, %error, "failed to persist server metrics");
@@ -161,8 +176,8 @@ async fn persist(
     sqlx::query(
         r#"
         INSERT INTO server_metrics
-            (id, server_id, cpu_usage, memory_bytes, disk_bytes, uptime_seconds, recorded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, server_id, cpu_usage, memory_bytes, disk_bytes, uptime_seconds, player_count, recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(uuid::Uuid::new_v4().to_string())
@@ -171,6 +186,7 @@ async fn persist(
     .bind(memory_bytes)
     .bind(disk_bytes)
     .bind(uptime_seconds)
+    .bind(snapshot.player_count)
     .bind(now.to_rfc3339())
     .execute(&mut *transaction)
     .await?;

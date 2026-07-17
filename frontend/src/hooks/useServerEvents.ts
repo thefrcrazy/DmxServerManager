@@ -28,6 +28,7 @@ interface UseServerEventsReturn {
     sendCommand: (command: string) => Promise<boolean>;
     clearLogs: () => void;
     operationRevision: number;
+    playerRevision: number;
     scheduleRevision: number;
     pendingDeviceAuthorization: HytaleDeviceAuthorization | null;
     pendingBedrockArchive: BedrockArchiveAuthorization | null;
@@ -59,6 +60,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
     const [logs, setLogs] = useState<string[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [operationRevision, setOperationRevision] = useState(0);
+    const [playerRevision, setPlayerRevision] = useState(0);
     const [scheduleRevision, setScheduleRevision] = useState(0);
     const [pendingDeviceAuthorization, setPendingDeviceAuthorization] = useState<HytaleDeviceAuthorization | null>(null);
     const [pendingBedrockArchive, setPendingBedrockArchive] = useState<BedrockArchiveAuthorization | null>(null);
@@ -109,9 +111,10 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
             const validStatus = RuntimeStateSchema.safeParse(status);
             if (validStatus.success) onStatusChange?.(validStatus.data);
         }
-        if (type.startsWith("job.") || type.startsWith("backup.") || type.startsWith("file.") || type.startsWith("mod.") || type.startsWith("schedule.") || type === "server.metrics") {
+        if (type.startsWith("job.") || type.startsWith("backup.") || type.startsWith("file.") || type.startsWith("config.") || type.startsWith("mod.") || type.startsWith("schedule.") || type === "server.metrics" || type === "server.players") {
             setOperationRevision((revision) => revision + 1);
         }
+        if (type === "server.players") setPlayerRevision((revision) => revision + 1);
         if (type.startsWith("schedule.")) setScheduleRevision((revision) => revision + 1);
         if (type.startsWith("server.") || type.startsWith("job.")) onServerUpdate();
     }, [logSource, onServerUpdate, onStatusChange, serverId]);
@@ -132,6 +135,8 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         void loadHistory();
         setPendingDeviceAuthorization(null);
         setPendingBedrockArchive(null);
+        setOperationRevision((revision) => revision + 1);
+        setPlayerRevision((revision) => revision + 1);
         onServerUpdate();
     }, [loadHistory, onServerUpdate]);
 
@@ -151,10 +156,12 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         };
         source.onmessage = applyEvent;
         for (const type of [
-            "server.log", "server.updated", "server.state", "job.updated", "job.waiting_for_user",
-            "server.metrics",
+            "server.log", "server.updated", "server.state", "server.started", "server.stopped", "server.crashed",
+            "server.metrics", "server.players", "server.update_applied", "server.update_failed", "server.update_rolled_back",
+            "job.updated", "job.waiting_for_user",
             "backup.created", "backup.deleted", "backup.restored", "backup.failed", "backup.restore_failed",
             "file.uploaded", "file.text_written", "file.directory_created", "file.deleted",
+            "config.queued", "config.cancelled", "config.applied", "config.conflict",
             "mod.installed", "mod.deleted",
             "schedule.created", "schedule.updated", "schedule.deleted", "schedule.triggered",
         ]) {
@@ -191,6 +198,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         sendCommand,
         clearLogs: () => setLogs([]),
         operationRevision,
+        playerRevision,
         scheduleRevision,
         pendingDeviceAuthorization,
         pendingBedrockArchive,

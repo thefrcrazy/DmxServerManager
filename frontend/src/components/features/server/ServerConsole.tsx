@@ -5,12 +5,14 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { Tooltip, Button } from "@/components/ui";
 
 interface ServerConsoleProps {
+    historyKey: string;
     logs: string[];
-    isConnected: boolean;
     isRunning: boolean;
     isInstalling?: boolean;
     onSendCommand: (command: string) => void;
 }
+
+const commandHistories = new Map<string, string[]>();
 
 async function copyTextToClipboard(value: string): Promise<boolean> {
     if (navigator.clipboard?.writeText) {
@@ -43,8 +45,8 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
 }
 
 export default function ServerConsole({
+    historyKey,
     logs,
-    isConnected,
     isRunning,
     isInstalling = false,
     onSendCommand,
@@ -54,6 +56,16 @@ export default function ServerConsole({
     const [command, setCommand] = React.useState("");
     const [logsCopied, setLogsCopied] = React.useState(false);
     const isAtBottomRef = useRef(true);
+    const commandHistoryRef = useRef<string[]>([]);
+    const commandHistoryIndexRef = useRef<number | null>(null);
+    const commandDraftRef = useRef("");
+
+    useEffect(() => {
+        commandHistoryRef.current = commandHistories.get(historyKey) ?? [];
+        commandHistoryIndexRef.current = null;
+        commandDraftRef.current = "";
+        setCommand("");
+    }, [historyKey]);
 
     // Track scroll position
     const handleScroll = () => {
@@ -79,9 +91,44 @@ export default function ServerConsole({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!command.trim()) return;
-        onSendCommand(command);
+        const normalized = command.trim();
+        if (!normalized) return;
+        onSendCommand(normalized);
+        const history = commandHistoryRef.current;
+        if (history.at(-1) !== normalized) {
+            commandHistoryRef.current = [...history, normalized].slice(-100);
+            commandHistories.set(historyKey, commandHistoryRef.current);
+        }
+        commandHistoryIndexRef.current = null;
+        commandDraftRef.current = "";
         setCommand("");
+    };
+
+    const handleCommandHistory = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        const history = commandHistoryRef.current;
+        if (history.length === 0) return;
+        const currentIndex = commandHistoryIndexRef.current;
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            if (currentIndex === null) commandDraftRef.current = command;
+            const nextIndex = currentIndex === null
+                ? history.length - 1
+                : Math.max(0, currentIndex - 1);
+            commandHistoryIndexRef.current = nextIndex;
+            setCommand(history[nextIndex] ?? "");
+            return;
+        }
+        if (currentIndex === null) return;
+        event.preventDefault();
+        const nextIndex = currentIndex + 1;
+        if (nextIndex >= history.length) {
+            commandHistoryIndexRef.current = null;
+            setCommand(commandDraftRef.current);
+        } else {
+            commandHistoryIndexRef.current = nextIndex;
+            setCommand(history[nextIndex] ?? "");
+        }
     };
 
     const copyLogs = async () => {
@@ -175,8 +222,9 @@ export default function ServerConsole({
                             type="text"
                             value={command}
                             onChange={(e) => setCommand(e.target.value)}
+                            onKeyDown={handleCommandHistory}
                             placeholder={t("server_detail.console.command_placeholder")}
-                            disabled={!isConnected || !isRunning}
+                            disabled={!isRunning}
                             className="console-input"
                             autoComplete="off"
                         />
@@ -187,7 +235,7 @@ export default function ServerConsole({
                             variant="primary"
                             size="icon"
                             aria-label={t("common.send")}
-                            disabled={!isConnected || !isRunning || !command.trim()}
+                            disabled={!isRunning || !command.trim()}
                         >
                             <Send size={16} />
                         </Button>

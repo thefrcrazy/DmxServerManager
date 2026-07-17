@@ -699,6 +699,50 @@ fn server_paths() -> Value {
                 "responses": {"200": {"description": "Bounded persisted installer or game console history.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LogHistoryResponse"}}}}}
             }
         },
+        "/servers/{id}/players": {
+            "get": {
+                "operationId": "getServerPlayers", "tags": ["players"],
+                "parameters": [{"$ref": "#/components/parameters/ServerId"}],
+                "responses": {"200": {"description": "Normalized current and known player presence derived from native server events.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PlayerSnapshot"}}}}}
+            }
+        },
+        "/servers/{id}/config-files": {
+            "get": {
+                "operationId": "listServerConfigFiles", "tags": ["configuration"],
+                "parameters": [{"$ref": "#/components/parameters/ServerId"}],
+                "responses": {"200": {"description": "Profile-owned native configuration and access files with live metadata and queued state.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConfigFileList"}}}}}
+            }
+        },
+        "/servers/{id}/config-files/text": {
+            "get": {
+                "operationId": "readServerConfigFile", "tags": ["configuration"],
+                "parameters": [
+                    {"$ref": "#/components/parameters/ServerId"},
+                    {"name": "path", "in": "query", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 1024}}
+                ],
+                "responses": {"200": {"description": "Live bounded UTF-8 content and encrypted queued draft when present.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConfigFileDocument"}}}}}
+            },
+            "put": {
+                "operationId": "queueServerConfigFile", "tags": ["configuration"],
+                "parameters": [
+                    {"$ref": "#/components/parameters/ServerId"},
+                    {"name": "path", "in": "query", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 1024}}
+                ],
+                "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/QueueConfigFileRequest"}}}},
+                "responses": {
+                    "200": {"description": "Change encrypted and queued for the next graceful stop or start.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConfigFileDocument"}}}},
+                    "409": {"$ref": "#/components/responses/Conflict"}
+                }
+            },
+            "delete": {
+                "operationId": "cancelServerConfigFile", "tags": ["configuration"],
+                "parameters": [
+                    {"$ref": "#/components/parameters/ServerId"},
+                    {"name": "path", "in": "query", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 1024}}
+                ],
+                "responses": {"200": {"description": "Pending native configuration change cancelled.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
+            }
+        },
         "/servers/{id}/imports/zip": {
             "post": {
                 "operationId": "importServerZip", "tags": ["imports"],
@@ -1774,6 +1818,79 @@ fn operations_schemas() -> Value {
             "type": "object", "additionalProperties": false, "required": ["bytes_written"],
             "properties": {"bytes_written": {"type": "integer", "minimum": 0}}
         },
+        "ConfigChangeSummary": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "status", "content_sha256", "error_code", "queued_at"],
+            "properties": {
+                "id": {"type": "string", "format": "uuid"},
+                "status": {"enum": ["pending", "applied", "conflict", "failed", "cancelled"]},
+                "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "error_code": {"type": ["string", "null"]},
+                "queued_at": {"type": "string", "format": "date-time"}
+            }
+        },
+        "ConfigFileSummary": {
+            "type": "object", "additionalProperties": false,
+            "required": ["path", "category", "format", "exists", "size_bytes", "modified_at", "sha256", "queued_change"],
+            "properties": {
+                "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+                "category": {"enum": ["configuration", "access"]},
+                "format": {"enum": ["json", "properties", "ini", "toml", "yaml", "xml", "lua", "text"]},
+                "exists": {"type": "boolean"},
+                "size_bytes": {"type": "integer", "minimum": 0},
+                "modified_at": {"type": ["string", "null"], "format": "date-time"},
+                "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+                "queued_change": {"oneOf": [{"$ref": "#/components/schemas/ConfigChangeSummary"}, {"type": "null"}]}
+            }
+        },
+        "ConfigFileList": {
+            "type": "object", "additionalProperties": false, "required": ["items", "pending_count"],
+            "properties": {
+                "items": {"type": "array", "maxItems": 512, "items": {"$ref": "#/components/schemas/ConfigFileSummary"}},
+                "pending_count": {"type": "integer", "minimum": 0}
+            }
+        },
+        "ConfigFileDocument": {
+            "type": "object", "additionalProperties": false, "required": ["file", "content", "queued_content"],
+            "properties": {
+                "file": {"$ref": "#/components/schemas/ConfigFileSummary"},
+                "content": {"type": "string", "maxLength": 524288},
+                "queued_content": {"type": ["string", "null"], "maxLength": 524288}
+            }
+        },
+        "QueueConfigFileRequest": {
+            "type": "object", "additionalProperties": false, "required": ["content"],
+            "properties": {
+                "content": {"type": "string", "maxLength": 524288, "description": "Validated according to the declared native format before encrypted queue storage."},
+                "expected_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+            }
+        },
+        "ServerPlayer": {
+            "type": "object", "additionalProperties": false,
+            "required": ["player_key", "display_name", "external_id", "source", "online", "first_seen_at", "last_seen_at", "connected_at", "disconnected_at"],
+            "properties": {
+                "player_key": {"type": "string", "minLength": 1, "maxLength": 255},
+                "display_name": {"type": "string", "minLength": 1, "maxLength": 128},
+                "external_id": {"type": ["string", "null"], "maxLength": 255},
+                "source": {"enum": ["hytale", "minecraft_java", "minecraft_bedrock", "steam", "console_log", "generic_log"]},
+                "online": {"type": "boolean"},
+                "first_seen_at": {"type": "string", "format": "date-time"},
+                "last_seen_at": {"type": "string", "format": "date-time"},
+                "connected_at": {"type": ["string", "null"], "format": "date-time"},
+                "disconnected_at": {"type": ["string", "null"], "format": "date-time"}
+            }
+        },
+        "PlayerSnapshot": {
+            "type": "object", "additionalProperties": false,
+            "required": ["instance_id", "online_count", "detection", "access_mode", "players"],
+            "properties": {
+                "instance_id": {"type": "string", "format": "uuid"},
+                "online_count": {"type": "integer", "minimum": 0},
+                "detection": {"enum": ["console_log", "unavailable"]},
+                "access_mode": {"enum": ["native_files", "console_commands", "shared_admin_password", "game_managed", "unsupported"]},
+                "players": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/components/schemas/ServerPlayer"}}
+            }
+        },
         "InstalledMod": {
             "type": "object", "additionalProperties": false,
             "required": ["id", "instance_id", "source", "display_name", "checksum_sha256", "size_bytes", "provider_project_id", "provider_version_id", "enabled", "created_at"],
@@ -1818,11 +1935,12 @@ fn operations_schemas() -> Value {
         },
         "MetricPoint": {
             "type": "object", "additionalProperties": false,
-            "required": ["id", "cpu_usage", "memory_bytes", "disk_bytes", "uptime_seconds", "recorded_at"],
+            "required": ["id", "cpu_usage", "memory_bytes", "disk_bytes", "uptime_seconds", "player_count", "recorded_at"],
             "properties": {
                 "id": {"type": "string", "format": "uuid"}, "cpu_usage": {"type": "number", "minimum": 0},
                 "memory_bytes": {"type": "integer", "minimum": 0}, "disk_bytes": {"type": "integer", "minimum": 0},
                 "uptime_seconds": {"type": "integer", "minimum": 0},
+                "player_count": {"type": ["integer", "null"], "minimum": 0},
                 "recorded_at": {"type": "string", "format": "date-time"}
             }
         },
@@ -2058,9 +2176,12 @@ mod tests {
         "GET /schedules/{id}",
         "GET /servers",
         "GET /servers/{id}",
+        "GET /servers/{id}/config-files",
+        "GET /servers/{id}/config-files/text",
         "GET /servers/{id}/logs",
         "GET /servers/{id}/metrics",
         "GET /servers/{id}/mods",
+        "GET /servers/{id}/players",
         "GET /servers/{id}/secrets",
         "GET /users",
         "GET /users/{id}/instances",
@@ -2105,6 +2226,7 @@ mod tests {
         "PUT /notifications/{id}/read",
         "PUT /schedules/{id}",
         "PUT /servers/{id}/profile-revision",
+        "PUT /servers/{id}/config-files/text",
         "PUT /servers/{id}/secrets/{name}",
         "PUT /users/{user_id}/instances/{instance_id}",
         "PUT /webhooks/{id}",
@@ -2117,6 +2239,7 @@ mod tests {
         "DELETE /roles/{id}",
         "DELETE /schedules/{id}",
         "DELETE /servers/{id}",
+        "DELETE /servers/{id}/config-files/text",
         "DELETE /servers/{id}/mods/{mod_id}",
         "DELETE /servers/{id}/secrets/{name}",
         "DELETE /users/{user_id}/instances/{instance_id}",

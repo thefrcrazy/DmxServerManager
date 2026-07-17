@@ -787,6 +787,162 @@
         ],
         "type": "object"
       },
+      "ConfigChangeSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "queued_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "applied",
+              "conflict",
+              "failed",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "content_sha256",
+          "error_code",
+          "queued_at"
+        ],
+        "type": "object"
+      },
+      "ConfigFileDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 524288,
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/ConfigFileSummary"
+          },
+          "queued_content": {
+            "maxLength": 524288,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file",
+          "content",
+          "queued_content"
+        ],
+        "type": "object"
+      },
+      "ConfigFileList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigFileSummary"
+            },
+            "maxItems": 512,
+            "type": "array"
+          },
+          "pending_count": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "pending_count"
+        ],
+        "type": "object"
+      },
+      "ConfigFileSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "configuration",
+              "access"
+            ]
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "format": {
+            "enum": [
+              "json",
+              "properties",
+              "ini",
+              "toml",
+              "yaml",
+              "xml",
+              "lua",
+              "text"
+            ]
+          },
+          "modified_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "queued_change": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ConfigChangeSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "category",
+          "format",
+          "exists",
+          "size_bytes",
+          "modified_at",
+          "sha256",
+          "queued_change"
+        ],
+        "type": "object"
+      },
       "ConfigureCurseForgeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1777,6 +1933,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "player_count": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "recorded_at": {
             "format": "date-time",
             "type": "string"
@@ -1792,6 +1955,7 @@
           "memory_bytes",
           "disk_bytes",
           "uptime_seconds",
+          "player_count",
           "recorded_at"
         ],
         "type": "object"
@@ -2055,6 +2219,49 @@
           "user.update"
         ]
       },
+      "PlayerSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "access_mode": {
+            "enum": [
+              "native_files",
+              "console_commands",
+              "shared_admin_password",
+              "game_managed",
+              "unsupported"
+            ]
+          },
+          "detection": {
+            "enum": [
+              "console_log",
+              "unavailable"
+            ]
+          },
+          "instance_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "online_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/ServerPlayer"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          }
+        },
+        "required": [
+          "instance_id",
+          "online_count",
+          "detection",
+          "access_mode",
+          "players"
+        ],
+        "type": "object"
+      },
       "PortProtocol": {
         "enum": [
           "tcp",
@@ -2246,6 +2453,27 @@
             "type": "object"
           }
         ]
+      },
+      "QueueConfigFileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "Validated according to the declared native format before encrypted queue storage.",
+            "maxLength": 524288,
+            "type": "string"
+          },
+          "expected_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
       },
       "ReleaseCheckErrorCode": {
         "enum": [
@@ -2631,6 +2859,75 @@
         },
         "required": [
           "items"
+        ],
+        "type": "object"
+      },
+      "ServerPlayer": {
+        "additionalProperties": false,
+        "properties": {
+          "connected_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disconnected_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "external_id": {
+            "maxLength": 255,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "player_key": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "hytale",
+              "minecraft_java",
+              "minecraft_bedrock",
+              "steam",
+              "console_log",
+              "generic_log"
+            ]
+          }
+        },
+        "required": [
+          "player_key",
+          "display_name",
+          "external_id",
+          "source",
+          "online",
+          "first_seen_at",
+          "last_seen_at",
+          "connected_at",
+          "disconnected_at"
         ],
         "type": "object"
       },
@@ -3512,7 +3809,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.18"
+    "version": "1.0.19"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -7215,6 +7512,207 @@
         ]
       }
     },
+    "/servers/{id}/config-files": {
+      "get": {
+        "operationId": "listServerConfigFiles",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigFileList"
+                }
+              }
+            },
+            "description": "Profile-owned native configuration and access files with live metadata and queued state."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/servers/{id}/config-files/text": {
+      "delete": {
+        "operationId": "cancelServerConfigFile",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CsrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            },
+            "description": "Pending native configuration change cancelled."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "configuration"
+        ]
+      },
+      "get": {
+        "operationId": "readServerConfigFile",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigFileDocument"
+                }
+              }
+            },
+            "description": "Live bounded UTF-8 content and encrypted queued draft when present."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "configuration"
+        ]
+      },
+      "put": {
+        "operationId": "queueServerConfigFile",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CsrfToken"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueConfigFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigFileDocument"
+                }
+              }
+            },
+            "description": "Change encrypted and queued for the next graceful stop or start."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
     "/servers/{id}/console": {
       "post": {
         "operationId": "sendConsoleCommand",
@@ -7802,6 +8300,45 @@
         ],
         "tags": [
           "mods"
+        ]
+      }
+    },
+    "/servers/{id}/players": {
+      "get": {
+        "operationId": "getServerPlayers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerSnapshot"
+                }
+              }
+            },
+            "description": "Normalized current and known player presence derived from native server events."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "players"
         ]
       }
     },

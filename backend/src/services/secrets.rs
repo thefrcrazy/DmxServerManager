@@ -109,6 +109,18 @@ impl SecretStore {
         if value.is_empty() || value.len() > 16 * 1024 {
             return Err(AppError::BadRequest("secrets.invalid_value".into()));
         }
+        self.seal_payload(associated_data, value, 16 * 1024)
+    }
+
+    pub(crate) fn seal_payload(
+        &self,
+        associated_data: &str,
+        value: &str,
+        max_bytes: usize,
+    ) -> Result<(String, String), AppError> {
+        if value.len() > max_bytes {
+            return Err(AppError::BadRequest("config_files.text_too_large".into()));
+        }
         let cipher = XChaCha20Poly1305::new(self.key.as_ref().into());
         let mut nonce = [0_u8; 24];
         OsRng.fill_bytes(&mut nonce);
@@ -133,6 +145,16 @@ impl SecretStore {
         nonce: &str,
         ciphertext: &str,
     ) -> Result<String, AppError> {
+        self.open_payload(associated_data, nonce, ciphertext, 16 * 1024)
+    }
+
+    pub(crate) fn open_payload(
+        &self,
+        associated_data: &str,
+        nonce: &str,
+        ciphertext: &str,
+        max_bytes: usize,
+    ) -> Result<String, AppError> {
         let nonce = URL_SAFE_NO_PAD
             .decode(nonce)
             .map_err(|_| AppError::Internal("stored secret nonce is invalid".into()))?;
@@ -152,6 +174,11 @@ impl SecretStore {
                 },
             )
             .map_err(|_| AppError::Internal("secret decryption failed".into()))?;
+        if plaintext.len() > max_bytes {
+            return Err(AppError::Internal(
+                "stored encrypted payload exceeds its size limit".into(),
+            ));
+        }
         String::from_utf8(plaintext)
             .map_err(|_| AppError::Internal("stored secret is not UTF-8".into()))
     }

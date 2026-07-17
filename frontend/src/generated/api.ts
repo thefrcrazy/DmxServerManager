@@ -863,6 +863,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/servers/{id}/config-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listServerConfigFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servers/{id}/config-files/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["readServerConfigFile"];
+        put: operations["queueServerConfigFile"];
+        post?: never;
+        delete: operations["cancelServerConfigFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/servers/{id}/console": {
         parameters: {
             query?: never;
@@ -1019,6 +1051,22 @@ export interface paths {
         put?: never;
         post?: never;
         delete: operations["deleteServerMod"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servers/{id}/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getServerPlayers"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1329,6 +1377,38 @@ export interface components {
             /** Format: uuid */
             next_before_id: string | null;
         };
+        ConfigChangeSummary: {
+            content_sha256: string;
+            error_code: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            queued_at: string;
+            /** @enum {unknown} */
+            status: "pending" | "applied" | "conflict" | "failed" | "cancelled";
+        };
+        ConfigFileDocument: {
+            content: string;
+            file: components["schemas"]["ConfigFileSummary"];
+            queued_content: string | null;
+        };
+        ConfigFileList: {
+            items: components["schemas"]["ConfigFileSummary"][];
+            pending_count: number;
+        };
+        ConfigFileSummary: {
+            /** @enum {unknown} */
+            category: "configuration" | "access";
+            exists: boolean;
+            /** @enum {unknown} */
+            format: "json" | "properties" | "ini" | "toml" | "yaml" | "xml" | "lua" | "text";
+            /** Format: date-time */
+            modified_at: string | null;
+            path: string;
+            queued_change: components["schemas"]["ConfigChangeSummary"] | null;
+            sha256: string | null;
+            size_bytes: number;
+        };
         ConfigureCurseForgeRequest: {
             /**
              * Format: password
@@ -1589,6 +1669,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             memory_bytes: number;
+            player_count: number | null;
             /** Format: date-time */
             recorded_at: string;
             uptime_seconds: number;
@@ -1669,6 +1750,16 @@ export interface components {
         };
         /** @enum {unknown} */
         PermissionId: "audit.read" | "chat.read" | "chat.write" | "job.read" | "mods.manage" | "notifications.read" | "profile.manage" | "profile.read" | "schedule.manage" | "server.backup" | "server.backup.read" | "server.console.read" | "server.console.write" | "server.create" | "server.delete" | "server.files.read" | "server.files.write" | "server.kill" | "server.read" | "server.start" | "server.stop" | "server.update" | "server.update_game" | "user.create" | "user.read" | "user.update";
+        PlayerSnapshot: {
+            /** @enum {unknown} */
+            access_mode: "native_files" | "console_commands" | "shared_admin_password" | "game_managed" | "unsupported";
+            /** @enum {unknown} */
+            detection: "console_log" | "unavailable";
+            /** Format: uuid */
+            instance_id: string;
+            online_count: number;
+            players: components["schemas"]["ServerPlayer"][];
+        };
         /** @enum {unknown} */
         PortProtocol: "tcp" | "udp";
         PortSpec: {
@@ -1708,6 +1799,11 @@ export interface components {
             /** @constant */
             provider: "curseforge";
             version_id: string;
+        };
+        QueueConfigFileRequest: {
+            /** @description Validated according to the declared native format before encrypted queue storage. */
+            content: string;
+            expected_sha256?: string | null;
         };
         /** @enum {unknown} */
         ReleaseCheckErrorCode: "network" | "response_too_large" | "envelope_invalid" | "signature_invalid" | "manifest_invalid";
@@ -1796,6 +1892,22 @@ export interface components {
         };
         SecretStatusList: {
             items: components["schemas"]["SecretStatus"][];
+        };
+        ServerPlayer: {
+            /** Format: date-time */
+            connected_at: string | null;
+            /** Format: date-time */
+            disconnected_at: string | null;
+            display_name: string;
+            external_id: string | null;
+            /** Format: date-time */
+            first_seen_at: string;
+            /** Format: date-time */
+            last_seen_at: string;
+            online: boolean;
+            player_key: string;
+            /** @enum {unknown} */
+            source: "hytale" | "minecraft_java" | "minecraft_bedrock" | "steam" | "console_log" | "generic_log";
         };
         SetGrantRequest: {
             /** @default [] */
@@ -4075,6 +4187,123 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    listServerConfigFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile-owned native configuration and access files with live metadata and queued state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigFileList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    readServerConfigFile: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live bounded UTF-8 content and encrypted queued draft when present. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigFileDocument"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    queueServerConfigFile: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header: {
+                /** @description Token bound to the current opaque session. */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueueConfigFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Change encrypted and queued for the next graceful stop or start. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigFileDocument"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    cancelServerConfigFile: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header: {
+                /** @description Token bound to the current opaque session. */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending native configuration change cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
     sendConsoleCommand: {
         parameters: {
             query?: never;
@@ -4390,6 +4619,31 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getServerPlayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Normalized current and known player presence derived from native server events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayerSnapshot"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             default: components["responses"]["Problem"];
         };
     };

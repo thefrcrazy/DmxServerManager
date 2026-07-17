@@ -25,9 +25,9 @@ use crate::{
     core::{DbPool, Settings, database, error::AppError, events::EventHub},
     domain::v1::{Job, JobState, LaunchSpec, SteamProfile, SteamStopStrategy, StopStrategy},
     services::{
-        backups,
+        backups, config_files,
         installers::{self, InstallContext, InstallerExecutable},
-        instance_storage, jobs, metrics, notifications, profiles,
+        instance_storage, jobs, metrics, notifications, players, profiles,
         secrets::{SecretStore, allowed_secret_names},
     },
 };
@@ -1726,6 +1726,7 @@ impl InstanceActor {
                     events: self.inner.events.clone(),
                     redactions: redactions.clone(),
                     observer: None,
+                    player_observer: None,
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ))
@@ -1741,6 +1742,7 @@ impl InstanceActor {
                     events: self.inner.events.clone(),
                     redactions,
                     observer: None,
+                    player_observer: None,
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ))
@@ -2887,6 +2889,7 @@ impl InstanceActor {
                     events: self.inner.events.clone(),
                     redactions: redactions.clone(),
                     observer: Some(line_tx.clone()),
+                    player_observer: None,
                     public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
                 },
             ))
@@ -2902,6 +2905,7 @@ impl InstanceActor {
                     events: self.inner.events.clone(),
                     redactions,
                     observer: Some(line_tx.clone()),
+                    player_observer: None,
                     public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
                 },
             ))
@@ -3419,6 +3423,7 @@ impl InstanceActor {
         preflight_ports(&self.inner.pool, &self.instance_id).await?;
         let readiness = readiness_pattern(&self.inner.pool, &instance).await?;
         let launch = self.build_launch_spec(&instance).await?;
+        self.apply_pending_config_changes(&root).await?;
         self.set_runtime_state("starting", Some("running"))
             .await
             .map_err(OperationFailure::internal)?;
@@ -3454,6 +3459,12 @@ impl InstanceActor {
         let stderr = child.stderr.take();
         let stdin = child.stdin.take();
         let (output_tx, mut output_rx) = mpsc::channel(1_024);
+        let player_log_tx = players::spawn_log_observer(
+            self.inner.pool.clone(),
+            self.inner.events.clone(),
+            self.instance_id.clone(),
+            instance.profile_id.clone(),
+        );
         if let Some(stdout) = stdout {
             tokio::spawn(pump_output_observed(
                 stdout,
@@ -3465,6 +3476,7 @@ impl InstanceActor {
                     events: self.inner.events.clone(),
                     redactions: launch.redactions.clone(),
                     observer: Some(output_tx.clone()),
+                    player_observer: Some(player_log_tx.clone()),
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ));
@@ -3480,11 +3492,13 @@ impl InstanceActor {
                     events: self.inner.events.clone(),
                     redactions: launch.redactions,
                     observer: Some(output_tx.clone()),
+                    player_observer: Some(player_log_tx.clone()),
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ));
         }
         drop(output_tx);
+        drop(player_log_tx);
 
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
@@ -3596,6 +3610,9 @@ impl InstanceActor {
             self.set_runtime_state("stopped", desired)
                 .await
                 .map_err(OperationFailure::internal)?;
+            if !force {
+                self.apply_pending_config_after_stop().await;
+            }
             return Ok(());
         };
 
@@ -3611,6 +3628,9 @@ impl InstanceActor {
         self.set_runtime_state("stopped", desired)
             .await
             .map_err(OperationFailure::internal)?;
+        if !force {
+            self.apply_pending_config_after_stop().await;
+        }
         self.watchdog_attempts = 0;
         self.inner.events.publish(
             "server.stopped",
@@ -3618,6 +3638,48 @@ impl InstanceActor {
             serde_json::json!({"forced": force}),
         );
         Ok(())
+    }
+
+    async fn apply_pending_config_after_stop(&self) {
+        let root = match self.instance_root().await {
+            Ok(root) => root,
+            Err(error) => {
+                tracing::warn!(
+                    instance_id = %self.instance_id,
+                    code = error.code,
+                    detail = ?error.internal,
+                    "server stopped but queued configuration root was unavailable"
+                );
+                return;
+            }
+        };
+        if let Err(error) = self.apply_pending_config_changes(&root).await {
+            tracing::warn!(
+                instance_id = %self.instance_id,
+                code = error.code,
+                detail = ?error.internal,
+                "server stopped with one or more queued configuration changes blocked"
+            );
+        }
+    }
+
+    async fn apply_pending_config_changes(&self, root: &Path) -> Result<(), OperationFailure> {
+        config_files::apply_pending(
+            &self.inner.pool,
+            &self.inner.secrets,
+            &self.inner.events,
+            root,
+            &self.instance_id,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| {
+            OperationFailure::with_internal(
+                "config_apply_failed",
+                "config_files.apply_failed",
+                error,
+            )
+        })
     }
 
     async fn console(&mut self, command: &str) -> Result<(), AppError> {
@@ -4634,15 +4696,9 @@ impl InstanceActor {
             ("TelnetEnabled", "false".to_string()),
             ("WebDashboardEnabled", "false".to_string()),
         ];
-        let mut contents = String::from("<?xml version=\"1.0\"?>\n<ServerSettings>\n");
-        for (name, value) in values {
-            contents.push_str("  <property name=\"");
-            contents.push_str(name);
-            contents.push_str("\" value=\"");
-            contents.push_str(&xml_attribute(&value));
-            contents.push_str("\" />\n");
-        }
-        contents.push_str("</ServerSettings>\n");
+        let destination = game.join("dmx-serverconfig.xml");
+        let existing = read_bounded_runtime_text(&destination, 4 * 1024 * 1024).await?;
+        let contents = merge_seven_days_settings(existing.as_deref().unwrap_or_default(), &values)?;
         write_runtime_configuration(&game, "dmx-serverconfig.xml", contents.as_bytes()).await
     }
 
@@ -4656,12 +4712,25 @@ impl InstanceActor {
         tokio::fs::create_dir_all(&directory)
             .await
             .map_err(OperationFailure::internal)?;
-        let contents = format!(
-            "DefaultPort={}\nSteamPort1={}\nSteamPort2={}\nPublic=false\nPauseEmpty=true\n",
-            integer_setting(settings, "port", 16_261)?,
-            integer_setting(settings, "steam_port", 8_766)?,
-            integer_setting(settings, "steam_query_port", 8_767)?,
-        );
+        let values = [
+            (
+                "DefaultPort",
+                integer_setting(settings, "port", 16_261)?.to_string(),
+            ),
+            (
+                "SteamPort1",
+                integer_setting(settings, "steam_port", 8_766)?.to_string(),
+            ),
+            (
+                "SteamPort2",
+                integer_setting(settings, "steam_query_port", 8_767)?.to_string(),
+            ),
+            ("Public", "false".to_string()),
+            ("PauseEmpty", "true".to_string()),
+        ];
+        let destination = directory.join(format!("{name}.ini"));
+        let existing = read_bounded_runtime_text(&destination, 4 * 1024 * 1024).await?;
+        let contents = merge_ini_settings(existing.as_deref().unwrap_or_default(), &values);
         write_runtime_configuration(&directory, &format!("{name}.ini"), contents.as_bytes()).await
     }
 
@@ -6488,6 +6557,122 @@ fn format_palworld_option_line(replacements: &[(&str, String)]) -> String {
     )
 }
 
+fn merge_ini_settings(existing: &str, updates: &[(&str, String)]) -> String {
+    let mut merged = String::with_capacity(existing.len() + updates.len() * 32);
+    let mut written = vec![false; updates.len()];
+    for line in existing.split_inclusive('\n') {
+        let key = line.trim().split_once('=').map(|(key, _)| key.trim());
+        if let Some((index, (name, value))) = updates
+            .iter()
+            .enumerate()
+            .find(|(_, (name, _))| Some(*name) == key)
+        {
+            if !written[index] {
+                merged.push_str(name);
+                merged.push('=');
+                merged.push_str(value);
+                merged.push('\n');
+                written[index] = true;
+            }
+        } else {
+            merged.push_str(line);
+        }
+    }
+    if !merged.is_empty() && !merged.ends_with('\n') {
+        merged.push('\n');
+    }
+    for ((name, value), already_written) in updates.iter().zip(written) {
+        if !already_written {
+            merged.push_str(name);
+            merged.push('=');
+            merged.push_str(value);
+            merged.push('\n');
+        }
+    }
+    merged
+}
+
+fn merge_seven_days_settings(
+    existing: &str,
+    updates: &[(&str, String)],
+) -> Result<String, OperationFailure> {
+    if existing.trim().is_empty() {
+        let mut generated = String::from("<?xml version=\"1.0\"?>\n<ServerSettings>\n");
+        append_seven_days_properties(&mut generated, updates.iter());
+        generated.push_str("</ServerSettings>\n");
+        return Ok(generated);
+    }
+    if !existing.contains("<ServerSettings") || !existing.contains("</ServerSettings>") {
+        return Err(OperationFailure::new(
+            "seven_days_configuration_invalid",
+            "servers.settings_invalid",
+        ));
+    }
+    let property =
+        Regex::new(r#"^\s*<property\b[^>]*\bname\s*=\s*\"(?P<name>[^\"]+)\"[^>]*/>\s*$"#)
+            .map_err(OperationFailure::internal)?;
+    let mut merged = String::with_capacity(existing.len() + updates.len() * 64);
+    let mut written = vec![false; updates.len()];
+    let mut closed = false;
+    for line in existing.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed == "</ServerSettings>" {
+            if closed {
+                return Err(OperationFailure::new(
+                    "seven_days_configuration_invalid",
+                    "servers.settings_invalid",
+                ));
+            }
+            append_seven_days_properties(
+                &mut merged,
+                updates
+                    .iter()
+                    .zip(&written)
+                    .filter_map(|(update, already_written)| (!already_written).then_some(update)),
+            );
+            written.fill(true);
+            merged.push_str(line);
+            closed = true;
+            continue;
+        }
+        if let Some(captures) = property.captures(trimmed) {
+            let name = captures.name("name").map(|value| value.as_str());
+            if let Some((index, update)) = updates
+                .iter()
+                .enumerate()
+                .find(|(_, (candidate, _))| Some(*candidate) == name)
+            {
+                if !written[index] {
+                    append_seven_days_properties(&mut merged, std::iter::once(update));
+                    written[index] = true;
+                }
+                continue;
+            }
+        }
+        merged.push_str(line);
+    }
+    if !closed {
+        return Err(OperationFailure::new(
+            "seven_days_configuration_invalid",
+            "servers.settings_invalid",
+        ));
+    }
+    Ok(merged)
+}
+
+fn append_seven_days_properties<'a>(
+    output: &mut String,
+    values: impl Iterator<Item = &'a (&'a str, String)>,
+) {
+    for (name, value) in values {
+        output.push_str("  <property name=\"");
+        output.push_str(name);
+        output.push_str("\" value=\"");
+        output.push_str(&xml_attribute(value));
+        output.push_str("\" />\n");
+    }
+}
+
 async fn read_bounded_runtime_text(
     path: &Path,
     max_bytes: u64,
@@ -6828,6 +7013,7 @@ struct OutputPumpConfig {
     events: EventHub,
     redactions: Vec<String>,
     observer: Option<mpsc::Sender<String>>,
+    player_observer: Option<mpsc::Sender<String>>,
     public_log_policy: PublicLogPolicy,
 }
 
@@ -6851,6 +7037,7 @@ where
         events: &config.events,
         redactions: &config.redactions,
         observer: config.observer.as_ref(),
+        player_observer: config.player_observer.as_ref(),
         combined_log: config.combined_log.as_ref(),
     };
     let mut public_log_sanitizer = PublicLogSanitizer::new(config.public_log_policy);
@@ -6915,6 +7102,7 @@ struct LogLineContext<'a> {
     events: &'a EventHub,
     redactions: &'a [String],
     observer: Option<&'a mpsc::Sender<String>>,
+    player_observer: Option<&'a mpsc::Sender<String>>,
     combined_log: Option<&'a Arc<Mutex<RotatingLog>>>,
 }
 
@@ -6985,6 +7173,9 @@ async fn emit_log_line(
         line = line.replace(secret, "[REDACTED]");
     }
     if let Some(observer) = context.observer {
+        let _ = observer.try_send(line.clone());
+    }
+    if let Some(observer) = context.player_observer {
         let _ = observer.try_send(line.clone());
     }
     line = public_log_sanitizer.sanitize(&line);
@@ -9012,6 +9203,47 @@ mod tests {
     }
 
     #[test]
+    fn project_zomboid_settings_preserve_native_options() {
+        let updates = [
+            ("DefaultPort", "16261".to_string()),
+            ("PauseEmpty", "true".to_string()),
+        ];
+        let merged = merge_ini_settings(
+            "# native comment\nDefaultPort=1\nPVP=false\nDefaultPort=2\n",
+            &updates,
+        );
+        assert!(merged.contains("# native comment\n"));
+        assert!(merged.contains("PVP=false\n"));
+        assert!(merged.contains("DefaultPort=16261\n"));
+        assert!(merged.contains("PauseEmpty=true\n"));
+        assert_eq!(merged.matches("DefaultPort=").count(), 1);
+    }
+
+    #[test]
+    fn seven_days_settings_preserve_unknown_properties() {
+        let updates = [
+            ("ServerPort", "26900".to_string()),
+            ("TelnetEnabled", "false".to_string()),
+        ];
+        let existing = concat!(
+            "<?xml version=\"1.0\"?>\n",
+            "<ServerSettings>\n",
+            "  <!-- preserve me -->\n",
+            "  <property name=\"ServerPort\" value=\"1\" />\n",
+            "  <property name=\"CustomNativeOption\" value=\"yes\" />\n",
+            "  <property name=\"ServerPort\" value=\"2\" />\n",
+            "</ServerSettings>\n",
+        );
+        let merged = merge_seven_days_settings(existing, &updates).unwrap();
+        assert!(merged.contains("<!-- preserve me -->"));
+        assert!(merged.contains("name=\"CustomNativeOption\" value=\"yes\""));
+        assert!(merged.contains("name=\"ServerPort\" value=\"26900\""));
+        assert!(merged.contains("name=\"TelnetEnabled\" value=\"false\""));
+        assert_eq!(merged.matches("name=\"ServerPort\"").count(), 1);
+        assert!(merge_seven_days_settings("<broken>", &updates).is_err());
+    }
+
+    #[test]
     fn java_probe_parses_legacy_and_modern_versions() {
         assert_eq!(parse_java_major("java version \"1.8.0_402\""), Some(8));
         assert_eq!(
@@ -9273,6 +9505,7 @@ mod tests {
                 events: EventHub::new(8),
                 redactions: vec!["top-secret".into()],
                 observer: None,
+                player_observer: None,
                 public_log_policy: PublicLogPolicy::Normal,
             },
         ));
@@ -9310,6 +9543,7 @@ mod tests {
                 events,
                 redactions: Vec::new(),
                 observer: Some(line_tx),
+                player_observer: None,
                 public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
             },
         ));
@@ -9495,6 +9729,7 @@ mod tests {
                 events: EventHub::new(8),
                 redactions: Vec::new(),
                 observer: Some(line_tx),
+                player_observer: None,
                 public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
             },
         ));

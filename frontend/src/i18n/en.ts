@@ -1075,6 +1075,69 @@ export const en: TranslationType = {
             logs_copied: "Logs copied",
             command_placeholder: "Enter a command..."
         },
+        native_config: {
+            configuration_title: "Native configuration files",
+            configuration_description: "Read the content actually used by the game and prepare changes without writing into a running process.",
+            access_title: "Native permissions and access lists",
+            access_description: "Administrators, operators, allow lists, and bans exposed by this server type.",
+            running_hint: "The server is running: the change is queued and will be applied after it stops or during its restart.",
+            stopped_hint: "The server is stopped: the change is queued and will be applied immediately before the next start.",
+            empty: "No supported native file is declared for this profile.",
+            live: "Present",
+            missing: "To create",
+            source_changed: "The live file changed while you were editing. Reload it before queuing the change again.",
+            unsaved: "Unsaved draft",
+            pending: "Change pending",
+            up_to_date: "Live content is current",
+            discard: "Reload file",
+            discard_first: "Reload or save the current draft first.",
+            cancel_queue: "Cancel pending",
+            queue: "Queue change",
+            queued: "Change encrypted and queued.",
+            cancelled: "Pending change cancelled.",
+            status: {
+                pending: "Pending",
+                applied: "Applied",
+                conflict: "Conflict",
+                failed: "Failed",
+                cancelled: "Cancelled"
+            },
+            status_detail: {
+                pending: "This change will be applied on the next stop or start.",
+                applied: "The change was applied.",
+                conflict: "The game changed this file before application. Review the live content, then create a new change.",
+                failed: "The change could not be applied. Check the file format and content.",
+                cancelled: "The change was cancelled."
+            }
+        },
+        players: {
+            title: "Players",
+            description: "Presence detected from real game-server console events.",
+            online: "Players online",
+            known: "Known players",
+            detection: "Detection",
+            detection_modes: {
+                console_log: "Native console",
+                unavailable: "Unavailable"
+            },
+            detection_unavailable: "This server does not currently expose a reliable presence event that DMX can normalize.",
+            empty: "No player has been detected. The list will populate on future connections.",
+            player: "Player",
+            status: "Status",
+            identifier: "Official identifier",
+            last_seen: "Last activity",
+            connected: "Online",
+            offline: "Offline",
+            access_title: "Administration, roles, and access",
+            access_read_required: "File read permission is required to display native access lists.",
+            access_modes: {
+                native_files: "This server stores administrators, permissions, or access lists in the native files below.",
+                console_commands: "This server manages privileges through console commands. Use the Terminal tab; detected players remain visible here.",
+                shared_admin_password: "This server uses a shared administrator password encrypted in the DMX configuration.",
+                game_managed: "Privileges are managed by the game's native administration interface and are not exposed as safely editable roles.",
+                unsupported: "No reliable administration mechanism is declared for this profile."
+            }
+        },
         config: {
             title: "Server Configuration",
             subtitle: "Don't forget to save your changes.",
@@ -1117,43 +1180,6 @@ export const en: TranslationType = {
             file_world: "world/config.json (World)",
             save_file: "Save File",
             invalid_json: "Invalid JSON. Please fix errors before saving."
-        },
-        players: {
-            title: "Player Management",
-            add_prompt: "Add Player",
-            no_players: "No players found",
-            tabs: {
-                online: "Online",
-                database: "Players (DB)",
-                whitelist: "Whitelist",
-                permissions: "Permissions",
-                bans: "Bans"
-            },
-            headers: {
-                player: "Player",
-                reason_banned_by: "Reason / Banned by",
-                expiration: "Expiration",
-                status_info: "Status / Info",
-                actions: "Actions"
-            },
-            status: {
-                connected: "Online",
-                whitelisted: "Whitelisted",
-                offline: "Offline",
-                group: "Group:",
-                seen: "Seen:"
-            },
-            actions: {
-                op: "Give OP",
-                deop: "Remove OP",
-                kick: "Kick",
-                ban: "Ban",
-                remove: "Remove"
-            },
-            suggestions: "Suggestions",
-            no_known_players: "(No known players)",
-            new_player: "New player",
-            search_placeholder: "Search (Name or UUID)..."
         }
     },
 

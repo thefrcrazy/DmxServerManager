@@ -104,8 +104,8 @@ test("le dashboard affiche les instances et masque les actions absentes des capa
 
     await restrictedRow.click();
     await expect(page).toHaveURL(/\/servers\/22222222-2222-4222-8222-222222222222$/);
-    await expect(page.locator(".server-tabs .tab-btn")).toHaveCount(1);
-    await expect(page.locator(".server-tabs .tab-btn")).toHaveText("Config");
+    await expect(page.locator(".server-tabs .tab-btn")).toHaveCount(2);
+    await expect(page.locator(".server-tabs .tab-btn")).toHaveText(["Config", "Joueurs"]);
     await expect(page.getByRole("button", { name: "Installer" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Démarrer" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Configuration dédiée du serveur" })).toBeVisible();
@@ -175,6 +175,54 @@ test("la console reçoit server.log par SSE et échappe le HTML sans jeton dans 
     expect(eventRequests[0]?.search).toBe("?server_id=11111111-1111-4111-8111-111111111111");
     expect(eventRequests[0]?.search).not.toMatch(/token|jwt/i);
     expect(eventRequests.every((request) => request.headers.authorization === undefined)).toBe(true);
+});
+
+test("la console rappelle les commandes avec les flèches haut et bas", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    const serverId = "11111111-1111-4111-8111-111111111111";
+    await page.goto(`/servers/${serverId}?tab=console`);
+
+    const input = page.getByPlaceholder("Entrez une commande...");
+    await input.fill("status");
+    await input.press("Enter");
+    await input.fill("say maintenance dans 5 minutes");
+    await input.press("Enter");
+
+    await input.press("ArrowUp");
+    await expect(input).toHaveValue("say maintenance dans 5 minutes");
+    await input.press("ArrowUp");
+    await expect(input).toHaveValue("status");
+    await input.press("ArrowDown");
+    await expect(input).toHaveValue("say maintenance dans 5 minutes");
+    await input.press("ArrowDown");
+    await expect(input).toHaveValue("");
+
+    expect(api.requests.filter((request) => request.path === `/servers/${serverId}/console`).map((request) => request.body)).toEqual([
+        { command: "status" },
+        { command: "say maintenance dans 5 minutes" },
+    ]);
+});
+
+test("l’onglet Joueurs affiche la présence et met les droits natifs en file", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    const serverId = "11111111-1111-4111-8111-111111111111";
+    await page.goto(`/servers/${serverId}`);
+
+    await page.getByRole("tab", { name: "Joueurs" }).click();
+    await expect(page.getByText("DmxPlayer")).toBeVisible();
+    await expect(page.getByText("adminlist.txt", { exact: true })).toBeVisible();
+    const editor = page.locator(".native-config-textarea");
+    await editor.fill("76561198000000000\n76561198000000001");
+    await page.getByRole("button", { name: "Mettre en file" }).click();
+    await expect(page.getByText("Modification en attente")).toBeVisible();
+
+    const request = api.findRequest("PUT", `/servers/${serverId}/config-files/text`);
+    expect(request?.body).toEqual({
+        content: "76561198000000000\n76561198000000001",
+        expected_sha256: "a".repeat(64),
+    });
 });
 
 test("démarrer après une installation rebascule immédiatement le terminal sur la console serveur", async ({ page }) => {

@@ -467,6 +467,7 @@ const METRICS: MetricPoint[] = [MetricPointSchema.parse({
     memory_bytes: 536_870_912,
     disk_bytes: 1_073_741_824,
     uptime_seconds: 3_661,
+    player_count: 1,
     recorded_at: NOW,
 })];
 
@@ -1307,6 +1308,105 @@ export class ApiMock {
                 period: url.searchParams.get("period") ?? "1d",
                 points: this.metrics,
             });
+        }
+
+        const playersMatch = path.match(/^\/servers\/([0-9a-f-]+)\/players$/i);
+        if (playersMatch && request.method() === "GET") {
+            return this.json(route, 200, {
+                instance_id: playersMatch[1],
+                online_count: 1,
+                detection: "console_log",
+                access_mode: "native_files",
+                players: [{
+                    player_key: "id:76561198000000000",
+                    display_name: "DmxPlayer",
+                    external_id: "76561198000000000",
+                    source: "steam",
+                    online: true,
+                    first_seen_at: NOW,
+                    last_seen_at: NOW,
+                    connected_at: NOW,
+                    disconnected_at: null,
+                }],
+            });
+        }
+
+        const configFilesMatch = path.match(/^\/servers\/([0-9a-f-]+)\/config-files$/i);
+        if (configFilesMatch && request.method() === "GET") {
+            const queuedRequest = this.findRequest("PUT", `/servers/${configFilesMatch[1]}/config-files/text`);
+            const queuedContent = typeof queuedRequest?.body === "object"
+                && queuedRequest.body !== null
+                && "content" in queuedRequest.body
+                && typeof queuedRequest.body.content === "string"
+                ? queuedRequest.body.content
+                : null;
+            return this.json(route, 200, {
+                items: [{
+                    path: "data/adminlist.txt",
+                    category: "access",
+                    format: "text",
+                    exists: true,
+                    size_bytes: 18,
+                    modified_at: NOW,
+                    sha256: "a".repeat(64),
+                    queued_change: queuedContent === null ? null : {
+                        id: "13131313-1313-4313-8313-131313131313",
+                        status: "pending",
+                        content_sha256: "b".repeat(64),
+                        error_code: null,
+                        queued_at: NOW,
+                    },
+                }],
+                pending_count: queuedContent === null ? 0 : 1,
+            });
+        }
+        const configTextMatch = path.match(/^\/servers\/([0-9a-f-]+)\/config-files\/text$/i);
+        if (configTextMatch && request.method() === "GET") {
+            return this.json(route, 200, {
+                file: {
+                    path: url.searchParams.get("path"),
+                    category: "access",
+                    format: "text",
+                    exists: true,
+                    size_bytes: 18,
+                    modified_at: NOW,
+                    sha256: "a".repeat(64),
+                    queued_change: null,
+                },
+                content: "76561198000000000",
+                queued_content: null,
+            });
+        }
+        if (configTextMatch && request.method() === "PUT") {
+            const body = record.body as { content?: unknown };
+            return this.json(route, 200, {
+                file: {
+                    path: url.searchParams.get("path"),
+                    category: "access",
+                    format: "text",
+                    exists: true,
+                    size_bytes: typeof body.content === "string" ? body.content.length : 0,
+                    modified_at: NOW,
+                    sha256: "a".repeat(64),
+                    queued_change: {
+                        id: "13131313-1313-4313-8313-131313131313",
+                        status: "pending",
+                        content_sha256: "b".repeat(64),
+                        error_code: null,
+                        queued_at: NOW,
+                    },
+                },
+                content: "76561198000000000",
+                queued_content: typeof body.content === "string" ? body.content : "",
+            });
+        }
+        if (configTextMatch && request.method() === "DELETE") {
+            return this.json(route, 200, { success: true, message: "config_files.cancelled" });
+        }
+
+        const consoleMatch = path.match(/^\/servers\/([0-9a-f-]+)\/console$/i);
+        if (consoleMatch && request.method() === "POST") {
+            return this.json(route, 202, { accepted: true });
         }
 
         const serverMatch = path.match(/^\/servers\/([0-9a-f-]+)$/i);

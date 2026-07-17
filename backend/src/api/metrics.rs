@@ -28,6 +28,7 @@ pub struct MetricPoint {
     pub memory_bytes: i64,
     pub disk_bytes: i64,
     pub uptime_seconds: i64,
+    pub player_count: Option<i64>,
     pub recorded_at: String,
 }
 
@@ -61,7 +62,7 @@ async fn history(
     let threshold = (Utc::now() - Duration::hours(hours)).to_rfc3339();
     let mut points: Vec<MetricPoint> = sqlx::query_as(
         r#"
-        SELECT id, cpu_usage, memory_bytes, disk_bytes, uptime_seconds, recorded_at
+        SELECT id, cpu_usage, memory_bytes, disk_bytes, uptime_seconds, player_count, recorded_at
         FROM server_metrics
         WHERE server_id = ? AND recorded_at >= ?
         ORDER BY recorded_at DESC

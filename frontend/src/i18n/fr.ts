@@ -1044,6 +1044,69 @@ export const fr = {
             logs_copied: "Logs copiés",
             command_placeholder: "Entrez une commande..."
         },
+        native_config: {
+            configuration_title: "Fichiers de configuration natifs",
+            configuration_description: "Lisez le contenu réellement utilisé par le jeu et préparez des modifications sans écrire dans un processus en cours.",
+            access_title: "Permissions et listes d’accès natives",
+            access_description: "Administration, opérateurs, liste d’autorisation et bannissements exposés par ce type de serveur.",
+            running_hint: "Le serveur tourne : la modification est mise en file et sera appliquée après son arrêt ou pendant son redémarrage.",
+            stopped_hint: "Le serveur est arrêté : la modification est mise en file et sera appliquée juste avant le prochain démarrage.",
+            empty: "Aucun fichier natif pris en charge pour ce profil.",
+            live: "Présent",
+            missing: "À créer",
+            source_changed: "Le fichier réel a changé pendant votre édition. Rechargez-le avant de remettre la modification en file.",
+            unsaved: "Brouillon non enregistré",
+            pending: "Modification en attente",
+            up_to_date: "Contenu réel à jour",
+            discard: "Recharger le fichier",
+            discard_first: "Rechargez ou enregistrez d’abord le brouillon en cours.",
+            cancel_queue: "Annuler l’attente",
+            queue: "Mettre en file",
+            queued: "Modification chiffrée et mise en file.",
+            cancelled: "Modification en attente annulée.",
+            status: {
+                pending: "En attente",
+                applied: "Appliquée",
+                conflict: "Conflit",
+                failed: "Échec",
+                cancelled: "Annulée"
+            },
+            status_detail: {
+                pending: "Cette modification sera appliquée au prochain arrêt ou démarrage.",
+                applied: "La modification a été appliquée.",
+                conflict: "Le jeu a modifié ce fichier avant l’application. Vérifiez le contenu réel puis créez une nouvelle modification.",
+                failed: "La modification n’a pas pu être appliquée. Vérifiez le format et le contenu du fichier.",
+                cancelled: "La modification a été annulée."
+            }
+        },
+        players: {
+            title: "Joueurs",
+            description: "Présence détectée depuis les événements réels de la console du serveur.",
+            online: "Joueurs en ligne",
+            known: "Joueurs connus",
+            detection: "Détection",
+            detection_modes: {
+                console_log: "Console native",
+                unavailable: "Indisponible"
+            },
+            detection_unavailable: "Ce serveur ne fournit pas encore d’événement de présence fiable que DMX puisse normaliser.",
+            empty: "Aucun joueur détecté. La liste se remplira lors des prochaines connexions.",
+            player: "Joueur",
+            status: "État",
+            identifier: "Identifiant officiel",
+            last_seen: "Dernière activité",
+            connected: "En ligne",
+            offline: "Hors ligne",
+            access_title: "Administration, rôles et accès",
+            access_read_required: "La permission de lecture des fichiers est requise pour afficher les listes d’accès natives.",
+            access_modes: {
+                native_files: "Ce serveur stocke ses administrateurs, permissions ou listes d’accès dans les fichiers natifs ci-dessous.",
+                console_commands: "Ce serveur gère les droits par commandes de console. Utilisez l’onglet Terminal ; les joueurs détectés restent visibles ici.",
+                shared_admin_password: "Ce serveur utilise un mot de passe administrateur partagé, chiffré dans la configuration DMX.",
+                game_managed: "Les privilèges sont gérés par l’interface d’administration native du jeu et ne sont pas exposés comme rôles modifiables de façon sûre.",
+                unsupported: "Aucun mécanisme d’administration fiable n’est déclaré pour ce profil."
+            }
+        },
         config: {
             title: "Configuration du Serveur",
             subtitle: "N'oubliez pas d'enregistrer vos modifications.",
@@ -1086,43 +1149,6 @@ export const fr = {
             file_world: "world/config.json (Monde)",
             save_file: "Enregistrer le fichier",
             invalid_json: "JSON Invalide. Veuillez corriger les erreurs avant d'enregistrer."
-        },
-        players: {
-            title: "Gestion des Joueurs",
-            add_prompt: "Ajouter un joueur",
-            no_players: "Aucun joueur trouvé",
-            tabs: {
-                online: "En ligne",
-                database: "Joueurs (DB)",
-                whitelist: "Whitelist",
-                permissions: "Permissions",
-                bans: "Bannis"
-            },
-            headers: {
-                player: "Joueur",
-                reason_banned_by: "Raison / Banni par",
-                expiration: "Expiration",
-                status_info: "Statut / Info",
-                actions: "Actions"
-            },
-            status: {
-                connected: "Connecté",
-                whitelisted: "Whitelisted",
-                offline: "Offline",
-                group: "Groupe :",
-                seen: "Vu :"
-            },
-            actions: {
-                op: "Donner OP",
-                deop: "Retirer OP",
-                kick: "Kicker",
-                ban: "Bannir",
-                remove: "Supprimer"
-            },
-            suggestions: "Suggestions",
-            no_known_players: "(Aucun joueur connu)",
-            new_player: "Nouveau joueur",
-            search_placeholder: "Rechercher (Nom ou UUID)..."
         }
     },
 

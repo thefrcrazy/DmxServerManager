@@ -48,6 +48,18 @@ struct RelativePath {
 
 impl RelativePath {
     fn parse(raw: &str, allow_root: bool) -> Result<Self, AppError> {
+        Self::parse_with_policy(raw, allow_root, false)
+    }
+
+    fn declared(raw: &str) -> Result<Self, AppError> {
+        Self::parse_with_policy(raw, false, true)
+    }
+
+    fn parse_with_policy(
+        raw: &str,
+        allow_root: bool,
+        allow_protected: bool,
+    ) -> Result<Self, AppError> {
         if raw.len() > 1_024
             || raw.contains('\0')
             || raw.contains('\\')
@@ -85,7 +97,7 @@ impl RelativePath {
             normalized.push(value);
         }
         let normalized = normalized.join("/");
-        if is_protected_path(&normalized) {
+        if !allow_protected && is_protected_path(&normalized) {
             return Err(AppError::Forbidden("files.protected_path".into()));
         }
         Ok(Self {
@@ -125,6 +137,32 @@ pub async fn open_regular_file(
 ) -> Result<(tokio::fs::File, u64), AppError> {
     let root = root.to_path_buf();
     let relative = RelativePath::parse(relative, false)?;
+    let (file, size) = tokio::task::spawn_blocking(move || {
+        let path = resolve_existing(&root, &relative)?;
+        let metadata = fs::symlink_metadata(&path).map_err(map_not_found)?;
+        if !metadata.is_file() || is_link_like(&metadata) {
+            return Err(AppError::BadRequest("files.not_regular".into()));
+        }
+        reject_hardlinked_file(&path, &metadata)?;
+        let file = open_read_no_follow(&path)?;
+        validate_open_file(&file)?;
+        Ok((file, metadata.len()))
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))??;
+    Ok((tokio::fs::File::from_std(file), size))
+}
+
+/// Opens a path selected from a server-profile-owned allowlist. This keeps all
+/// traversal, symlink, reparse-point and hardlink protections while allowing a
+/// dedicated configuration API to reach files hidden from the generic browser
+/// (for example PalWorldSettings.ini).
+pub(crate) async fn open_declared_regular_file(
+    root: &Path,
+    relative: &str,
+) -> Result<(tokio::fs::File, u64), AppError> {
+    let root = root.to_path_buf();
+    let relative = RelativePath::declared(relative)?;
     let (file, size) = tokio::task::spawn_blocking(move || {
         let path = resolve_existing(&root, &relative)?;
         let metadata = fs::symlink_metadata(&path).map_err(map_not_found)?;
@@ -211,6 +249,41 @@ pub async fn write_bytes(
         max_bytes as u64,
     )
     .await
+}
+
+pub(crate) async fn write_declared_bytes(
+    root: &Path,
+    relative: &str,
+    contents: Bytes,
+    max_bytes: usize,
+) -> Result<u64, AppError> {
+    if contents.len() > max_bytes {
+        return Err(AppError::BadRequest("files.upload_too_large".into()));
+    }
+    let relative = RelativePath::declared(relative)?;
+    let prepare_root = root.to_path_buf();
+    let prepare_relative = relative.clone();
+    tokio::task::spawn_blocking(move || ensure_declared_parent(&prepare_root, &prepare_relative))
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))??;
+
+    let (temporary, destination, prepared_file) = prepare_write(root, &relative).await?;
+    let mut cleanup = TemporaryWriteCleanup(Some(temporary.clone()));
+    let mut file = prepared_file;
+    if let Err(error) = tokio::io::AsyncWriteExt::write_all(&mut file, &contents).await {
+        drop(file);
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(error.into());
+    }
+    tokio::io::AsyncWriteExt::flush(&mut file).await?;
+    file.sync_all().await?;
+    drop(file);
+    if let Err(error) = replace_regular_file(&temporary, &destination).await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(error);
+    }
+    cleanup.0 = None;
+    Ok(contents.len() as u64)
 }
 
 pub async fn create_directory(root: &Path, relative: &str) -> Result<(), AppError> {
@@ -501,6 +574,43 @@ fn resolve_for_create(root: &Path, relative: &RelativePath) -> Result<PathBuf, A
         .file_name()
         .ok_or_else(|| AppError::BadRequest("files.invalid_path".into()))?;
     Ok(parent.join(name))
+}
+
+fn ensure_declared_parent(root: &Path, relative: &RelativePath) -> Result<(), AppError> {
+    let canonical_root = checked_root(root)?;
+    let parent = relative
+        .path
+        .parent()
+        .ok_or_else(|| AppError::BadRequest("files.invalid_path".into()))?;
+    let mut current = root.to_path_buf();
+    for component in parent.components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                if !metadata.is_dir() || is_link_like(&metadata) {
+                    return Err(AppError::Forbidden("files.links_forbidden".into()));
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                #[cfg(unix)]
+                let mut builder = fs::DirBuilder::new();
+                #[cfg(not(unix))]
+                let builder = fs::DirBuilder::new();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::DirBuilderExt;
+                    builder.mode(0o700);
+                }
+                builder.create(&current)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        let canonical = fs::canonicalize(&current)?;
+        if !canonical.starts_with(&canonical_root) {
+            return Err(AppError::Forbidden("files.path_escape".into()));
+        }
+    }
+    Ok(())
 }
 
 fn checked_root(root: &Path) -> Result<PathBuf, AppError> {

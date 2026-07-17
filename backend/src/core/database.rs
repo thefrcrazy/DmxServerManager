@@ -58,6 +58,14 @@ pub async fn run_migrations(pool: &DbPool) -> anyhow::Result<()> {
     )
     .execute(pool)
     .await?;
+    // A supervised process is never reattached after a manager restart, so no
+    // player session can still be considered online either.
+    sqlx::query(
+        "UPDATE server_players SET online = 0, disconnected_at = COALESCE(disconnected_at, datetime('now')) \
+         WHERE online = 1",
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

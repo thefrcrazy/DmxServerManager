@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
     ChatDraftSchema,
+    ConfigFileDocumentSchema,
     CreateDiscordWebhookSchema,
     CreateSteamProfileSchema,
     DiscordWebhookSchema,
@@ -8,15 +9,18 @@ import {
     HytaleDeviceAuthorizationSchema,
     InstalledModSchema,
     NotificationPageSchema,
+    PlayerSnapshotSchema,
     ScheduleActionSchema,
 } from "../src/schemas/operations";
 import { BackupsClient } from "../src/services/api/backups.client";
 import { setCsrfToken } from "../src/services/api/base.client";
 import { ChatClient } from "../src/services/api/chat.client";
+import { ConfigClient } from "../src/services/api/config.client";
 import { FilesClient } from "../src/services/api/files.client";
 import { ImportsClient } from "../src/services/api/imports.client";
 import { JobsClient } from "../src/services/api/jobs.client";
 import { NotificationsClient } from "../src/services/api/notifications.client";
+import { PlayersClient } from "../src/services/api/players.client";
 import { ModsClient } from "../src/services/api/mods.client";
 import { ProfileClient } from "../src/services/api/profile.client";
 import { SchedulesClient } from "../src/services/api/schedules.client";
@@ -91,6 +95,84 @@ describe("clients opérationnels", () => {
         expect(response.success).toBe(true);
         expect(input).toBe(`/api/v1/servers/${SERVER_ID}/logs?source=install&limit=10000`);
         if (response.success) expect(response.data.items).toHaveLength(2);
+    });
+
+    test("met une configuration native en file avec son hash de concurrence", async () => {
+        let input = "";
+        let captured: RequestInit | undefined;
+        const path = "game/Server/config.json";
+        const payload = {
+            file: {
+                path,
+                category: "configuration",
+                format: "json",
+                exists: true,
+                size_bytes: 16,
+                modified_at: "2026-07-17T12:00:00Z",
+                sha256: "a".repeat(64),
+                queued_change: {
+                    id: BACKUP_ID,
+                    status: "pending",
+                    content_sha256: "b".repeat(64),
+                    error_code: null,
+                    queued_at: "2026-07-17T12:01:00Z",
+                },
+            },
+            content: "{\"before\":true}",
+            queued_content: "{\"after\":true}",
+        };
+        expect(ConfigFileDocumentSchema.safeParse(payload).success).toBe(true);
+        globalThis.fetch = async (requestInput, init) => {
+            input = String(requestInput);
+            captured = init;
+            return Response.json(payload);
+        };
+        setCsrfToken("csrf-config");
+
+        const response = await new ConfigClient().queue(
+            SERVER_ID,
+            path,
+            payload.queued_content,
+            payload.file.sha256,
+        );
+
+        expect(response.success).toBe(true);
+        expect(input).toBe(`/api/v1/servers/${SERVER_ID}/config-files/text?path=game%2FServer%2Fconfig.json`);
+        expect(new Headers(captured?.headers).get("X-CSRF-Token")).toBe("csrf-config");
+        expect(JSON.parse(String(captured?.body))).toEqual({
+            content: payload.queued_content,
+            expected_sha256: payload.file.sha256,
+        });
+    });
+
+    test("valide une présence joueur normalisée sans accepter d’adresse réseau", async () => {
+        const payload = {
+            instance_id: SERVER_ID,
+            online_count: 1,
+            detection: "console_log",
+            access_mode: "native_files",
+            players: [{
+                player_key: "id:ebc152b4-fdfd-4467-aadc-865ad4c87ea4",
+                display_name: "TheFRcRaZy",
+                external_id: "ebc152b4-fdfd-4467-aadc-865ad4c87ea4",
+                source: "hytale",
+                online: true,
+                first_seen_at: "2026-07-17T12:00:00Z",
+                last_seen_at: "2026-07-17T12:01:00Z",
+                connected_at: "2026-07-17T12:01:00Z",
+                disconnected_at: null,
+            }],
+        };
+        expect(PlayerSnapshotSchema.safeParse(payload).success).toBe(true);
+        expect(PlayerSnapshotSchema.safeParse({
+            ...payload,
+            players: [{ ...payload.players[0], ip_address: "192.0.2.1" }],
+        }).success).toBe(false);
+        globalThis.fetch = async () => Response.json(payload);
+
+        const response = await new PlayersClient().snapshot(SERVER_ID);
+        expect(response.success).toBe(true);
+        if (response.success) expect(response.data.online_count).toBe(1);
     });
 
     test("envoie un upload brut et le CSRF via le client central", async () => {

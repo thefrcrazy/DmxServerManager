@@ -9,6 +9,7 @@ pub mod auth;
 pub mod backups;
 pub mod catalog;
 pub mod chat;
+pub mod config_files;
 pub mod events;
 pub mod files;
 pub mod game_profiles;
@@ -17,6 +18,7 @@ pub mod metrics;
 pub mod mods;
 pub mod notifications;
 pub mod openapi;
+pub mod players;
 pub mod releases;
 pub mod schedules;
 pub mod servers;
@@ -61,6 +63,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .merge(backups::routes())
         .merge(catalog::routes())
         .merge(chat::routes())
+        .merge(config_files::routes())
         .merge(files::routes())
         .merge(schedules::routes())
         .merge(servers::routes())
@@ -68,6 +71,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .merge(metrics::routes())
         .merge(mods::routes())
         .merge(notifications::routes())
+        .merge(players::routes())
         .merge(releases::routes())
         .merge(webhooks::routes())
         .route("/events", get(events::stream_events))

@@ -98,12 +98,62 @@ export const MetricPointSchema = z.object({
     memory_bytes: z.number().int().nonnegative(),
     disk_bytes: z.number().int().nonnegative(),
     uptime_seconds: z.number().int().nonnegative(),
+    player_count: z.number().int().nonnegative().nullable(),
     recorded_at: z.string().min(1),
 }).strict();
 export const MetricsHistorySchema = z.object({
     server_id: z.string().uuid(),
     period: MetricPeriodSchema,
     points: z.array(MetricPointSchema).max(10_000),
+}).strict();
+
+export const ConfigFileFormatSchema = z.enum(["json", "properties", "ini", "toml", "yaml", "xml", "lua", "text"]);
+export const ConfigFileCategorySchema = z.enum(["configuration", "access"]);
+export const ConfigChangeStatusSchema = z.enum(["pending", "applied", "conflict", "failed", "cancelled"]);
+export const ConfigChangeSummarySchema = z.object({
+    id: z.string().uuid(),
+    status: ConfigChangeStatusSchema,
+    content_sha256: z.string().regex(/^[0-9a-f]{64}$/i),
+    error_code: z.string().nullable(),
+    queued_at: z.string().min(1),
+}).strict();
+export const ConfigFileSummarySchema = z.object({
+    path: z.string().min(1).max(1_024),
+    category: ConfigFileCategorySchema,
+    format: ConfigFileFormatSchema,
+    exists: z.boolean(),
+    size_bytes: z.number().int().nonnegative(),
+    modified_at: z.string().nullable(),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/i).nullable(),
+    queued_change: ConfigChangeSummarySchema.nullable(),
+}).strict();
+export const ConfigFileListSchema = z.object({
+    items: z.array(ConfigFileSummarySchema).max(512),
+    pending_count: z.number().int().nonnegative(),
+}).strict();
+export const ConfigFileDocumentSchema = z.object({
+    file: ConfigFileSummarySchema,
+    content: z.string(),
+    queued_content: z.string().nullable(),
+}).strict();
+
+export const ServerPlayerSchema = z.object({
+    player_key: z.string().min(1).max(255),
+    display_name: z.string().min(1).max(128),
+    external_id: z.string().nullable(),
+    source: z.enum(["hytale", "minecraft_java", "minecraft_bedrock", "steam", "console_log", "generic_log"]),
+    online: z.boolean(),
+    first_seen_at: z.string().min(1),
+    last_seen_at: z.string().min(1),
+    connected_at: z.string().nullable(),
+    disconnected_at: z.string().nullable(),
+}).strict();
+export const PlayerSnapshotSchema = z.object({
+    instance_id: z.string().uuid(),
+    online_count: z.number().int().nonnegative(),
+    detection: z.enum(["console_log", "unavailable"]),
+    access_mode: z.enum(["native_files", "console_commands", "shared_admin_password", "game_managed", "unsupported"]),
+    players: z.array(ServerPlayerSchema).max(1_000),
 }).strict();
 
 export const InstalledModSchema = z.object({
@@ -324,6 +374,11 @@ export type Backup = z.infer<typeof BackupSchema>;
 export type MetricPeriod = z.infer<typeof MetricPeriodSchema>;
 export type MetricPoint = z.infer<typeof MetricPointSchema>;
 export type MetricsHistory = z.infer<typeof MetricsHistorySchema>;
+export type ConfigFileCategory = z.infer<typeof ConfigFileCategorySchema>;
+export type ConfigFileSummary = z.infer<typeof ConfigFileSummarySchema>;
+export type ConfigFileDocument = z.infer<typeof ConfigFileDocumentSchema>;
+export type ServerPlayer = z.infer<typeof ServerPlayerSchema>;
+export type PlayerSnapshot = z.infer<typeof PlayerSnapshotSchema>;
 export type InstalledMod = z.infer<typeof InstalledModSchema>;
 export type SteamProfileDefinition = z.infer<typeof SteamProfileDefinitionSchema>;
 export type CreateSteamProfile = z.infer<typeof CreateSteamProfileSchema>;
