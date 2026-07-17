@@ -7805,11 +7805,25 @@ mod tests {
         .await
         .unwrap();
         assert!(!observed_exit.borrow().as_ref().unwrap().success);
-        let group_exists = unsafe { libc::kill(-(pid as i32), 0) } == 0;
-        assert!(
-            !group_exists,
-            "the managed process group must not survive its owner"
-        );
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if unsafe { libc::kill(-(pid as i32), 0) } == 0 {
+                    // The root process can be reaped just before another group
+                    // member becomes invisible to kill(2) on a loaded runner.
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    continue;
+                }
+                let error = std::io::Error::last_os_error();
+                assert_eq!(
+                    error.raw_os_error(),
+                    Some(libc::ESRCH),
+                    "failed to probe the managed process group: {error}"
+                );
+                break;
+            }
+        })
+        .await
+        .expect("the managed process group must not survive its owner");
     }
 
     #[tokio::test]
