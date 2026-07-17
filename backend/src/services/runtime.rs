@@ -2684,7 +2684,7 @@ impl InstanceActor {
             remove_dir_if_exists(&payload)
                 .await
                 .map_err(OperationFailure::internal)?;
-            installers::install_hytale_downloaded(
+            let installed = installers::install_hytale_downloaded(
                 &settings,
                 &root,
                 &plan.output_archive,
@@ -2693,8 +2693,48 @@ impl InstanceActor {
                 installed_version,
                 plan.downloader_artifact.clone(),
             )
-            .await
-            .map_err(installer_failure)
+            .await;
+            match installed {
+                Ok(installed) => {
+                    let aot_cache_enabled = installed
+                        .plan
+                        .args
+                        .iter()
+                        .any(|argument| argument == "-XX:AOTCache=HytaleServer.aot");
+                    self.write_install_log(
+                        &root,
+                        if aot_cache_enabled {
+                            "[DMX] Hytale archive layout validated (Assets.zip=present, HytaleServer.jar=present, optional AOT cache=present and enabled)."
+                        } else {
+                            "[DMX] Hytale archive layout validated (Assets.zip=present, HytaleServer.jar=present, optional AOT cache=absent; the server will start without it)."
+                        },
+                    )
+                    .await?;
+                    Ok(installed)
+                }
+                Err(error) => {
+                    if error.code == "hytale_layout_invalid" {
+                        let diagnostics =
+                            installers::hytale::game_layout_diagnostics(&payload).await;
+                        if let Err(log_error) = self
+                            .write_install_log(
+                                &root,
+                                &format!(
+                                    "[DMX] Hytale archive layout diagnostics: {diagnostics}"
+                                ),
+                            )
+                            .await
+                        {
+                            tracing::warn!(
+                                instance_id = %self.instance_id,
+                                ?log_error,
+                                "failed to append Hytale layout diagnostics"
+                            );
+                        }
+                    }
+                    Err(installer_failure(error))
+                }
+            }
         }
         .await;
         if self.close_install_cancellation(job_id).await {
@@ -7767,13 +7807,23 @@ mod tests {
     async fn dropping_managed_process_kills_its_process_group() {
         let mut command = Command::new("sh");
         command
-            .args(["-c", "trap '' TERM; sleep 60"])
+            .args([
+                "-c",
+                "trap '' TERM; (trap '' TERM; sleep 60) & printf ready; wait",
+            ])
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null());
         let mut child = spawn_contained(&mut command).unwrap().child;
         let pid = child.id().unwrap();
         let stdin = child.stdin.take();
+        let mut stdout = child.stdout.take().unwrap();
+        let mut ready = [0_u8; 5];
+        tokio::time::timeout(Duration::from_secs(2), stdout.read_exact(&mut ready))
+            .await
+            .expect("the process-group fixture must become ready")
+            .unwrap();
+        assert_eq!(&ready, b"ready");
         let (exit_tx, exit_rx) = watch::channel(None);
         let mut observed_exit = exit_rx.clone();
         tokio::spawn(async move {
@@ -7805,25 +7855,20 @@ mod tests {
         .await
         .unwrap();
         assert!(!observed_exit.borrow().as_ref().unwrap().success);
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                if unsafe { libc::kill(-(pid as i32), 0) } == 0 {
-                    // The root process can be reaped just before another group
-                    // member becomes invisible to kill(2) on a loaded runner.
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                    continue;
-                }
-                let error = std::io::Error::last_os_error();
-                assert_eq!(
-                    error.raw_os_error(),
-                    Some(libc::ESRCH),
-                    "failed to probe the managed process group: {error}"
-                );
-                break;
-            }
-        })
+
+        // The background descendant inherits stdout. EOF therefore proves
+        // that the entire group was killed; probing the numeric PGID after the
+        // root is reaped is racy because the kernel may immediately reuse it
+        // for an unrelated process group and return EPERM instead of ESRCH.
+        let mut trailing_output = Vec::new();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            stdout.read_to_end(&mut trailing_output),
+        )
         .await
-        .expect("the managed process group must not survive its owner");
+        .expect("a descendant kept the process-group pipe open")
+        .unwrap();
+        assert!(trailing_output.is_empty());
     }
 
     #[tokio::test]

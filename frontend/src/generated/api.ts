@@ -879,22 +879,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/servers/{id}/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getServerLogHistory"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/servers/{id}/imports/attach": {
         parameters: {
             query?: never;
@@ -937,6 +921,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["importServerZip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servers/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getServerLogHistory"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1342,16 +1342,6 @@ export interface components {
         ConsoleResponse: {
             accepted: boolean;
         };
-        LogHistoryLine: {
-            message: string;
-            /** @enum {unknown} */
-            stream: "install" | "install_error" | "console" | "console_error";
-        };
-        LogHistoryResponse: {
-            items: components["schemas"]["LogHistoryLine"][];
-            /** @enum {unknown} */
-            source: "install" | "console";
-        };
         CreateChatMessageRequest: {
             /** @description Plain text; limited to 16384 encoded bytes, with LF and TAB as the only accepted control characters. */
             body: string;
@@ -1456,12 +1446,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        ProfileVersionCatalog: {
-            game_versions: string[];
-            loader_versions: string[];
-            profile_id: string;
-            selected_game_version: string | null;
-        };
         HealthResponse: {
             /** @constant */
             service: "dmx-server-manager";
@@ -1556,6 +1540,16 @@ export interface components {
         LifecycleSpec: {
             ready_log_pattern: string | null;
             stop: components["schemas"]["StopStrategy"];
+        };
+        LogHistoryLine: {
+            message: string;
+            /** @enum {unknown} */
+            stream: "install" | "install_error" | "console" | "console_error";
+        };
+        LogHistoryResponse: {
+            items: components["schemas"]["LogHistoryLine"][];
+            /** @enum {unknown} */
+            source: "install" | "console";
         };
         LoginRequest: {
             /** Format: password */
@@ -1697,6 +1691,12 @@ export interface components {
             trace_id: string;
             /** @default about:blank */
             type: string;
+        };
+        ProfileVersionCatalog: {
+            game_versions: string[];
+            loader_versions: string[];
+            profile_id: string;
+            selected_game_version: string | null;
         };
         ProviderInstallRequest: {
             project_id: string;
@@ -4108,34 +4108,6 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    getServerLogHistory: {
-        parameters: {
-            query?: {
-                source?: "install" | "console";
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                id: components["parameters"]["ServerId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Bounded persisted installer or game console history. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LogHistoryResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            default: components["responses"]["Problem"];
-        };
-    };
     attachExistingServer: {
         parameters: {
             query?: never;
@@ -4238,6 +4210,34 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getServerLogHistory: {
+        parameters: {
+            query?: {
+                source?: "install" | "console";
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded persisted installer or game console history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogHistoryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             default: components["responses"]["Problem"];
         };
     };

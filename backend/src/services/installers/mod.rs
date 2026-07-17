@@ -989,14 +989,14 @@ pub async fn resume_native_install(
     }
     let plan = match logical_profile_id.as_str() {
         "hytale" => {
-            hytale::validate_game_layout(staging).await?;
+            let layout = hytale::validate_game_layout(staging).await?;
             if marker.required_java_major != Some(25) {
                 return Err(InstallerError::new(
                     "java_version_missing",
                     "servers.install_metadata_invalid",
                 ));
             }
-            hytale::launch_plan(settings)?
+            hytale::launch_plan(settings, layout.has_aot_cache)?
         }
         "minecraft-java-vanilla" | "minecraft-java-paper" => {
             let java = marker.required_java_major.ok_or_else(|| {
@@ -1225,7 +1225,8 @@ pub async fn native_launch_plan(
                     "servers.install_metadata_invalid",
                 ));
             }
-            hytale::launch_plan(settings)
+            let layout = hytale::validate_game_layout(game_root).await?;
+            hytale::launch_plan(settings, layout.has_aot_cache)
         }
         _ => Err(InstallerError::new(
             "runtime_not_implemented",

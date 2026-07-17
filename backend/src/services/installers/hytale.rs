@@ -31,6 +31,11 @@ pub struct DeviceAuthorization {
     pub user_code: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HytaleGameLayout {
+    pub has_aot_cache: bool,
+}
+
 /// A command contract for the official downloader. The caller must execute it
 /// through the normal contained-process supervisor. `credential_file` belongs
 /// to an ephemeral 0700 directory: its contents must be moved to SecretStore
@@ -137,12 +142,12 @@ pub async fn extract_hytale_game_archive(
     archive: &Path,
     staging: &Path,
     context: &InstallContext,
-) -> Result<(), InstallerError> {
+) -> Result<HytaleGameLayout, InstallerError> {
     extract_zip(archive, staging, context.archive_limits, None).await?;
     validate_game_layout(staging).await
 }
 
-pub async fn validate_game_layout(staging: &Path) -> Result<(), InstallerError> {
+pub async fn validate_game_layout(staging: &Path) -> Result<HytaleGameLayout, InstallerError> {
     for directory in [staging.to_path_buf(), staging.join("Server")] {
         let metadata = tokio::fs::symlink_metadata(&directory)
             .await
@@ -154,11 +159,7 @@ pub async fn validate_game_layout(staging: &Path) -> Result<(), InstallerError> 
             ));
         }
     }
-    for required in [
-        "Assets.zip",
-        "Server/HytaleServer.jar",
-        "Server/HytaleServer.aot",
-    ] {
+    for required in ["Assets.zip", "Server/HytaleServer.jar"] {
         let path = staging.join(required);
         let metadata = tokio::fs::symlink_metadata(&path)
             .await
@@ -170,7 +171,110 @@ pub async fn validate_game_layout(staging: &Path) -> Result<(), InstallerError> 
             ));
         }
     }
-    Ok(())
+
+    // Hytale's AOT cache improves startup time but is not part of every
+    // provider-supported installation layout. In particular, the official
+    // bootstrap flow documents a complete result without HytaleServer.aot.
+    // If the cache is shipped, still reject links and non-regular files.
+    let aot_cache = staging.join("Server/HytaleServer.aot");
+    let has_aot_cache = match tokio::fs::symlink_metadata(&aot_cache).await {
+        Ok(metadata) if metadata.is_file() && !metadata_is_link_like(&metadata) => true,
+        Ok(_) => {
+            return Err(InstallerError::new(
+                "hytale_layout_invalid",
+                "servers.hytale_archive_invalid",
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(InstallerError::internal("hytale_layout_invalid", error)),
+    };
+
+    Ok(HytaleGameLayout { has_aot_cache })
+}
+
+/// Produces a bounded, non-secret layout summary for installation logs. This
+/// deliberately reports only file kinds/sizes and a small direct-child list;
+/// file contents and credential paths are never read.
+pub async fn game_layout_diagnostics(staging: &Path) -> String {
+    let expected = [
+        ("root", staging.to_path_buf()),
+        ("Server", staging.join("Server")),
+        ("Assets.zip", staging.join("Assets.zip")),
+        (
+            "Server/HytaleServer.jar",
+            staging.join("Server/HytaleServer.jar"),
+        ),
+        (
+            "Server/HytaleServer.aot(optional)",
+            staging.join("Server/HytaleServer.aot"),
+        ),
+    ];
+    let mut states = Vec::with_capacity(expected.len());
+    for (name, path) in expected {
+        states.push(format!("{name}={}", diagnostic_path_state(&path).await));
+    }
+    format!(
+        "{}; root_entries={}; server_entries={}",
+        states.join(", "),
+        diagnostic_directory_entries(staging).await,
+        diagnostic_directory_entries(&staging.join("Server")).await,
+    )
+}
+
+async fn diagnostic_path_state(path: &Path) -> String {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata_is_link_like(&metadata) => "link-like(rejected)".to_string(),
+        Ok(metadata) if metadata.is_file() => format!("file({} bytes)", metadata.len()),
+        Ok(metadata) if metadata.is_dir() => "directory".to_string(),
+        Ok(_) => "special(rejected)".to_string(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "missing".to_string(),
+        Err(error) => format!("error({:?})", error.kind()),
+    }
+}
+
+async fn diagnostic_directory_entries(directory: &Path) -> String {
+    const MAX_ENTRIES: usize = 16;
+    const MAX_NAME_CHARS: usize = 48;
+
+    let mut entries = match tokio::fs::read_dir(directory).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return "missing".to_string();
+        }
+        Err(error) => return format!("error({:?})", error.kind()),
+    };
+    let mut summary = Vec::new();
+    loop {
+        if summary.len() == MAX_ENTRIES {
+            summary.push("...".to_string());
+            break;
+        }
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(error) => {
+                summary.push(format!("<error:{:?}>", error.kind()));
+                break;
+            }
+        };
+        let name = entry.file_name().to_string_lossy().to_string();
+        let truncated = name.chars().take(MAX_NAME_CHARS).collect::<String>();
+        let suffix = if name.chars().count() > MAX_NAME_CHARS {
+            "..."
+        } else {
+            ""
+        };
+        let kind = match entry.file_type().await {
+            Ok(kind) if kind.is_file() => "file",
+            Ok(kind) if kind.is_dir() => "dir",
+            Ok(kind) if kind.is_symlink() => "link",
+            Ok(_) => "special",
+            Err(_) => "unknown",
+        };
+        summary.push(format!("{truncated:?}{suffix}:{kind}"));
+    }
+    summary.sort();
+    format!("[{}]", summary.join(","))
 }
 
 /// Builds a complete update candidate from the server-owned staging tree.
@@ -189,7 +293,8 @@ pub async fn prepare_runtime_update(
     remove_path_if_exists(candidate).await?;
     copy_tree_without_links(provider_staging, candidate).await?;
     preserve_server_data(current_game, candidate).await?;
-    validate_game_layout(candidate).await
+    validate_game_layout(candidate).await?;
+    Ok(())
 }
 
 /// Copies only Hytale's mutable, instance-owned files. This is also used just
@@ -211,11 +316,11 @@ pub async fn install_downloaded_archive(
     installed_version: String,
     downloader_artifact: InstalledArtifact,
 ) -> Result<super::InstallResult, InstallerError> {
-    extract_hytale_game_archive(archive, staging, context).await?;
+    let layout = extract_hytale_game_archive(archive, staging, context).await?;
     preserve_server_data(&instance_root.join("game"), staging).await?;
     let archive_artifact = inspect_artifact("hytale-game-archive", archive).await?;
     Ok(super::InstallResult {
-        plan: launch_plan(settings)?,
+        plan: launch_plan(settings, layout.has_aot_cache)?,
         installed_version,
         installed_build: None,
         artifacts: vec![downloader_artifact, archive_artifact],
@@ -363,7 +468,7 @@ pub async fn remove_plaintext_credentials(path: &Path) -> Result<(), InstallerEr
     .map_err(|error| InstallerError::internal("hytale_credentials_cleanup_failed", error))?
 }
 
-pub fn launch_plan(settings: &Value) -> Result<InstallerPlan, InstallerError> {
+pub fn launch_plan(settings: &Value, use_aot_cache: bool) -> Result<InstallerPlan, InstallerError> {
     let port = settings.get("port").and_then(Value::as_u64).unwrap_or(5520);
     if !(1..=65_535).contains(&port) {
         return Err(InstallerError::new(
@@ -391,21 +496,24 @@ pub fn launch_plan(settings: &Value) -> Result<InstallerPlan, InstallerError> {
             "servers.settings_invalid",
         ));
     }
+    let mut args = vec![format!("-Xmx{memory}M")];
+    if use_aot_cache {
+        args.push("-XX:AOTCache=HytaleServer.aot".to_string());
+    }
+    args.extend([
+        "-jar".to_string(),
+        "HytaleServer.jar".to_string(),
+        "--assets".to_string(),
+        "../Assets.zip".to_string(),
+        "--bind".to_string(),
+        format!("0.0.0.0:{port}"),
+        "--auth-mode".to_string(),
+        auth_mode.to_string(),
+    ]);
     Ok(InstallerPlan {
         executable: InstallerExecutable::ManagedJava { major: 25 },
         cwd_relative: "Server".to_string(),
-        args: vec![
-            format!("-Xmx{memory}M"),
-            "-XX:AOTCache=HytaleServer.aot".to_string(),
-            "-jar".to_string(),
-            "HytaleServer.jar".to_string(),
-            "--assets".to_string(),
-            "../Assets.zip".to_string(),
-            "--bind".to_string(),
-            format!("0.0.0.0:{port}"),
-            "--auth-mode".to_string(),
-            auth_mode.to_string(),
-        ],
+        args,
         env: Vec::new(),
         stop: StopStrategy::Stdin {
             command: "stop".to_string(),
@@ -904,14 +1012,27 @@ mod tests {
 
     #[test]
     fn hytale_launch_is_java_25_and_handles_only_documented_update_exit_code() {
-        let plan =
-            launch_plan(&serde_json::json!({"port": 5520, "auth_mode": "authenticated"})).unwrap();
+        let settings = serde_json::json!({"port": 5520, "auth_mode": "authenticated"});
+        let plan = launch_plan(&settings, true).unwrap();
         assert_eq!(
             plan.executable,
             InstallerExecutable::ManagedJava { major: 25 }
         );
         assert_eq!(plan.cwd_relative, "Server");
         assert_eq!(plan.restart_exit_codes, vec![8]);
+        assert!(
+            plan.args
+                .iter()
+                .any(|argument| argument == "-XX:AOTCache=HytaleServer.aot")
+        );
+
+        let plan_without_aot = launch_plan(&settings, false).unwrap();
+        assert!(
+            !plan_without_aot
+                .args
+                .iter()
+                .any(|argument| argument.starts_with("-XX:AOTCache="))
+        );
     }
 
     #[test]
@@ -945,7 +1066,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn archive_layout_requires_aot_and_preserves_server_owned_data() {
+    async fn archive_layout_accepts_missing_optional_aot_and_preserves_server_owned_data() {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("instance");
         let current = root.join("game/Server");
@@ -974,7 +1095,6 @@ mod tests {
         for (name, contents) in [
             ("Assets.zip", b"assets".as_slice()),
             ("Server/HytaleServer.jar", b"jar".as_slice()),
-            ("Server/HytaleServer.aot", b"aot".as_slice()),
             ("Server/config.json", br#"{"NewDefault":true}"#.as_slice()),
         ] {
             zip.start_file(name, SimpleFileOptions::default()).unwrap();
@@ -1000,6 +1120,13 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(result.installed_version, "2026.06.15-abcd");
+        assert!(
+            !result
+                .plan
+                .args
+                .iter()
+                .any(|argument| argument.starts_with("-XX:AOTCache="))
+        );
         assert_eq!(
             tokio::fs::read(staging.join("Server/config.json"))
                 .await
@@ -1018,6 +1145,50 @@ mod tests {
                 .unwrap(),
             b"mod"
         );
+    }
+
+    #[tokio::test]
+    async fn layout_diagnostics_report_the_optional_aot_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("game");
+        tokio::fs::create_dir_all(root.join("Server"))
+            .await
+            .unwrap();
+        tokio::fs::write(root.join("Assets.zip"), b"assets")
+            .await
+            .unwrap();
+        tokio::fs::write(root.join("Server/HytaleServer.jar"), b"jar")
+            .await
+            .unwrap();
+
+        let layout = validate_game_layout(&root).await.unwrap();
+        assert!(!layout.has_aot_cache);
+        let diagnostics = game_layout_diagnostics(&root).await;
+        assert!(diagnostics.contains("Assets.zip=file(6 bytes)"));
+        assert!(diagnostics.contains("Server/HytaleServer.jar=file(3 bytes)"));
+        assert!(diagnostics.contains("Server/HytaleServer.aot(optional)=missing"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn layout_rejects_a_linked_optional_aot_cache() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("game");
+        tokio::fs::create_dir_all(root.join("Server"))
+            .await
+            .unwrap();
+        tokio::fs::write(root.join("Assets.zip"), b"assets")
+            .await
+            .unwrap();
+        tokio::fs::write(root.join("Server/HytaleServer.jar"), b"jar")
+            .await
+            .unwrap();
+        symlink("HytaleServer.jar", root.join("Server/HytaleServer.aot")).unwrap();
+
+        let error = validate_game_layout(&root).await.unwrap_err();
+        assert_eq!(error.code, "hytale_layout_invalid");
     }
 
     #[tokio::test]
@@ -1042,9 +1213,6 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::write(provider.join("Server/HytaleServer.jar"), b"new-jar")
-            .await
-            .unwrap();
-        tokio::fs::write(provider.join("Server/HytaleServer.aot"), b"new-aot")
             .await
             .unwrap();
         tokio::fs::write(provider.join("Server/config.json"), b"provider-default")

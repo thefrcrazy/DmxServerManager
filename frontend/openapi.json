@@ -831,50 +831,6 @@
         ],
         "type": "object"
       },
-      "LogHistoryLine": {
-        "additionalProperties": false,
-        "properties": {
-          "message": {
-            "type": "string"
-          },
-          "stream": {
-            "enum": [
-              "install",
-              "install_error",
-              "console",
-              "console_error"
-            ]
-          }
-        },
-        "required": [
-          "stream",
-          "message"
-        ],
-        "type": "object"
-      },
-      "LogHistoryResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/LogHistoryLine"
-            },
-            "maxItems": 1000,
-            "type": "array"
-          },
-          "source": {
-            "enum": [
-              "install",
-              "console"
-            ]
-          }
-        },
-        "required": [
-          "source",
-          "items"
-        ],
-        "type": "object"
-      },
       "CreateChatMessageRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1232,52 +1188,6 @@
           "lifecycle",
           "settings_schema",
           "ui_schema"
-        ],
-        "type": "object"
-      },
-      "ProfileVersionCatalog": {
-        "additionalProperties": false,
-        "properties": {
-          "game_versions": {
-            "items": {
-              "maxLength": 96,
-              "minLength": 1,
-              "pattern": "^[A-Za-z0-9._+-]+$",
-              "type": "string"
-            },
-            "maxItems": 512,
-            "type": "array"
-          },
-          "loader_versions": {
-            "items": {
-              "maxLength": 96,
-              "minLength": 1,
-              "pattern": "^[A-Za-z0-9._+-]+$",
-              "type": "string"
-            },
-            "maxItems": 512,
-            "type": "array"
-          },
-          "profile_id": {
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string"
-          },
-          "selected_game_version": {
-            "maxLength": 96,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9._+-]+$",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "profile_id",
-          "game_versions",
-          "selected_game_version",
-          "loader_versions"
         ],
         "type": "object"
       },
@@ -1684,6 +1594,50 @@
         "required": [
           "stop",
           "ready_log_pattern"
+        ],
+        "type": "object"
+      },
+      "LogHistoryLine": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "stream": {
+            "enum": [
+              "install",
+              "install_error",
+              "console",
+              "console_error"
+            ]
+          }
+        },
+        "required": [
+          "stream",
+          "message"
+        ],
+        "type": "object"
+      },
+      "LogHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LogHistoryLine"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "install",
+              "console"
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "items"
         ],
         "type": "object"
       },
@@ -2193,6 +2147,52 @@
           "title",
           "status",
           "trace_id"
+        ],
+        "type": "object"
+      },
+      "ProfileVersionCatalog": {
+        "additionalProperties": false,
+        "properties": {
+          "game_versions": {
+            "items": {
+              "maxLength": 96,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._+-]+$",
+              "type": "string"
+            },
+            "maxItems": 512,
+            "type": "array"
+          },
+          "loader_versions": {
+            "items": {
+              "maxLength": 96,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._+-]+$",
+              "type": "string"
+            },
+            "maxItems": 512,
+            "type": "array"
+          },
+          "profile_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "selected_game_version": {
+            "maxLength": 96,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._+-]+$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "profile_id",
+          "game_versions",
+          "selected_game_version",
+          "loader_versions"
         ],
         "type": "object"
       },
@@ -3512,7 +3512,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.0.16"
+    "version": "1.0.17"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -7270,66 +7270,6 @@
         ]
       }
     },
-    "/servers/{id}/logs": {
-      "get": {
-        "operationId": "getServerLogHistory",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/ServerId"
-          },
-          {
-            "in": "query",
-            "name": "source",
-            "schema": {
-              "default": "console",
-              "enum": [
-                "install",
-                "console"
-              ]
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 500,
-              "maximum": 500,
-              "minimum": 1,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LogHistoryResponse"
-                }
-              }
-            },
-            "description": "Bounded persisted installer or game console history."
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "tags": [
-          "servers"
-        ]
-      }
-    },
     "/servers/{id}/imports/attach": {
       "post": {
         "operationId": "attachExistingServer",
@@ -7518,6 +7458,66 @@
         ],
         "tags": [
           "imports"
+        ]
+      }
+    },
+    "/servers/{id}/logs": {
+      "get": {
+        "operationId": "getServerLogHistory",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "default": "console",
+              "enum": [
+                "install",
+                "console"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 500,
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogHistoryResponse"
+                }
+              }
+            },
+            "description": "Bounded persisted installer or game console history."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "servers"
         ]
       }
     },

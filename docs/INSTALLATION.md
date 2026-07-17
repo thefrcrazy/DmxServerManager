@@ -9,7 +9,7 @@ La version 1.0 supporte exclusivement Linux AMD64, Windows AMD64 et les conteneu
 Téléchargez l’installateur et le checksum d’archive depuis les assets de la release, puis vérifiez séparément leurs bundles Sigstore produits par GitHub Actions. Ne lancez jamais directement un script distant via un pipe. `cosign` 3 est requis pour cette vérification initiale.
 
 ```bash
-version=1.0.16
+version=1.0.17
 asset="dmx-server-manager-v${version}-x86_64-unknown-linux-gnu.tar.gz"
 installer="dmx-server-manager-install-linux.sh"
 base="https://github.com/thefrcrazy/DmxServerManager/releases/download/v${version}"
@@ -48,7 +48,7 @@ Le panneau écoute par défaut sur `127.0.0.1:5500`; ouvrez-le via `http://local
 Dans PowerShell 5.1 ou 7 lancé en administrateur :
 
 ```powershell
-$Version = '1.0.16'
+$Version = '1.0.17'
 $Asset = "dmx-server-manager-v$Version-x86_64-pc-windows-msvc.zip"
 $Installer = 'dmx-server-manager-install-windows.ps1'
 $Base = "https://github.com/thefrcrazy/DmxServerManager/releases/download/v$Version"

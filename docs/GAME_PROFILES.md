@@ -23,7 +23,7 @@ L’installation utilise exclusivement le [downloader officiel Hytale](https://s
 
 La page Hytale utilise une protection navigateur. Un bloqueur de contenu peut empêcher l’affichage du challenge même avec une URL valide : autorisez temporairement `accounts.hytale.com` et `oauth.accounts.hytale.com`, ouvrez le lien dans un onglet normal, vérifiez que le code affiché correspond exactement à la carte du job, puis approuvez l’écran des permissions suivant.
 
-Le driver impose Java 25, lance `HytaleServer.jar` depuis `game/Server/` avec `../Assets.zip` et `HytaleServer.aot`, et n’exécute aucun script fourni par le serveur. Une sortie documentée avec le code `8` adopte uniquement un arbre complet validé depuis `game/updater/staging`. La bascule conserve mondes, configuration et mods, maintient un rollback persistant, puis confirme la mise à jour après 30 secondes stables. Un crash pendant cette fenêtre restaure automatiquement la version précédente sans perdre les changements de monde intervenus pendant l’essai.
+Le driver impose Java 25, lance `HytaleServer.jar` depuis `game/Server/` avec `../Assets.zip` et n’exécute aucun script fourni par le serveur. `HytaleServer.aot` est un cache de démarrage optionnel : DMX l’active uniquement lorsqu’il est fourni par l’archive officielle, sans rejeter les layouts officiels qui l’omettent. Une sortie documentée avec le code `8` adopte uniquement un arbre complet validé depuis `game/updater/staging`. La bascule conserve mondes, configuration et mods, maintient un rollback persistant, puis confirme la mise à jour après 30 secondes stables. Un crash pendant cette fenêtre restaure automatiquement la version précédente sans perdre les changements de monde intervenus pendant l’essai.
 
 ## Minecraft Java
 
