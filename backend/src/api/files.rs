@@ -76,10 +76,8 @@ async fn list(
     auth: AuthUser,
     Query(query): Query<FileQuery>,
 ) -> Result<Json<FileList>, AppError> {
-    let authorized =
-        authorized_instance_root(&state, &auth, &query.instance_id, "server.files.read").await?;
-    let items = secure_fs::list_directory(&authorized.root, &query.path).await?;
-    authorized.lease.release().await?;
+    let root = authorized_read_root(&state, &auth, &query.instance_id).await?;
+    let items = secure_fs::list_directory(&root, &query.path).await?;
     Ok(Json(FileList { items }))
 }
 
@@ -88,9 +86,8 @@ async fn download(
     auth: AuthUser,
     Query(query): Query<FileQuery>,
 ) -> Result<Response<Body>, AppError> {
-    let authorized =
-        authorized_instance_root(&state, &auth, &query.instance_id, "server.files.read").await?;
-    let (file, size) = secure_fs::open_regular_file(&authorized.root, &query.path).await?;
+    let root = authorized_read_root(&state, &auth, &query.instance_id).await?;
+    let (file, size) = secure_fs::open_regular_file(&root, &query.path).await?;
     database::audit(
         &state.pool,
         Some(&auth.id),
@@ -101,10 +98,6 @@ async fn download(
         serde_json::json!({"path": query.path, "size_bytes": size}),
     )
     .await?;
-
-    // The validated, already-open descriptor remains confined to this file. A slow download
-    // must not retain the instance-wide lease for the lifetime of the client response stream.
-    authorized.lease.release().await?;
 
     Response::builder()
         .status(StatusCode::OK)
@@ -161,9 +154,8 @@ async fn read_text(
     auth: AuthUser,
     Query(query): Query<FileQuery>,
 ) -> Result<Json<TextReadResponse>, AppError> {
-    let authorized =
-        authorized_instance_root(&state, &auth, &query.instance_id, "server.files.read").await?;
-    let (file, size) = secure_fs::open_regular_file(&authorized.root, &query.path).await?;
+    let root = authorized_read_root(&state, &auth, &query.instance_id).await?;
+    let (file, size) = secure_fs::open_regular_file(&root, &query.path).await?;
     if size > MAX_TEXT_BYTES as u64 {
         return Err(AppError::BadRequest("files.text_too_large".into()));
     }
@@ -176,7 +168,6 @@ async fn read_text(
     }
     let content =
         String::from_utf8(bytes).map_err(|_| AppError::BadRequest("files.not_utf8".into()))?;
-    authorized.lease.release().await?;
     Ok(Json(TextReadResponse { content }))
 }
 
@@ -265,6 +256,25 @@ async fn authorized_instance_root(
         .await?
         .root;
     Ok(AuthorizedInstanceRoot { root, lease })
+}
+
+/// Read-only file operations use descriptor/path confinement and do not mutate
+/// the instance tree, so they remain available while a game is running or has
+/// crashed. Exclusive runtime maintenance is reserved for writes, deletes and
+/// directory creation; otherwise a crashed instance with a desired running
+/// state could never expose its diagnostic files.
+async fn authorized_read_root(
+    state: &AppState,
+    auth: &AuthUser,
+    instance_id: &str,
+) -> Result<std::path::PathBuf, AppError> {
+    super::servers::validate_instance_id(instance_id)?;
+    authorize_instance(state, auth, instance_id, "server.files.read").await?;
+    Ok(
+        instance_storage::resolve(&state.pool, &state.settings, instance_id)
+            .await?
+            .root,
+    )
 }
 
 async fn read_upload_body(

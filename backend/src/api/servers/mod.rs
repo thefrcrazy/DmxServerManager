@@ -17,7 +17,10 @@ use crate::{
         auth::{AuthUser, authorize_instance},
     },
     core::{AppState, database, error::AppError},
-    domain::v1::{DesiredState, InstallationState, Instance, PortProtocol, RuntimeState},
+    domain::v1::{
+        DesiredState, GameProfile, InstallationState, Instance, PortProtocol, ProfileKind,
+        RuntimeState,
+    },
     services::{
         backups,
         instance_storage::{self, StorageMode},
@@ -331,17 +334,41 @@ async fn update(
     if current.config_version != expected_version {
         return Err(AppError::Conflict("servers.version_conflict".into()));
     }
-    if let Some(settings) = &body.settings {
-        state.profiles.validate_settings_revision(
-            &current.profile_id,
-            current.profile_revision,
-            settings,
-        )?;
-    }
     let settings_changed = body
         .settings
         .as_ref()
         .is_some_and(|settings| settings != &current.settings);
+    let mut profile = state
+        .profiles
+        .get_revision(&current.profile_id, current.profile_revision)
+        .ok_or_else(|| AppError::Internal("instance references unknown profile".into()))?;
+    if let Some(settings) = &body.settings
+        && let Err(current_error) = state.profiles.validate_settings_revision(
+            &current.profile_id,
+            current.profile_revision,
+            settings,
+        )
+    {
+        // Built-in profiles may explicitly declare an additive settings migration. It is used
+        // for optional launch flags only: custom profiles and unmarked revisions still require
+        // the explicit profile-upgrade workflow and its reinstall contract.
+        if !settings_changed {
+            return Err(current_error);
+        }
+        let Some(latest) = state.profiles.get(&current.profile_id) else {
+            return Err(current_error);
+        };
+        if !declares_compatible_settings_upgrade(&latest, current.profile_revision) {
+            return Err(current_error);
+        }
+        state.profiles.validate_settings_revision(
+            &current.profile_id,
+            latest.revision,
+            settings,
+        )?;
+        profile = latest;
+    }
+    let target_profile_revision = profile.revision;
     if settings_changed
         && (current.runtime_state != RuntimeState::Stopped
             || current.desired_state != DesiredState::Stopped)
@@ -386,21 +413,18 @@ async fn update(
             current.installed_build.as_deref(),
         )
     };
-    let profile = state
-        .profiles
-        .get_revision(&current.profile_id, current.profile_revision)
-        .ok_or_else(|| AppError::Internal("instance references unknown profile".into()))?;
     let now = chrono::Utc::now().to_rfc3339();
     let mut transaction = state.pool.begin().await?;
     let updated = sqlx::query(
         r#"
-        UPDATE instances SET name = ?, settings = ?, auto_start = ?, watchdog_enabled = ?,
+        UPDATE instances SET name = ?, profile_revision = ?, settings = ?, auto_start = ?, watchdog_enabled = ?,
             installation_state = ?, installed_version = ?, installed_build = ?,
             config_version = config_version + 1, updated_at = ?
         WHERE id = ? AND config_version = ?
         "#,
     )
     .bind(name)
+    .bind(target_profile_revision)
     .bind(settings.to_string())
     .bind(auto_start)
     .bind(watchdog_enabled)
@@ -452,6 +476,8 @@ async fn update(
             "previous_version": expected_version,
             "settings_changed": settings_changed,
             "reinstall_required": reinstall_required,
+            "from_profile_revision": current.profile_revision,
+            "to_profile_revision": target_profile_revision,
         }),
     )
     .await?;
@@ -460,6 +486,20 @@ async fn update(
         .publish("server.updated", Some(id.clone()), serde_json::json!({}));
     let instance = fetch_instance(&state, &id).await?;
     Ok((etag_headers(instance.config_version)?, Json(instance)))
+}
+
+fn declares_compatible_settings_upgrade(profile: &GameProfile, from_revision: u32) -> bool {
+    profile.kind == ProfileKind::Builtin
+        && profile.revision > from_revision
+        && profile
+            .ui_schema
+            .get("compatible_from")
+            .and_then(Value::as_array)
+            .is_some_and(|revisions| {
+                revisions
+                    .iter()
+                    .any(|revision| revision.as_u64() == Some(u64::from(from_revision)))
+            })
 }
 
 async fn set_profile_revision(
@@ -580,8 +620,9 @@ async fn remove(
     validate_instance_id(&id)?;
     authorize_instance(&state, &auth, &id, "server.delete").await?;
 
-    // Deletion competes with file downloads/uploads, mods, imports and backup hooks. Keep the
-    // exclusive lease from the authoritative re-read through every root/DB mutation.
+    // Deletion competes with file writes, mods, imports and backup hooks. Keep the exclusive
+    // lease from the authoritative re-read through every root/DB mutation. Read-only file
+    // descriptors remain independently confined and do not retain this maintenance lease.
     let filesystem_lease = state.runtime.begin_filesystem_maintenance(&id).await?;
     let instance = fetch_instance(&state, &id).await?;
     if instance.runtime_state != RuntimeState::Stopped

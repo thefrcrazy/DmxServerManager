@@ -36,6 +36,12 @@ pub struct HytaleGameLayout {
     pub has_aot_cache: bool,
 }
 
+/// Relative to `game/Server`, where Hytale is launched. The instance-private
+/// directory lives on the executable game-data mount instead of container
+/// `/tmp`, which is intentionally mounted `noexec` by the hardened Docker
+/// deployment.
+pub const NATIVE_WORKDIR_RELATIVE: &str = "../../.dmx-runtime/hytale-native";
+
 /// A command contract for the official downloader. The caller must execute it
 /// through the normal contained-process supervisor. `credential_file` belongs
 /// to an ephemeral 0700 directory: its contents must be moved to SecretStore
@@ -496,7 +502,27 @@ pub fn launch_plan(settings: &Value, use_aot_cache: bool) -> Result<InstallerPla
             "servers.settings_invalid",
         ));
     }
-    let mut args = vec![format!("-Xmx{memory}M")];
+    let automatic_backups = settings
+        .get("automatic_backups")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let backup_frequency = settings
+        .get("backup_frequency_minutes")
+        .and_then(Value::as_u64)
+        .unwrap_or(30);
+    if automatic_backups && !(5..=1440).contains(&backup_frequency) {
+        return Err(InstallerError::new(
+            "hytale_backup_frequency_invalid",
+            "servers.settings_invalid",
+        ));
+    }
+    let mut args = vec![
+        format!("-Xmx{memory}M"),
+        "--enable-native-access=ALL-UNNAMED".to_string(),
+        format!("-Djava.io.tmpdir={NATIVE_WORKDIR_RELATIVE}"),
+        format!("-Djansi.tmpdir={NATIVE_WORKDIR_RELATIVE}"),
+        format!("-Dio.netty.native.workdir={NATIVE_WORKDIR_RELATIVE}"),
+    ];
     if use_aot_cache {
         args.push("-XX:AOTCache=HytaleServer.aot".to_string());
     }
@@ -510,6 +536,36 @@ pub fn launch_plan(settings: &Value, use_aot_cache: bool) -> Result<InstallerPla
         "--auth-mode".to_string(),
         auth_mode.to_string(),
     ]);
+    if settings
+        .get("allow_op")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        args.push("--allow-op".to_string());
+    }
+    if settings
+        .get("disable_sentry")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        args.push("--disable-sentry".to_string());
+    }
+    if settings
+        .get("accept_early_plugins")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        args.push("--accept-early-plugins".to_string());
+    }
+    if automatic_backups {
+        args.extend([
+            "--backup".to_string(),
+            "--backup-dir".to_string(),
+            "backups".to_string(),
+            "--backup-frequency".to_string(),
+            backup_frequency.to_string(),
+        ]);
+    }
     Ok(InstallerPlan {
         executable: InstallerExecutable::ManagedJava { major: 25 },
         cwd_relative: "Server".to_string(),
@@ -1012,7 +1068,15 @@ mod tests {
 
     #[test]
     fn hytale_launch_is_java_25_and_handles_only_documented_update_exit_code() {
-        let settings = serde_json::json!({"port": 5520, "auth_mode": "authenticated"});
+        let settings = serde_json::json!({
+            "port": 5520,
+            "auth_mode": "authenticated",
+            "allow_op": true,
+            "disable_sentry": true,
+            "accept_early_plugins": true,
+            "automatic_backups": true,
+            "backup_frequency_minutes": 45
+        });
         let plan = launch_plan(&settings, true).unwrap();
         assert_eq!(
             plan.executable,
@@ -1020,6 +1084,22 @@ mod tests {
         );
         assert_eq!(plan.cwd_relative, "Server");
         assert_eq!(plan.restart_exit_codes, vec![8]);
+        for argument in [
+            "--enable-native-access=ALL-UNNAMED",
+            "-Djava.io.tmpdir=../../.dmx-runtime/hytale-native",
+            "-Djansi.tmpdir=../../.dmx-runtime/hytale-native",
+            "-Dio.netty.native.workdir=../../.dmx-runtime/hytale-native",
+            "--allow-op",
+            "--disable-sentry",
+            "--accept-early-plugins",
+            "--backup",
+            "--backup-dir",
+            "backups",
+            "--backup-frequency",
+            "45",
+        ] {
+            assert!(plan.args.iter().any(|candidate| candidate == argument));
+        }
         assert!(
             plan.args
                 .iter()
@@ -1033,6 +1113,22 @@ mod tests {
                 .iter()
                 .any(|argument| argument.starts_with("-XX:AOTCache="))
         );
+    }
+
+    #[test]
+    fn hytale_backup_frequency_is_bounded_only_when_backups_are_enabled() {
+        let disabled = serde_json::json!({
+            "automatic_backups": false,
+            "backup_frequency_minutes": 1
+        });
+        assert!(launch_plan(&disabled, false).is_ok());
+
+        let enabled = serde_json::json!({
+            "automatic_backups": true,
+            "backup_frequency_minutes": 1
+        });
+        let error = launch_plan(&enabled, false).unwrap_err();
+        assert_eq!(error.code, "hytale_backup_frequency_invalid");
     }
 
     #[test]

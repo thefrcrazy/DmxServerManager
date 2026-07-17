@@ -2,7 +2,7 @@ export { default as ServerCard } from "./ServerCard";
 export { default as ServerList } from "./ServerList";
 export { default as ServerFilters } from "./ServerFilters";
 export { default as ServerConsole } from "./ServerConsole";
-export { ProfileSettingsFields } from "./ProfileSettingsFields";
+export { ProfileConfigurationOverview, ProfileSettingsFields, profileSettingTitle } from "./ProfileSettingsFields";
 export { default as ServerBackups } from "./ServerBackups";
 export { default as ServerFiles } from "./ServerFiles";
 export { default as ServerMetrics } from "./ServerMetrics";

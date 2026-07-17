@@ -573,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "dmx-server-manager"
-version = "1.0.17"
+version = "1.0.18"
 dependencies = [
  "anyhow",
  "argon2",

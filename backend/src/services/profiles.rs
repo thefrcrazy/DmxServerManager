@@ -880,7 +880,7 @@ fn stdin_stop(command: &str) -> LifecycleSpec {
 }
 
 fn hytale() -> GameProfile {
-    base_profile(
+    let mut profile = base_profile(
         "hytale",
         "Hytale",
         "Serveur Hytale officiel avec Java 25 et authentification device.",
@@ -909,10 +909,21 @@ fn hytale() -> GameProfile {
         json!({
             "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 5520},
             "max_memory_mb": {"type": "integer", "minimum": 1024, "maximum": 131072, "default": 8192},
-            "auth_mode": {"type": "string", "enum": ["authenticated", "offline"], "default": "authenticated"}
+            "auth_mode": {"type": "string", "enum": ["authenticated", "offline"], "default": "authenticated"},
+            "allow_op": {"type": "boolean", "default": false},
+            "disable_sentry": {"type": "boolean", "default": false},
+            "accept_early_plugins": {"type": "boolean", "default": false},
+            "automatic_backups": {"type": "boolean", "default": false},
+            "backup_frequency_minutes": {"type": "integer", "minimum": 5, "maximum": 1440, "default": 30}
         }),
         &[],
-    )
+    );
+    // Revision 1 only exposed port, memory and authentication mode. Revision 2 is an additive
+    // launch-contract extension using options documented by the official Hytale server manual.
+    // Existing instances may adopt it in-place when one of the new optional settings is saved.
+    profile.revision = 2;
+    profile.ui_schema = json!({"layout": "sections", "compatible_from": [1]});
+    profile
 }
 
 fn minecraft_java_unified() -> GameProfile {
@@ -1817,7 +1828,8 @@ mod tests {
         .await
         .unwrap();
 
-        let revision_one = hytale();
+        let mut revision_one = hytale();
+        revision_one.revision = 1;
         let registry_one = registry_with_builtins([revision_one.clone()]);
         registry_one.persist_builtins(&pool).await.unwrap();
 

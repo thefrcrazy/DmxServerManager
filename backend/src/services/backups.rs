@@ -1438,8 +1438,8 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO instances (id, name, profile_id, settings, created_at, updated_at) \
-             VALUES (?, 'backup-claim-instance', 'hytale', '{}', ?, ?)",
+            "INSERT INTO instances (id, name, profile_id, profile_revision, settings, created_at, updated_at) \
+             VALUES (?, 'backup-claim-instance', 'hytale', 2, '{}', ?, ?)",
         )
         .bind(&instance_id)
         .bind(&now)

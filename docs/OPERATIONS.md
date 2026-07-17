@@ -46,6 +46,8 @@ Ouvrez le Job puis **Voir le terminal d’installation**. Le panneau relit jusqu
 
 Le terminal d’installation reste volontairement en lecture seule : Hytale utilise son flux OAuth device, Minecraft exige l’EULA dans la configuration, SteamCMD est anonyme et les autres installateurs sont non interactifs. Aucune saisie shell arbitraire n’est transmise à un installateur.
 
+Après un crash, le terminal et le gestionnaire de fichiers restent disponibles en lecture afin de récupérer les diagnostics. Les écritures, suppressions et changements de configuration exigent toujours un état réel et désiré `stopped`. Si le watchdog conserve l’état désiré `running`, utilisez **Arrêter et annuler la relance** avant toute modification.
+
 Bedrock est téléchargé automatiquement depuis le lien stable publié par le service public utilisé par `minecraft.net`. Si ce service officiel est indisponible, le job peut encore proposer l’import manuel sécurisé comme procédure de secours.
 
 Les messages Palworld `SteamAPI ... before SteamAPI_Init succeeded` peuvent apparaître pendant l’initialisation Unreal. Le critère de disponibilité est la ligne `Running Palworld dedicated server on :PORT`. Une sortie `error code: 130` lors d’un arrêt demandé correspond à l’interruption gracieuse du processus et n’indique pas à elle seule une installation corrompue.

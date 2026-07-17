@@ -1,7 +1,7 @@
-import { Activity, Archive, CalendarClock, Download, FolderOpen, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Shield, Skull, Square, Terminal, Trash2, Wrench } from "lucide-react";
+import { Activity, Archive, CalendarClock, Download, FolderOpen, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Shield, Skull, Square, Terminal, TriangleAlert, Trash2, Wrench } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileSettingsFields, ServerBackups, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerSchedules } from "@/components/features/server";
+import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerSchedules, profileSettingTitle } from "@/components/features/server";
 import { EmptyState, LoadingScreen } from "@/components/shared";
 import { Button, StatPill, Tabs } from "@/components/ui";
 import { useDialog } from "@/contexts/DialogContext";
@@ -70,9 +70,26 @@ export default function ServerDetail() {
     useEffect(() => {
         if (!instance) return;
         setPageTitle(instance.name, `${instance.profile_id} · ${t("servers.revision")} ${instance.profile_revision}`, { to: "/servers" });
-        void apiService.profiles.getProfiles().then((response) => {
-            if (response.success) setProfile(response.data.find((item) => item.id === instance.profile_id) ?? null);
+        let active = true;
+        void apiService.profiles.getRevisions(instance.profile_id).then(async (response) => {
+            if (!active) return;
+            if (!response.success) {
+                const fallback = await apiService.profiles.getProfiles();
+                if (active && fallback.success) {
+                    setProfile(fallback.data.find((item) => item.id === instance.profile_id) ?? null);
+                }
+                return;
+            }
+            const revisions = [...response.data].sort((left, right) => left.revision - right.revision);
+            const pinned = revisions.find((item) => item.revision === instance.profile_revision);
+            const latest = revisions.at(-1);
+            const compatible = latest
+                && latest.revision > instance.profile_revision
+                && Array.isArray(latest.ui_schema.compatible_from)
+                && latest.ui_schema.compatible_from.includes(instance.profile_revision);
+            setProfile((compatible ? latest : pinned ?? latest) ?? null);
         });
+        return () => { active = false; };
     }, [instance, setPageTitle, t]);
 
     useEffect(() => {
@@ -319,6 +336,13 @@ export default function ServerDetail() {
     const canStartStop = profile?.capabilities.includes("lifecycle") ?? false;
     const busy = action !== null || ["starting", "stopping"].includes(instance.runtime_state)
         || ["installing", "updating"].includes(instance.installation_state);
+    const canCancelDesiredRun = installed
+        && canStartStop
+        && instance.desired_state === "running"
+        && ["crashed", "unknown"].includes(instance.runtime_state);
+    const fullyStopped = instance.runtime_state === "stopped"
+        && instance.desired_state === "stopped"
+        && !installationInProgress;
     const bedrockArchive = events.pendingBedrockArchive ?? fallbackBedrockArchive;
     const deviceAuthorization = events.pendingDeviceAuthorization ?? fallbackDeviceAuthorization;
     const canUploadBedrockArchive = user?.role === "owner" && hasPermission("server.files.write");
@@ -347,14 +371,27 @@ export default function ServerDetail() {
             <div className="server-actions" style={{ marginBottom: "1rem", justifyContent: "flex-end" }}>
                 {hasPermission("job.read") && <Button as="link" to={`/jobs?instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
                 {!installed && canInstall && hasPermission("server.update_game") && <Button onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.install")}</Button>}
-                {installed && canInstall && !running && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
-                {installed && canStartStop && !running && hasPermission("server.start") && <Button variant="success" onClick={() => void runAction("start")} disabled={busy} icon={<Play size={17} />}>{t("servers.start")}</Button>}
+                {installed && canInstall && !running && instance.desired_state === "stopped" && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
+                {installed && canStartStop && !running && instance.desired_state === "stopped" && hasPermission("server.start") && <Button variant="success" onClick={() => void runAction("start")} disabled={busy} icon={<Play size={17} />}>{t("servers.start")}</Button>}
+                {canCancelDesiredRun && hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={17} />}>{t("server_detail.cancel_watchdog")}</Button>}
                 {running && canStartStop && <>
                     {hasPermission("server.start") && hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("restart")} disabled={busy} icon={<RotateCw size={17} />}>{t("servers.restart")}</Button>}
                     {hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={17} />}>{t("servers.stop")}</Button>}
                     {hasPermission("server.kill") && <Button variant="danger" onClick={() => void runAction("kill")} disabled={busy} icon={<Skull size={17} />}>{t("servers.kill")}</Button>}
                 </>}
             </div>
+
+            {instance.runtime_state === "crashed" && (
+                <div className="server-crash-notice" role="status">
+                    <TriangleAlert size={20} aria-hidden="true" />
+                    <div>
+                        <strong>{t("server_detail.crash_notice.title")}</strong>
+                        <p>{t(instance.desired_state === "running"
+                            ? "server_detail.crash_notice.watchdog_pending"
+                            : "server_detail.crash_notice.stopped")}</p>
+                    </div>
+                </div>
+            )}
 
             <Tabs tabs={tabs} activeTab={activeTab} onTabChange={(tab: TabId) => {
                 setActiveTab(tab);
@@ -375,14 +412,14 @@ export default function ServerDetail() {
                     <ServerFiles
                         instanceId={instance.id}
                         canWrite={hasPermission("server.files.write")}
-                        isStopped={instance.runtime_state === "stopped" && !installationInProgress}
+                        isStopped={fullyStopped}
                         refreshSignal={events.operationRevision}
                     />
                 ) : activeTab === "backups" ? (
                     <ServerBackups
                         instanceId={instance.id}
                         canManage={hasPermission("server.backup")}
-                        isStopped={instance.runtime_state === "stopped" && !installationInProgress}
+                        isStopped={fullyStopped}
                         refreshSignal={events.operationRevision}
                     />
                 ) : activeTab === "metrics" ? (
@@ -395,7 +432,7 @@ export default function ServerDetail() {
                     <ServerMods
                         instanceId={instance.id}
                         isInstalled={instance.installation_state === "installed"}
-                        isStopped={instance.runtime_state === "stopped" && !installationInProgress}
+                        isStopped={fullyStopped}
                         refreshSignal={events.operationRevision}
                     />
                 ) : activeTab === "schedules" && profile ? (
@@ -405,32 +442,61 @@ export default function ServerDetail() {
                         refreshSignal={events.scheduleRevision}
                     />
                 ) : (
-                    <div className="card">
-                        <div className="form-group">
-                            <label htmlFor="instance-name">{t("server_detail.instance_name")}</label>
-                            <input id="instance-name" className="input" value={name} onChange={(event) => setName(event.target.value)} minLength={1} maxLength={80} />
-                        </div>
-                        {profile ? <ProfileSettingsFields
-                            profile={profile}
-                            values={settings}
-                            options={profileOptions}
-                            loadingOptions={catalogLoading ? ["version", "loader_version"] : []}
-                            includeSecrets={false}
-                            onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
-                        /> : <p className="text-muted">{t("server_detail.profile_unavailable")} {instance.profile_id}@{instance.profile_revision}</p>}
+                    <div className="card profile-configuration-card">
+                        {profile ? (
+                            <>
+                                <ProfileConfigurationOverview profile={profile} values={settings} activeRevision={instance.profile_revision} />
+                                <section className="profile-settings-section">
+                                    <header>
+                                        <h3>{t("server_detail.profile_config.sections.manager.title")}</h3>
+                                        <p>{t("server_detail.profile_config.sections.manager.description")}</p>
+                                    </header>
+                                    <div className="profile-settings-grid">
+                                        <div className="form-group">
+                                            <label htmlFor="instance-name">{t("server_detail.instance_name")}</label>
+                                            <input id="instance-name" className="input" value={name} onChange={(event) => setName(event.target.value)} minLength={1} maxLength={80} />
+                                        </div>
+                                        <label className="profile-setting-checkbox">
+                                            <input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} />
+                                            <span><strong>{t("server_detail.auto_start")}</strong><small>{t("server_detail.profile_config.auto_start_hint")}</small></span>
+                                        </label>
+                                        <label className="profile-setting-checkbox">
+                                            <input type="checkbox" checked={watchdog} onChange={(event) => setWatchdog(event.target.checked)} />
+                                            <span><strong>{t("server_detail.watchdog")}</strong><small>{t("server_detail.profile_config.watchdog_hint")}</small></span>
+                                        </label>
+                                    </div>
+                                </section>
+                                <ProfileSettingsFields
+                                    profile={profile}
+                                    values={settings}
+                                    options={profileOptions}
+                                    loadingOptions={catalogLoading ? ["version", "loader_version"] : []}
+                                    includeSecrets={false}
+                                    grouped
+                                    onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
+                                />
+                            </>
+                        ) : <p className="text-muted">{t("server_detail.profile_unavailable")} {instance.profile_id}@{instance.profile_revision}</p>}
 
-                        {profile && Object.entries(profile.settings_schema.properties).filter(([, property]) => property.secret || property.writeOnly).map(([secretName, property]) => {
-                            const configured = secretStatuses.find((item) => item.name === secretName)?.configured ?? false;
-                            return (
-                                <div className="form-group" key={secretName}>
-                                    <label htmlFor={`secret-${secretName}`}>{property.title ?? secretName} <span className={`badge badge--${configured ? "success" : "muted"}`}>{configured ? t("server_detail.configured") : t("server_detail.not_configured")}</span></label>
-                                    <input id={`secret-${secretName}`} className="input" type="password" autoComplete="new-password" value={secretDrafts[secretName] ?? ""} placeholder={configured ? t("server_detail.keep_secret") : t("server_detail.enter_secret")} onChange={(event) => setSecretDrafts((current) => ({ ...current, [secretName]: event.target.value }))} />
+                        {profile && Object.entries(profile.settings_schema.properties).some(([, property]) => property.secret || property.writeOnly) && (
+                            <section className="profile-settings-section">
+                                <header>
+                                    <h3>{t("server_detail.profile_config.sections.secrets.title")}</h3>
+                                    <p>{t("server_detail.profile_config.sections.secrets.description")}</p>
+                                </header>
+                                <div className="profile-settings-grid">
+                                    {Object.entries(profile.settings_schema.properties).filter(([, property]) => property.secret || property.writeOnly).map(([secretName, property]) => {
+                                        const configured = secretStatuses.find((item) => item.name === secretName)?.configured ?? false;
+                                        return (
+                                            <div className="form-group" key={secretName}>
+                                                <label htmlFor={`secret-${secretName}`}>{profileSettingTitle(t, secretName, property)} <span className={`badge badge--${configured ? "success" : "muted"}`}>{configured ? t("server_detail.configured") : t("server_detail.not_configured")}</span></label>
+                                                <input id={`secret-${secretName}`} className="input" type="password" autoComplete="new-password" value={secretDrafts[secretName] ?? ""} placeholder={configured ? t("server_detail.keep_secret") : t("server_detail.enter_secret")} onChange={(event) => setSecretDrafts((current) => ({ ...current, [secretName]: event.target.value }))} />
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                            );
-                        })}
-
-                        <label className="form-checkbox"><input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} /><span>{t("server_detail.auto_start")}</span></label>
-                        <label className="form-checkbox"><input type="checkbox" checked={watchdog} onChange={(event) => setWatchdog(event.target.checked)} /><span>{t("server_detail.watchdog")}</span></label>
+                            </section>
+                        )}
                         <div className="form-footer">
                             {hasPermission("server.delete") && <Button variant="danger" onClick={() => void deleteInstance()} disabled={instance.runtime_state !== "stopped" || instance.desired_state !== "stopped"} icon={<Trash2 size={17} />}>{t("common.delete")}</Button>}
                             <Button onClick={() => void saveConfiguration()} isLoading={saving} disabled={!hasPermission("server.update")} icon={<Save size={17} />}>{t("common.save")}</Button>

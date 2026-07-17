@@ -4462,6 +4462,11 @@ impl InstanceActor {
         root: &Path,
         settings: &Value,
     ) -> Result<PreparedLaunch, OperationFailure> {
+        let hytale_native_workdir = if instance.profile_id == "hytale" {
+            Some(prepare_hytale_native_workdir(root).await?)
+        } else {
+            None
+        };
         let game = tokio::fs::canonicalize(root.join("game"))
             .await
             .map_err(OperationFailure::internal)?;
@@ -4516,16 +4521,7 @@ impl InstanceActor {
         let args = plan
             .args
             .into_iter()
-            .map(|argument| {
-                if argument.contains('\0') || argument.len() > 8_192 {
-                    Err(OperationFailure::new(
-                        "invalid_launch_spec",
-                        "servers.invalid_launch_spec",
-                    ))
-                } else {
-                    Ok(OsString::from(argument))
-                }
-            })
+            .map(|argument| native_launch_argument(argument, hytale_native_workdir.as_deref()))
             .collect::<Result<Vec<_>, _>>()?;
         let mut environment = filtered_environment(root, &instance.profile_id);
         environment.extend(plan.env);
@@ -4773,6 +4769,39 @@ impl InstanceActor {
             );
         }
     }
+}
+
+fn native_launch_argument(
+    argument: String,
+    hytale_native_workdir: Option<&Path>,
+) -> Result<OsString, OperationFailure> {
+    if argument.contains('\0') || argument.len() > 8_192 {
+        return Err(OperationFailure::new(
+            "invalid_launch_spec",
+            "servers.invalid_launch_spec",
+        ));
+    }
+    let Some(workdir) = hytale_native_workdir else {
+        return Ok(OsString::from(argument));
+    };
+    if !workdir.is_absolute() {
+        return Err(OperationFailure::new(
+            "hytale_native_workdir_unsafe",
+            "servers.instance_data_unsafe",
+        ));
+    }
+    for property in [
+        "-Djava.io.tmpdir",
+        "-Djansi.tmpdir",
+        "-Dio.netty.native.workdir",
+    ] {
+        if argument == format!("{property}={}", installers::hytale::NATIVE_WORKDIR_RELATIVE) {
+            let mut resolved = OsString::from(format!("{property}="));
+            resolved.push(workdir.as_os_str());
+            return Ok(resolved);
+        }
+    }
+    Ok(OsString::from(argument))
 }
 
 async fn expire_bedrock_upload_wait(sender: mpsc::Sender<ActorCommand>, job_id: String) {
@@ -6607,6 +6636,64 @@ async fn ensure_staging_parent(root: &Path) -> Result<PathBuf, OperationFailure>
     Ok(staging)
 }
 
+/// Hytale extracts JLine, Jansi and Netty QUIC shared libraries at startup.
+/// Hardened container deployments mount `/tmp` as `noexec`, so Java must use
+/// an instance-owned directory on the executable game-data filesystem.
+async fn prepare_hytale_native_workdir(root: &Path) -> Result<PathBuf, OperationFailure> {
+    let runtime = root.join(".dmx-runtime");
+    match tokio::fs::symlink_metadata(&runtime).await {
+        Ok(metadata) if metadata.is_dir() && !runtime_metadata_is_link_like(&metadata) => {}
+        Ok(_) => {
+            return Err(OperationFailure::new(
+                "hytale_native_workdir_unsafe",
+                "servers.instance_data_unsafe",
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            tokio::fs::create_dir(&runtime)
+                .await
+                .map_err(OperationFailure::internal)?;
+        }
+        Err(error) => return Err(OperationFailure::internal(error)),
+    }
+    set_private_directory_permissions(&runtime).await?;
+
+    let native = runtime.join("hytale-native");
+    match tokio::fs::symlink_metadata(&native).await {
+        Ok(metadata) if metadata.is_dir() && !runtime_metadata_is_link_like(&metadata) => {
+            tokio::fs::remove_dir_all(&native)
+                .await
+                .map_err(OperationFailure::internal)?;
+        }
+        Ok(_) => {
+            return Err(OperationFailure::new(
+                "hytale_native_workdir_unsafe",
+                "servers.instance_data_unsafe",
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(OperationFailure::internal(error)),
+    }
+    tokio::fs::create_dir(&native)
+        .await
+        .map_err(OperationFailure::internal)?;
+    set_private_directory_permissions(&native).await?;
+    Ok(native)
+}
+
+async fn set_private_directory_permissions(path: &Path) -> Result<(), OperationFailure> {
+    #[cfg(unix)]
+    tokio::fs::set_permissions(
+        path,
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+    )
+    .await
+    .map_err(OperationFailure::internal)?;
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
 async fn remove_dir_if_exists(path: &Path) -> Result<(), AppError> {
     match tokio::fs::symlink_metadata(path).await {
         Ok(metadata) if metadata.file_type().is_symlink() || metadata.is_file() => {
@@ -7561,6 +7648,7 @@ mod tests {
         database::run_migrations(&pool).await.unwrap();
         let registry = profiles::ProfileRegistry::builtins();
         registry.persist_builtins(&pool).await.unwrap();
+        let profile_revision = registry.get(profile_id).unwrap().revision;
 
         let instance_id = uuid::Uuid::new_v4().to_string();
         let user_id = uuid::Uuid::new_v4().to_string();
@@ -7579,10 +7667,11 @@ mod tests {
             "INSERT INTO instances \
              (id, name, profile_id, profile_revision, settings, installation_state, \
               installed_version, installed_build, desired_state, runtime_state, created_at, updated_at) \
-             VALUES (?, 'runtime-fixture', ?, 1, '{}', 'installed', '1.0.0', '100', ?, 'stopped', ?, ?)",
+             VALUES (?, 'runtime-fixture', ?, ?, '{}', 'installed', '1.0.0', '100', ?, 'stopped', ?, ?)",
         )
         .bind(&instance_id)
         .bind(profile_id)
+        .bind(profile_revision)
         .bind(desired_state)
         .bind(&now)
         .bind(&now)
@@ -9320,6 +9409,74 @@ mod tests {
             hytale_credential_file_state(&credentials).await,
             "present-12-bytes"
         );
+    }
+
+    #[tokio::test]
+    async fn hytale_native_workdir_is_private_and_cleared_between_starts() {
+        let root = tempfile::tempdir().unwrap();
+        let native = prepare_hytale_native_workdir(root.path()).await.unwrap();
+        assert_eq!(native, root.path().join(".dmx-runtime/hytale-native"));
+        tokio::fs::write(native.join("stale-library.so"), b"stale")
+            .await
+            .unwrap();
+
+        let recreated = prepare_hytale_native_workdir(root.path()).await.unwrap();
+        assert_eq!(recreated, native);
+        assert!(
+            !tokio::fs::try_exists(recreated.join("stale-library.so"))
+                .await
+                .unwrap()
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                tokio::fs::metadata(&recreated)
+                    .await
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+        }
+    }
+
+    #[test]
+    fn hytale_native_java_properties_resolve_to_the_absolute_private_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let workdir = root.path().join(".dmx-runtime/hytale-native");
+        for property in [
+            "-Djava.io.tmpdir",
+            "-Djansi.tmpdir",
+            "-Dio.netty.native.workdir",
+        ] {
+            let argument = format!("{property}={}", installers::hytale::NATIVE_WORKDIR_RELATIVE);
+            let resolved = native_launch_argument(argument, Some(&workdir)).unwrap();
+            let mut expected = OsString::from(format!("{property}="));
+            expected.push(workdir.as_os_str());
+            assert_eq!(resolved, expected);
+        }
+        assert_eq!(
+            native_launch_argument("--bind".into(), Some(&workdir)).unwrap(),
+            OsString::from("--bind")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn hytale_native_workdir_rejects_a_linked_runtime_parent() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), root.path().join(".dmx-runtime")).unwrap();
+
+        let error = prepare_hytale_native_workdir(root.path())
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "hytale_native_workdir_unsafe");
     }
 
     #[tokio::test]

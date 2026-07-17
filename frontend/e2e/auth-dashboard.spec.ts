@@ -108,6 +108,30 @@ test("le dashboard affiche les instances et masque les actions absentes des capa
     await expect(page.locator(".server-tabs .tab-btn")).toHaveText("Config");
     await expect(page.getByRole("button", { name: "Installer" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Démarrer" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Configuration dédiée du serveur" })).toBeVisible();
+    await expect(page.getByText("Java téléchargé, vérifié et sélectionné automatiquement par DMX")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Version et logiciel" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Réseau et ports" })).toBeVisible();
+});
+
+test("un serveur crashé garde son diagnostic visible et permet d’annuler le watchdog", async ({ page }) => {
+    const crashedServer = {
+        ...INSTANCES[0]!,
+        desired_state: "running" as const,
+        runtime_state: "crashed" as const,
+    };
+    const api = new ApiMock({ instances: [crashedServer, INSTANCES[1]!] });
+    await api.install(page);
+
+    await page.goto(`/servers/${crashedServer.id}`);
+    await expect(page.getByText("Le processus du serveur s’est arrêté avec une erreur.")).toBeVisible();
+    await expect(page.getByText(/Les logs et fichiers restent accessibles en lecture/)).toBeVisible();
+    const cancelRestart = page.getByRole("button", { name: "Arrêter et annuler la relance" });
+    await expect(cancelRestart).toBeVisible();
+    await expect(page.getByRole("button", { name: "Démarrer" })).toHaveCount(0);
+    await cancelRestart.click();
+
+    expect(api.findRequest("POST", `/servers/${crashedServer.id}/actions/stop`)).toBeDefined();
 });
 
 test("la navigation principale reste utilisable au clavier avec un focus visible", async ({ page }) => {

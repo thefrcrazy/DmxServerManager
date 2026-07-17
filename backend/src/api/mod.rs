@@ -700,8 +700,8 @@ mod tests {
             (&backup_instance, "backup-recovery"),
         ] {
             sqlx::query(
-                "INSERT INTO instances (id, name, profile_id, settings, created_at, updated_at) \
-                 VALUES (?, ?, 'hytale', '{}', ?, ?)",
+                "INSERT INTO instances (id, name, profile_id, profile_revision, settings, created_at, updated_at) \
+                 VALUES (?, ?, 'hytale', 2, '{}', ?, ?)",
             )
             .bind(id)
             .bind(name)
@@ -1042,6 +1042,98 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn additive_hytale_settings_upgrade_preserves_the_installed_game() {
+        let (state, session, csrf) = authenticated_state().await;
+        let mut previous = state.profiles.get("hytale").unwrap();
+        assert_eq!(previous.revision, 2);
+        previous.revision = 1;
+        previous.ui_schema = serde_json::json!({"layout": "sections"});
+        let properties = previous
+            .settings_schema
+            .get_mut("properties")
+            .and_then(serde_json::Value::as_object_mut)
+            .unwrap();
+        for setting in [
+            "allow_op",
+            "disable_sentry",
+            "accept_early_plugins",
+            "automatic_backups",
+            "backup_frequency_minutes",
+        ] {
+            properties.remove(setting);
+        }
+        let previous_manifest = serde_json::to_string(&previous).unwrap();
+        state.profiles.register(previous);
+
+        let instance_id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO game_profiles (id, revision, kind, manifest, created_at) \
+             VALUES ('hytale', 1, 'builtin', ?, ?)",
+        )
+        .bind(previous_manifest)
+        .bind(&now)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO instances \
+             (id, name, profile_id, profile_revision, settings, installation_state, \
+              installed_version, runtime_state, desired_state, created_at, updated_at) \
+             VALUES (?, 'Hytale revision upgrade', 'hytale', 1, ?, 'installed', \
+                     '2026.07', 'stopped', 'stopped', ?, ?)",
+        )
+        .bind(&instance_id)
+        .bind(
+            serde_json::json!({
+                "port": 5520,
+                "max_memory_mb": 8192,
+                "auth_mode": "authenticated"
+            })
+            .to_string(),
+        )
+        .bind(&now)
+        .bind(&now)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+        tokio::fs::create_dir_all(state.settings.instances_dir().join(&instance_id))
+            .await
+            .unwrap();
+
+        let update = serde_json::json!({
+            "settings": {
+                "port": 5520,
+                "max_memory_mb": 8192,
+                "auth_mode": "authenticated",
+                "allow_op": true,
+                "automatic_backups": true,
+                "backup_frequency_minutes": 30
+            }
+        });
+        let response = api(state.clone())
+            .oneshot(
+                Request::patch(format!("/api/v1/servers/{instance_id}"))
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .header("x-csrf-token", &csrf)
+                    .header(header::IF_MATCH, "\"1\"")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(update.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let updated: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(updated["profile_revision"], 2);
+        assert_eq!(updated["installation_state"], "installed");
+        assert_eq!(updated["installed_version"], "2026.07");
+        assert_eq!(updated["settings"]["allow_op"], true);
+        assert_eq!(updated["settings"]["automatic_backups"], true);
+    }
+
+    #[tokio::test]
     async fn file_access_is_limited_to_assigned_instances() {
         let state = test_state().await;
         let user_id = uuid::Uuid::new_v4().to_string();
@@ -1064,7 +1156,7 @@ mod tests {
             (&denied_instance, "not-assigned"),
         ] {
             sqlx::query(
-                "INSERT INTO instances (id, name, profile_id, settings, created_at, updated_at) VALUES (?, ?, 'hytale', '{}', ?, ?)",
+                "INSERT INTO instances (id, name, profile_id, profile_revision, settings, created_at, updated_at) VALUES (?, ?, 'hytale', 2, '{}', ?, ?)",
             )
             .bind(id)
             .bind(name)
@@ -1084,6 +1176,23 @@ mod tests {
         .bind(&allowed_instance)
         .bind(&now)
         .execute(&state.pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE instances SET runtime_state = 'crashed', desired_state = 'running' WHERE id = ?",
+        )
+        .bind(&allowed_instance)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+        tokio::fs::write(
+            state
+                .settings
+                .instances_dir()
+                .join(&allowed_instance)
+                .join("diagnostic.log"),
+            b"native library load failed",
+        )
         .await
         .unwrap();
         sqlx::query(
@@ -1113,6 +1222,35 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(allowed.status(), StatusCode::OK);
+        let body = to_bytes(allowed.into_body(), 64 * 1024).await.unwrap();
+        let files: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            files["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| { item["name"] == "diagnostic.log" })
+        );
+
+        let readable_after_crash = router
+            .clone()
+            .oneshot(
+                Request::get(format!(
+                    "/api/v1/files/text?instance_id={allowed_instance}&path=diagnostic.log"
+                ))
+                .header(header::COOKIE, format!("dmx_session={session_token}"))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(readable_after_crash.status(), StatusCode::OK);
+        let body = to_bytes(readable_after_crash.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let diagnostic: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(diagnostic["content"], "native library load failed");
+
         let denied = router.oneshot(request(&denied_instance)).await.unwrap();
         assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     }
