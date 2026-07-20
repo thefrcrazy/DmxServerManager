@@ -17,8 +17,8 @@ test("la création pilotée par profil sépare les secrets et envoie cookie plus
     await page.getByText("Démarrer automatiquement après les redémarrages du panneau").click();
     await page.getByRole("button", { name: "Créer et installer" }).click();
 
-    await expect(page).toHaveURL(/\/jobs\?focus=44444444-4444-4444-8444-444444444444&instance=33333333-3333-4333-8333-333333333333$/);
-    await expect(page.getByText("Installation / mise à jour")).toBeVisible();
+    await expect(page).toHaveURL(/\/activity\?tab=operations&focus=44444444-4444-4444-8444-444444444444&instance=33333333-3333-4333-8333-333333333333$/);
+    await expect(page.getByRole("heading", { name: "Installation / mise à jour" })).toBeVisible();
 
     const creation = api.findRequest("POST", "/servers");
     expect(creation).toBeDefined();
@@ -69,7 +69,7 @@ test("importe une archive ZIP brute dans le stockage géré", async ({ page }) =
     });
     await page.getByRole("button", { name: "Créer et importer le ZIP" }).click();
 
-    await expect(page).toHaveURL(/\/jobs\?/);
+    await expect(page).toHaveURL(/\/activity\?tab=operations/);
     const request = api.findRequest("POST", "/servers/33333333-3333-4333-8333-333333333333/imports/zip");
     expect(request?.headers["content-type"]).toContain("application/zip");
     expect(request?.headers["x-csrf-token"]).toBe("e2e-csrf-token");
@@ -91,7 +91,7 @@ for (const mode of [
         await page.getByLabel("Chemin source").fill(`/imports/minecraft-${mode.endpoint}`);
         await page.getByRole("button", { name: mode.submit }).click();
 
-        await expect(page).toHaveURL(/\/jobs\?/);
+        await expect(page).toHaveURL(/\/activity\?tab=operations/);
         const request = api.findRequest("POST", `/servers/33333333-3333-4333-8333-333333333333/imports/${mode.endpoint}`);
         expect(request?.body).toEqual({ source_path: `/imports/minecraft-${mode.endpoint}` });
         expect(request?.headers["idempotency-key"]).toMatch(/^[0-9a-f-]{36}$/i);
@@ -106,6 +106,7 @@ test("le mode attach reste masqué pour un Admin même avec l’écriture fichie
             username: "admin",
             role: "admin",
             permissions: adminRole.permissions,
+            language: "fr",
             accent_color: "#3a82f6",
             must_change_password: false,
         },

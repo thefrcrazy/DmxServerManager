@@ -6,3 +6,4 @@ export { default as WebhookManagement } from "./WebhookManagement";
 export { default as PanelReleaseManagement } from "./PanelReleaseManagement";
 export { default as ModProviderManagement } from "./ModProviderManagement";
 export { default as CatalogManagement } from "./CatalogManagement";
+export { default as NetworkManagement } from "./NetworkManagement";

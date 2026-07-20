@@ -1,15 +1,18 @@
 import { AlertTriangle, Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { Instance } from "@/schemas/api";
+import type { ConnectionInfo, Instance } from "@/schemas/api";
 import type { ServerAction } from "@/services/api/server.client";
 import { Button, Card, Tooltip } from "@/components/ui";
 import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePermission } from "@/hooks";
+import MaskedConnection from "./MaskedConnection";
 
 interface ServerCardProps {
     server: Instance;
     capabilities: ReadonlySet<string>;
+    playerCount?: number;
+    connection?: ConnectionInfo;
     onAction: (id: string, action: ServerAction) => void;
 }
 
@@ -18,7 +21,7 @@ function stateLabel(server: Instance, t: (key: string) => string): string {
     return t(`servers.runtime_states.${server.runtime_state}`);
 }
 
-export default function ServerCard({ server, capabilities, onAction }: ServerCardProps) {
+export default function ServerCard({ server, capabilities, playerCount, connection, onAction }: ServerCardProps) {
     const { t } = useLanguage();
     const { hasPermission } = usePermission();
     const navigate = useNavigate();
@@ -79,10 +82,10 @@ export default function ServerCard({ server, capabilities, onAction }: ServerCar
                 </div>
 
                 <div className="server-card__stats">
-                    <div className="server-card__stat-row"><span>{t("servers.profile")}</span><span>r{server.profile_revision}</span></div>
-                    <div className="server-card__stat-row"><span>{t("servers.configuration")}</span><span>v{server.config_version}</span></div>
-                    {server.installed_version && <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version}{server.installed_build ? ` · ${server.installed_build}` : ""}</span></div>}
-                    <div className="server-card__stat-row"><span>{t("servers.watchdog")}</span><span>{server.watchdog_enabled ? t("common.active") : t("common.inactive")}</span></div>
+                    <div className="server-card__stat-row"><span>{t("servers.status")}</span><span>{stateLabel(server, t)}</span></div>
+                    <div className="server-card__stat-row"><span>{t("servers.players")}</span><span>{playerCount ?? "—"}</span></div>
+                    <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version ?? "—"}</span></div>
+                    <div className="server-card__stat-row server-card__stat-row--connection"><span>{t("servers.connection")}</span><MaskedConnection connection={connection} compact /></div>
                 </div>
 
                 <div className="server-card__actions">

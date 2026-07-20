@@ -213,6 +213,9 @@ pub async fn queue(
     } = change;
     let spec = resolve_spec(pool, root, instance_id, path).await?;
     validate_content(spec.format, content)?;
+    if spec.category == ConfigCategory::Access && spec.format == ConfigFormat::Text {
+        validate_access_list(content)?;
+    }
     let current = read_current(root, &spec.relative_path).await?;
     let current_sha = current.as_ref().map(|current| current.sha256.as_str());
     if current_sha != expected_sha256 {
@@ -863,6 +866,21 @@ fn validate_content(format: ConfigFormat, content: &str) -> Result<(), AppError>
     Ok(())
 }
 
+fn validate_access_list(content: &str) -> Result<(), AppError> {
+    const MAX_ACCESS_ENTRIES: usize = 5_000;
+    const MAX_ACCESS_LINE_CHARS: usize = 128;
+    if content.lines().count() > MAX_ACCESS_ENTRIES
+        || content
+            .lines()
+            .any(|line| line.chars().count() > MAX_ACCESS_LINE_CHARS)
+    {
+        return Err(AppError::BadRequest(
+            "config_files.invalid_access_list".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -1035,6 +1053,8 @@ mod tests {
         assert!(validate_content(ConfigFormat::Toml, "port = [").is_err());
         assert!(validate_content(ConfigFormat::Text, "admin\n123").is_ok());
         assert!(validate_content(ConfigFormat::Text, "bad\0value").is_err());
+        assert!(validate_access_list("# preserved\n76561198000000000").is_ok());
+        assert!(validate_access_list(&"x".repeat(129)).is_err());
     }
 
     #[test]

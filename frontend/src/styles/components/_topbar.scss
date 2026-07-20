@@ -18,11 +18,7 @@
     justify-content: space-between;
     padding: 0 1.5rem;
     z-index: 40;
-    transition: left var(--transition-smooth);
-
-    &--sidebar-collapsed {
-        left: var(--sidebar-collapsed-width);
-    }
+    transition: none;
 
     &__left {
         display: flex;
@@ -130,9 +126,6 @@
         }
     }
 
-    .layout--sidebar-collapsed .topbar {
-        left: 0;
-    }
 }
 
 // ========================================

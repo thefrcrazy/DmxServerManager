@@ -11,59 +11,47 @@ import {
 // Runtime validators mirror the generated OpenAPI contract. The generated
 // TypeScript declarations provide compile-time types; Zod keeps API responses
 // and mutation payloads fail-closed at runtime.
-export const ChatMessageSchema = z.object({
-    id: z.string().uuid(),
-    author_user_id: z.string().uuid().nullable(),
-    author_username: z.string().nullable(),
-    body: z.string().nullable(),
-    created_at: z.string().min(1),
-    deleted_at: z.string().nullable(),
-}).strict();
-
-export const ChatPageSchema = z.object({
-    items: z.array(ChatMessageSchema),
-    next_before_id: z.string().uuid().nullable(),
-}).strict();
-
-const chatBody = z.string()
-    .transform((value) => value.trim())
-    .pipe(z.string().min(1).max(4_000))
-    .refine((value) => new TextEncoder().encode(value).byteLength <= 16 * 1_024)
-    .refine((value) => ![...value].some((character) => {
-        const code = character.codePointAt(0) ?? 0;
-        return code < 32 && character !== "\n" && character !== "\t";
-    }));
-
-export const ChatDraftSchema = z.object({ body: chatBody }).strict();
 export const OperationSuccessSchema = z.object({
     success: z.boolean(),
     message: z.string().optional(),
 }).strict();
 export const AcceptedJobSchema = JobSchema.strict();
-export const ChatDeletedEventSchema = z.object({
-    id: z.string().uuid(),
-    deleted_at: z.string().min(1),
+
+export const ActivitySummarySchema = z.object({
+    active_jobs: z.number().int().nonnegative(),
+    waiting_for_user: z.number().int().nonnegative(),
+    failed_jobs_24h: z.number().int().nonnegative(),
+    crashed_servers: z.number().int().nonnegative(),
+    config_conflicts: z.number().int().nonnegative(),
 }).strict();
 
-export const NotificationSchema = z.object({
-    id: z.string().uuid(),
-    kind: z.string().min(1).max(64),
-    message_key: z.string().min(1).max(128),
-    data: z.record(z.string(), z.unknown()),
-    read_at: z.string().nullable(),
-    created_at: z.string().min(1),
+export const ActivityJobsPageSchema = z.object({
+    items: z.array(JobSchema).max(100),
+    next_cursor: z.string().uuid().nullable(),
 }).strict();
 
-export const NotificationPageSchema = z.object({
-    items: z.array(NotificationSchema),
-    next_before_id: z.string().uuid().nullable(),
-    unread_count: z.number().int().nonnegative(),
+export const AuditEventSchema = z.object({
+    id: z.number().int().positive(),
+    actor_user_id: z.string().nullable(),
+    actor_username: z.string().nullable(),
+    action: z.string(),
+    resource_type: z.string(),
+    resource_id: z.string().nullable(),
+    outcome: z.enum(["success", "denied", "failure"]),
+    metadata: z.record(z.string(), z.unknown()),
+    created_at: z.string(),
 }).strict();
-export const NotificationReadEventSchema = z.object({
-    id: z.string().uuid(),
-    read_at: z.string().min(1),
+
+export const AuditPageSchema = z.object({
+    items: z.array(AuditEventSchema),
+    next_before_id: z.number().int().positive().nullable(),
 }).strict();
-export const NotificationsReadAllEventSchema = z.object({ read_at: z.string().min(1) }).strict();
+
+export const NetworkSettingsSchema = z.object({
+    advertised_game_host: z.string().nullable(),
+    version: z.number().int().positive(),
+    updated_at: z.string(),
+}).strict();
 
 export const ManagedFileEntrySchema = z.object({
     name: z.string().min(1),
@@ -365,10 +353,11 @@ export const UpdateDiscordWebhookSchema = DiscordWebhookBaseSchema.extend({
     url: DiscordWebhookUrlSchema.optional(),
 }).strict();
 
-export type ChatMessage = z.infer<typeof ChatMessageSchema>;
-export type ChatPage = z.infer<typeof ChatPageSchema>;
-export type Notification = z.infer<typeof NotificationSchema>;
-export type NotificationPage = z.infer<typeof NotificationPageSchema>;
+export type ActivitySummary = z.infer<typeof ActivitySummarySchema>;
+export type ActivityJobsPage = z.infer<typeof ActivityJobsPageSchema>;
+export type AuditEvent = z.infer<typeof AuditEventSchema>;
+export type AuditPage = z.infer<typeof AuditPageSchema>;
+export type NetworkSettings = z.infer<typeof NetworkSettingsSchema>;
 export type ManagedFileEntry = z.infer<typeof ManagedFileEntrySchema>;
 export type Backup = z.infer<typeof BackupSchema>;
 export type MetricPeriod = z.infer<typeof MetricPeriodSchema>;

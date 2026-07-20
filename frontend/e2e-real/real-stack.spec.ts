@@ -15,7 +15,7 @@ test("le vrai Axum, SQLite et la SPA appliquent setup, session, CSRF et RBAC", a
         status: "ok",
         service: "dmx-server-manager",
     });
-    expect(healthBody.version).toMatch(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/);
+    expect(healthBody.version).toBe("1.1.0");
 
     const anonymousPrivate = await page.request.get("/api/v1/users");
     expect(anonymousPrivate.status()).toBe(401);
@@ -49,7 +49,8 @@ test("le vrai Axum, SQLite et la SPA appliquent setup, session, CSRF et RBAC", a
     expect(setCookie).not.toContain("; Secure");
 
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByText("Total Serveurs")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Vue d’ensemble opérationnelle" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Santé des serveurs" })).toBeVisible();
     const sessionCookie = (await page.context().cookies())
         .find((cookie) => cookie.name === "dmx_session");
     expect(sessionCookie).toBeDefined();

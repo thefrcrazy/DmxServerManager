@@ -1,17 +1,15 @@
 import { PermissionDescription } from "../schemas/api";
 
 const PERMISSION_IDS = [
-    "audit.read",
-    "chat.read",
-    "chat.write",
     "job.read",
     "mods.manage",
-    "notifications.read",
     "profile.manage",
     "profile.read",
     "schedule.manage",
     "server.backup",
     "server.backup.read",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.read",
     "server.console.write",
     "server.create",
@@ -35,6 +33,8 @@ const INSTANCE_SCOPED = new Set<string>([
     "schedule.manage",
     "server.backup",
     "server.backup.read",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.read",
     "server.console.write",
     "server.files.read",
@@ -49,6 +49,8 @@ const INSTANCE_SCOPED = new Set<string>([
 
 const HIGH_RISK = new Set<string>([
     "profile.manage",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.write",
     "server.files.write",
 ]);

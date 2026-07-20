@@ -1,188 +1,72 @@
-@use "../mixins" as *;
-
 .sidebar {
     position: fixed;
-    left: 0;
-    top: 0;
+    inset: 0 auto 0 0;
     width: var(--sidebar-width);
     height: 100vh;
-    background-color: var(--color-bg-secondary);
+    padding: 0.875rem 0.75rem;
+    background: var(--color-bg-secondary);
     border-right: 1px solid var(--color-border);
     display: flex;
     flex-direction: column;
     z-index: 50;
-    padding: 0.875rem 0.75rem;
-    transition: width var(--transition-smooth);
 
-    &__header,
-    &__nav {
-        overflow-x: hidden;
-    }
-
-    &__mobile-close {
-        display: none;
-    }
-
-    &--collapsed {
-        width: var(--sidebar-collapsed-width);
-        padding: var(--spacing-3) var(--spacing-2);
-        align-items: center;
-
-        // Toggle button position when collapsed
-        .sidebar__toggle {
-            left: 44px;
-            transform: rotate(180deg);
-        }
-
-        .sidebar__header {
-            justify-content: center;
-            padding-bottom: var(--spacing-2);
-        }
-
-        .sidebar__logo--small {
-            margin: 0 auto;
-        }
-
-        .sidebar__nav {
-            width: 100%;
-            align-items: center;
-        }
-
-        .sidebar__link {
-            justify-content: center;
-            width: 100%;
-            padding: var(--spacing-2) 0;
-            gap: 0;
-            height: 32px;
-
-            span {
-                opacity: 0;
-                max-width: 0;
-            }
-        }
-
-        .sidebar__footer {
-            padding-top: var(--spacing-2);
-        }
-
-        .sidebar__version {
-            padding: var(--spacing-1) var(--spacing-2);
-            font-size: 0.625rem;
-        }
-    }
-
-    // Toggle button styles
-    &__toggle {
-        position: absolute;
-        top: var(--spacing-3);
-        left: calc(var(--sidebar-width) - var(--spacing-3) - 28px);
-
-        width: 28px;
-        height: 28px;
-        border-radius: var(--radius-md);
-        background: var(--color-bg-elevated);
-        border: 1px solid var(--color-border);
-        color: var(--color-text-muted);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: left var(--transition-smooth), transform var(--transition-smooth), background-color var(--transition-fast);
-        z-index: 60;
-
-        svg {
-            width: 14px;
-            height: 14px;
-        }
-
-        &:hover {
-            color: var(--color-text-primary);
-            border-color: var(--color-border-hover);
-        }
-
-
-        &:focus-visible {
-            box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px var(--color-accent);
-        }
-    }
+    &__mobile-close { display: none; }
 
     &__header {
+        min-height: 48px;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        min-height: 46px;
         padding: 0 var(--spacing-2) var(--spacing-4);
-        gap: var(--spacing-2);
+        overflow: hidden;
     }
 
-    &__logo {
-        &--full {
-            height: 44px;
-            max-width: 150px;
-            object-fit: contain;
-        }
+    &__logo-link { display: inline-flex; min-width: 0; }
 
-        &--small {
-            height: 40px;
-            width: 40px;
-            object-fit: contain;
-        }
+    &__logo--full {
+        display: block;
+        height: 42px;
+        max-width: min(176px, calc(var(--sidebar-width) - 48px));
+        object-fit: contain;
+        object-position: left center;
     }
-
-    // Toggle button - in header next to logo
-
 
     &__nav {
         display: flex;
-        flex-direction: column;
-        gap: 3px;
         flex: 1;
+        min-width: 0;
+        flex-direction: column;
+        gap: 4px;
+        overflow: hidden;
     }
 
     &__link {
+        min-height: 38px;
         display: flex;
         align-items: center;
-        gap: var(--spacing-2);
-        min-height: 36px;
+        gap: var(--spacing-3);
         padding: 0 var(--spacing-3);
         color: var(--color-text-muted);
-        text-decoration: none;
         border: 1px solid transparent;
         border-radius: var(--radius-md);
-        font-weight: 500;
+        text-decoration: none;
         font-size: 0.8125rem;
-        transition: all var(--transition-fast);
+        font-weight: 500;
         white-space: nowrap;
-        width: 100%;
 
-        svg {
-            width: 18px;
-            height: 18px;
-            flex-shrink: 0;
-        }
-
-        span {
-            transition: opacity var(--transition-smooth), max-width var(--transition-smooth);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            opacity: 1;
-            max-width: 180px;
-        }
+        svg { flex: 0 0 auto; }
+        span { overflow: hidden; text-overflow: ellipsis; }
 
         &:hover {
             color: var(--color-text-primary);
-            background-color: var(--color-bg-elevated);
+            background: var(--color-bg-elevated);
         }
 
         &.active {
             color: var(--color-text-primary);
-            background-color: var(--color-bg-elevated);
+            background: var(--color-bg-elevated);
             border-color: var(--color-border);
-            box-shadow: var(--shadow-sm);
 
-            svg {
-                color: var(--color-accent);
-            }
+            svg { color: var(--color-accent); }
         }
     }
 
@@ -190,35 +74,52 @@
         margin-top: auto;
         padding-top: var(--spacing-4);
         border-top: 1px solid var(--color-border);
-        display: flex;
-        justify-content: center;
     }
 
     &__version {
-        font-size: var(--font-size-xs);
+        display: inline-flex;
+        padding: var(--spacing-1) var(--spacing-2);
         color: var(--color-text-muted);
-        font-family: var(--font-family-mono);
-        padding: var(--spacing-2) var(--spacing-3);
         background: var(--color-bg-tertiary);
         border-radius: var(--radius-md);
-        transition: all var(--transition-fast);
-
-        &:hover {
-            color: var(--color-text-secondary);
-        }
+        font: 0.6875rem var(--font-family-mono);
     }
 
+    &__resize-handle {
+        position: absolute;
+        inset: 0 -5px 0 auto;
+        width: 10px;
+        cursor: col-resize;
+        touch-action: none;
+        outline: 2px solid transparent;
+        outline-offset: -2px;
 
+        &::after {
+            content: "";
+            position: absolute;
+            inset: 0 4px;
+            width: 2px;
+            background: transparent;
+            transition: background-color var(--transition-fast);
+        }
+
+        &:hover::after,
+        &:focus::after { background: var(--color-accent); }
+
+        &:focus {
+            outline-color: var(--color-accent);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 28%, transparent);
+        }
+    }
 }
 
-// Mobile responsive
 @media (max-width: 1023px) {
     .sidebar {
+        width: min(85vw, 280px);
         transform: translateX(-100%);
         visibility: hidden;
         pointer-events: none;
         transition: transform var(--transition-smooth);
-        width: min(85vw, 280px);
 
         &.open {
             transform: translateX(0);
@@ -226,9 +127,7 @@
             pointer-events: auto;
         }
 
-        &__toggle {
-            display: none;
-        }
+        &__resize-handle { display: none; }
 
         &__mobile-close {
             display: flex;
@@ -246,33 +145,7 @@
             cursor: pointer;
         }
 
-        &--collapsed {
-            width: min(85vw, 280px);
-            padding: var(--spacing-4);
-            align-items: stretch;
-
-            .sidebar__header {
-                justify-content: flex-start;
-                padding-right: 48px;
-            }
-
-            .sidebar__nav {
-                align-items: stretch;
-            }
-
-            .sidebar__link {
-                justify-content: flex-start;
-                width: 100%;
-                height: auto;
-                padding: var(--spacing-2) var(--spacing-3);
-                gap: var(--spacing-2);
-
-                span {
-                    opacity: 1;
-                    max-width: 180px;
-                }
-            }
-        }
+        &__header { padding-right: 48px; }
     }
 
     .sidebar-backdrop {
@@ -281,9 +154,6 @@
         z-index: 45;
         display: block;
         border: 0;
-        background: rgba(0, 0, 0, 0.65);
-        cursor: default;
+        background: rgba(0, 0, 0, 0.68);
     }
 }
-
-// Tooltip → extrait dans _tooltip.scss

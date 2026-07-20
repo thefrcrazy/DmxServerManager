@@ -4,7 +4,11 @@ import {
     AuthResponseSchema,
     SetupStatus,
     SetupStatusSchema,
+    SessionInfoSchema,
     SuccessResponseSchema,
+    UserInfoSchema,
+    type SessionInfo,
+    type UserInfo,
 } from "@/schemas/api";
 import { BaseClient, ClientResponse, setCsrfToken } from "./base.client";
 
@@ -53,5 +57,26 @@ export class AuthClient extends BaseClient {
         });
         if (response.success) setCsrfToken(null);
         return response;
+    }
+
+    async updatePreferences(input: { language?: "fr" | "en"; accent_color?: string }): Promise<ClientResponse<UserInfo>> {
+        return this.request("/auth/preferences", UserInfoSchema, {
+            method: "PATCH",
+            body: JSON.stringify(input),
+        });
+    }
+
+    async sessions(): Promise<ClientResponse<SessionInfo[]>> {
+        return this.request("/auth/sessions", z.array(SessionInfoSchema));
+    }
+
+    async revokeSession(id: string): Promise<ClientResponse<z.infer<typeof SuccessResponseSchema>>> {
+        return this.request(`/auth/sessions/${encodeURIComponent(id)}`, SuccessResponseSchema, {
+            method: "DELETE",
+        });
+    }
+
+    async revokeOtherSessions(): Promise<ClientResponse<z.infer<typeof SuccessResponseSchema>>> {
+        return this.request("/auth/sessions/revoke-others", SuccessResponseSchema, { method: "POST" });
     }
 }

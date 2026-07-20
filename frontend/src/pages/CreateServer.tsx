@@ -236,7 +236,7 @@ export default function CreateServer() {
                 setError(translatedError(response.error.message));
                 return;
             }
-            navigate(`/jobs?focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(instanceId)}`);
+            navigate(`/activity?tab=operations&focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(instanceId)}`);
             return;
         }
 
@@ -261,7 +261,7 @@ export default function CreateServer() {
                 setError(translatedError(response.error.message));
                 return;
             }
-            navigate(`/jobs?focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(instanceId)}`);
+            navigate(`/activity?tab=operations&focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(instanceId)}`);
             return;
         }
 
@@ -272,7 +272,7 @@ export default function CreateServer() {
             setError(translatedError(response.error.message));
             return;
         }
-        navigate(`/jobs?focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(instanceId)}`);
+        navigate(`/activity?tab=operations&focus=${encodeURIComponent(response.data.id)}&instance=${encodeURIComponent(instanceId)}`);
     };
 
     const handleSubmit = async (event: FormEvent) => {
@@ -384,7 +384,6 @@ export default function CreateServer() {
                                                 <strong>{visual.label}</strong>
                                                 <small>{profile.description}</small>
                                             </span>
-                                            <span className="profile-picker__revision">r{profile.revision}</span>
                                         </button>
                                     );
                                 })}

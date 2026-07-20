@@ -69,7 +69,7 @@ const BEDROCK_WAITING_JOB = JobSchema.parse({
     },
 });
 
-test("la page Jobs recharge les opérations persistantes et annule une installation", async ({ page }) => {
+test("Activité recharge les opérations persistantes et annule une installation", async ({ page }) => {
     const job = JobSchema.parse({
         id: "efefefef-efef-4fef-8fef-efefefefefef",
         instance_id: "22222222-2222-4222-8222-222222222222",
@@ -84,17 +84,18 @@ test("la page Jobs recharge les opérations persistantes et annule une installat
     const api = new ApiMock({ jobs: [job] });
     await api.install(page);
 
-    await page.goto(`/jobs?focus=${job.id}&instance=${job.instance_id}`);
-    await expect(page.getByText("Installation / mise à jour")).toBeVisible();
-    await expect(page.getByText("42 %")).toBeVisible();
+    await page.goto(`/activity?tab=operations&focus=${job.id}&instance=${job.instance_id}`);
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByRole("heading", { name: "Installation / mise à jour" })).toBeVisible();
+    await expect(drawer.getByText("42%", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Annuler le job" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Annuler le job" }).click();
+    await page.getByRole("dialog", { name: "Annuler le job" }).getByRole("button", { name: "Annuler le job" }).click();
 
-    await expect(page.locator(`#job-${job.id}`).getByText("Annulé", { exact: true })).toBeVisible();
+    await expect(drawer.getByText("Annulé", { exact: true })).toBeVisible();
     expect(api.findRequest("POST", `/jobs/${job.id}/cancel`)?.headers["x-csrf-token"]).toBe("e2e-csrf-token");
 });
 
-test("la page Jobs affiche l’action humaine persistante et donne accès au terminal d’installation", async ({ page }) => {
+test("Activité affiche l’action humaine persistante et donne accès au terminal d’installation", async ({ page }) => {
     const job = JobSchema.parse({
         id: "dededede-dede-4ded-8ded-dededededede",
         instance_id: "22222222-2222-4222-8222-222222222222",
@@ -113,7 +114,7 @@ test("la page Jobs affiche l’action humaine persistante et donne accès au ter
     const api = new ApiMock({ jobs: [job] });
     await api.install(page);
 
-    await page.goto("/jobs");
+    await page.goto(`/activity?tab=attention&focus=${job.id}`);
 
     await expect(page.getByRole("heading", { name: "Authentification Hytale requise" })).toBeVisible();
     await expect(page.getByText("x6nimECK", { exact: true })).toBeVisible();
@@ -138,6 +139,7 @@ test("la mise à jour manuelle affiche la version installée et crée un job", a
     await page.goto("/servers/22222222-2222-4222-8222-222222222222");
     await expect(page.getByText("Version installée")).toBeVisible();
     await expect(page.getByText("1.21.8", { exact: true })).toBeVisible();
+    await page.getByText("Diagnostics internes").click();
     await expect(page.getByText("server.jar", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Mettre à jour le jeu" }).click();
 

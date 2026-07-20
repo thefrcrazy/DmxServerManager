@@ -43,6 +43,7 @@ async fn list(
 ) -> Result<Json<config_files::ConfigFileList>, AppError> {
     super::servers::validate_instance_id(&instance_id)?;
     authorize_instance(&state, &auth, &instance_id, "server.files.read").await?;
+    authorize_instance(&state, &auth, &instance_id, "server.config.raw.read").await?;
     let root = instance_storage::resolve(&state.pool, &state.settings, &instance_id)
         .await?
         .root;
@@ -59,6 +60,7 @@ async fn read(
 ) -> Result<Json<config_files::ConfigFileDocument>, AppError> {
     super::servers::validate_instance_id(&instance_id)?;
     authorize_instance(&state, &auth, &instance_id, "server.files.read").await?;
+    authorize_instance(&state, &auth, &instance_id, "server.config.raw.read").await?;
     let root = instance_storage::resolve(&state.pool, &state.settings, &instance_id)
         .await?
         .root;
@@ -82,6 +84,7 @@ async fn queue(
 ) -> Result<Json<config_files::ConfigFileDocument>, AppError> {
     super::servers::validate_instance_id(&instance_id)?;
     authorize_instance(&state, &auth, &instance_id, "server.files.write").await?;
+    authorize_instance(&state, &auth, &instance_id, "server.config.raw.write").await?;
     let root = instance_storage::resolve(&state.pool, &state.settings, &instance_id)
         .await?
         .root;
@@ -110,6 +113,7 @@ async fn cancel(
 ) -> Result<Json<SuccessResponse>, AppError> {
     super::servers::validate_instance_id(&instance_id)?;
     authorize_instance(&state, &auth, &instance_id, "server.files.write").await?;
+    authorize_instance(&state, &auth, &instance_id, "server.config.raw.write").await?;
     let root = instance_storage::resolve(&state.pool, &state.settings, &instance_id)
         .await?
         .root;

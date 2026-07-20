@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
-    ChatDraftSchema,
+    ActivitySummarySchema,
+    AuditPageSchema,
     ConfigFileDocumentSchema,
     CreateDiscordWebhookSchema,
     CreateSteamProfileSchema,
@@ -8,18 +9,17 @@ import {
     BedrockArchiveAuthorizationSchema,
     HytaleDeviceAuthorizationSchema,
     InstalledModSchema,
-    NotificationPageSchema,
     PlayerSnapshotSchema,
     ScheduleActionSchema,
 } from "../src/schemas/operations";
 import { BackupsClient } from "../src/services/api/backups.client";
+import { ActivityClient } from "../src/services/api/activity.client";
 import { setCsrfToken } from "../src/services/api/base.client";
-import { ChatClient } from "../src/services/api/chat.client";
 import { ConfigClient } from "../src/services/api/config.client";
 import { FilesClient } from "../src/services/api/files.client";
 import { ImportsClient } from "../src/services/api/imports.client";
 import { JobsClient } from "../src/services/api/jobs.client";
-import { NotificationsClient } from "../src/services/api/notifications.client";
+import { PanelClient } from "../src/services/api/panel.client";
 import { PlayersClient } from "../src/services/api/players.client";
 import { ModsClient } from "../src/services/api/mods.client";
 import { ProfileClient } from "../src/services/api/profile.client";
@@ -39,42 +39,58 @@ afterEach(() => {
 });
 
 describe("clients opérationnels", () => {
-    test("valide strictement les notifications sans accepter un secret inattendu", () => {
+    test("valide strictement le résumé d’activité et le journal sans contenu sensible inattendu", () => {
+        expect(ActivitySummarySchema.safeParse({
+            active_jobs: 1,
+            waiting_for_user: 0,
+            failed_jobs_24h: 0,
+            crashed_servers: 0,
+            config_conflicts: 0,
+        }).success).toBe(true);
         const payload = {
             items: [{
-                id: BACKUP_ID,
-                kind: "job.failed",
-                message_key: "notifications.job_failed",
-                data: { job_id: BACKUP_ID },
-                read_at: null,
+                id: 1,
+                actor_user_id: BACKUP_ID,
+                actor_username: "owner",
+                action: "server.updated",
+                resource_type: "instance",
+                resource_id: SERVER_ID,
+                outcome: "success",
+                metadata: {},
                 created_at: "2026-07-13T12:00:00Z",
                 secret: "must-not-pass",
             }],
             next_before_id: null,
-            unread_count: 1,
         };
-        expect(NotificationPageSchema.safeParse(payload).success).toBe(false);
+        expect(AuditPageSchema.safeParse(payload).success).toBe(false);
     });
 
-    test("borne et nettoie le texte du chat avant envoi", () => {
-        expect(ChatDraftSchema.parse({ body: "  bonjour\n  " })).toEqual({ body: "bonjour" });
-        expect(ChatDraftSchema.safeParse({ body: "\0secret" }).success).toBe(false);
-        expect(ChatDraftSchema.safeParse({ body: "x".repeat(4_001) }).success).toBe(false);
-    });
-
-    test("pagine chat et notifications avec des paramètres encodés", async () => {
+    test("pagine l’activité et filtre le journal avec des paramètres encodés", async () => {
         const inputs: string[] = [];
         globalThis.fetch = async (input) => {
             inputs.push(String(input));
-            if (String(input).includes("/chat")) return Response.json({ items: [], next_before_id: null });
-            return Response.json({ items: [], next_before_id: null, unread_count: 0 });
+            return Response.json({ items: [], ...(String(input).includes("/activity/jobs") ? { next_cursor: null } : { next_before_id: null }) });
         };
 
-        await new ChatClient().list(BACKUP_ID, 25);
-        await new NotificationsClient().list({ beforeId: BACKUP_ID, unreadOnly: true });
+        await new ActivityClient().jobs({ cursor: BACKUP_ID, limit: 25, state: "failed", instance_id: SERVER_ID });
+        await new ActivityClient().audit({ actor_user_id: BACKUP_ID, outcome: "failure", action: "server.updated" });
 
-        expect(inputs[0]).toBe(`/api/v1/chat?before_id=${BACKUP_ID}&limit=25`);
-        expect(inputs[1]).toBe(`/api/v1/notifications?before_id=${BACKUP_ID}&limit=50&unread_only=true`);
+        expect(inputs[0]).toBe(`/api/v1/activity/jobs?cursor=${BACKUP_ID}&limit=25&state=failed&instance_id=${SERVER_ID}`);
+        expect(inputs[1]).toBe(`/api/v1/audit?actor_user_id=${BACKUP_ID}&action=server.updated&outcome=failure`);
+    });
+
+    test("met à jour l’hôte global avec CSRF et concurrence explicite", async () => {
+        let captured: RequestInit | undefined;
+        globalThis.fetch = async (_input, init) => {
+            captured = init;
+            return Response.json({ advertised_game_host: "play.example.com", version: 4, updated_at: "2026-07-13T12:00:00Z" });
+        };
+        setCsrfToken("csrf-network");
+        const response = await new PanelClient().updateNetwork("play.example.com", 3);
+        expect(response.success).toBe(true);
+        expect(captured?.method).toBe("PUT");
+        expect(new Headers(captured?.headers).get("X-CSRF-Token")).toBe("csrf-network");
+        expect(captured?.body).toBe(JSON.stringify({ advertised_game_host: "play.example.com", expected_version: 3 }));
     });
 
     test("relit l’historique borné du terminal d’installation", async () => {

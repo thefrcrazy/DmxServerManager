@@ -27,7 +27,7 @@ use crate::{
     services::{
         backups, config_files,
         installers::{self, InstallContext, InstallerExecutable},
-        instance_storage, jobs, metrics, notifications, players, profiles,
+        instance_storage, jobs, metrics, players, profiles,
         secrets::{SecretStore, allowed_secret_names},
     },
 };
@@ -1138,22 +1138,6 @@ impl InstanceActor {
                     serde_json::json!({"job_id": job.id}),
                 )
                 .await;
-                if let Err(error) = notifications::create(
-                    &self.inner.pool,
-                    &self.inner.events,
-                    &job.requested_by,
-                    "job.succeeded",
-                    "notifications.job_succeeded",
-                    serde_json::json!({
-                        "job_id": &job.id,
-                        "instance_id": &self.instance_id,
-                        "action": action.as_str(),
-                    }),
-                )
-                .await
-                {
-                    tracing::warn!(job_id = %job.id, %error, "failed to create job notification");
-                }
             }
             Err(error) => {
                 if error.deferred {
@@ -1229,28 +1213,6 @@ impl InstanceActor {
                     serde_json::json!({"job_id": job.id, "error_code": error.code}),
                 )
                 .await;
-                let (notification_kind, message_key) = if error.cancelled {
-                    ("job.cancelled", "notifications.job_cancelled")
-                } else {
-                    ("job.failed", "notifications.job_failed")
-                };
-                if let Err(notification_error) = notifications::create(
-                    &self.inner.pool,
-                    &self.inner.events,
-                    &job.requested_by,
-                    notification_kind,
-                    message_key,
-                    serde_json::json!({
-                        "job_id": &job.id,
-                        "instance_id": &self.instance_id,
-                        "action": action.as_str(),
-                        "error_code": error.code,
-                    }),
-                )
-                .await
-                {
-                    tracing::warn!(job_id = %job.id, %notification_error, "failed to create job notification");
-                }
             }
         }
         self.publish_job(&job.id).await;

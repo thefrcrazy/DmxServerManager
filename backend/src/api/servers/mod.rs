@@ -81,6 +81,24 @@ pub struct SecretStatus {
     pub configured: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ConnectionInfo {
+    pub configured: bool,
+    pub host: Option<String>,
+    pub connection_type: String,
+    pub help_key: String,
+    pub endpoints: Vec<ConnectionEndpoint>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConnectionEndpoint {
+    pub name: String,
+    pub protocol: String,
+    pub port: u16,
+    pub primary: bool,
+    pub address: Option<String>,
+}
+
 #[derive(Debug, FromRow)]
 struct InstanceRow {
     id: String,
@@ -105,6 +123,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/servers", get(list).post(create))
         .route("/servers/{id}", get(get_one).patch(update).delete(remove))
+        .route("/servers/{id}/connection", get(get_connection))
         .route("/servers/{id}/profile-revision", put(set_profile_revision))
         .route("/servers/{id}/secrets", get(list_secrets))
         .route(
@@ -297,6 +316,45 @@ async fn get_one(
     authorize_instance(&state, &auth, &id, "server.read").await?;
     let instance = fetch_instance(&state, &id).await?;
     Ok((etag_headers(instance.config_version)?, Json(instance)))
+}
+
+async fn get_connection(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<ConnectionInfo>, AppError> {
+    validate_instance_id(&id)?;
+    authorize_instance(&state, &auth, &id, "server.read").await?;
+    let instance = fetch_instance(&state, &id).await?;
+    let profile = state
+        .profiles
+        .get_revision(&instance.profile_id, instance.profile_revision)
+        .or_else(|| state.profiles.get(&instance.profile_id))
+        .ok_or_else(|| AppError::Internal("stored game profile is unavailable".into()))?;
+    let network = crate::api::panel::fetch_network_settings(&state.pool).await?;
+    let host = network.advertised_game_host;
+    let ports = effective_ports(&profile, &instance.settings)?;
+    let endpoints = ports
+        .into_iter()
+        .enumerate()
+        .map(|(index, (protocol, port, name))| ConnectionEndpoint {
+            name,
+            protocol,
+            port,
+            primary: index == 0,
+            address: host
+                .as_deref()
+                .map(|host| format_connection_address(host, port)),
+        })
+        .collect();
+    let (connection_type, help_key) = connection_metadata(&profile.id);
+    Ok(Json(ConnectionInfo {
+        configured: host.is_some(),
+        host,
+        connection_type: connection_type.into(),
+        help_key: help_key.into(),
+        endpoints,
+    }))
 }
 
 async fn update(
@@ -833,6 +891,25 @@ fn effective_ports(
     Ok(ports)
 }
 
+fn format_connection_address(host: &str, port: u16) -> String {
+    if host.parse::<std::net::Ipv6Addr>().is_ok() {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn connection_metadata(profile_id: &str) -> (&'static str, &'static str) {
+    match profile_id {
+        "minecraft-bedrock" => ("direct", "connection.help.minecraft_bedrock"),
+        id if id.starts_with("minecraft-java") => ("direct", "connection.help.minecraft_java"),
+        "hytale" => ("direct", "connection.help.hytale"),
+        "valheim" | "palworld" | "satisfactory" | "seven-days-to-die" | "project-zomboid"
+        | "rust" => ("steam", "connection.help.steam"),
+        _ => ("direct", "connection.help.generic"),
+    }
+}
+
 fn validate_instance_name(name: &str) -> Result<(), AppError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 80 || name.chars().any(char::is_control) {
@@ -1075,5 +1152,38 @@ mod tests {
             &settings_update,
             &current_settings
         ));
+    }
+
+    #[test]
+    fn connection_metadata_and_primary_ports_cover_every_builtin_profile() {
+        let registry = crate::services::profiles::ProfileRegistry::builtins();
+        for id in [
+            "hytale",
+            "minecraft-java-vanilla",
+            "minecraft-bedrock",
+            "valheim",
+            "palworld",
+            "satisfactory",
+            "seven-days-to-die",
+            "project-zomboid",
+            "rust",
+        ] {
+            let profile = registry
+                .get(id)
+                .unwrap_or_else(|| panic!("missing profile {id}"));
+            let ports = effective_ports(&profile, &serde_json::json!({})).unwrap();
+            assert!(!ports.is_empty(), "profile {id} has no connection port");
+            assert_eq!(ports[0].2, profile.ports[0].name);
+            let (_, help_key) = connection_metadata(id);
+            assert!(help_key.starts_with("connection.help."));
+        }
+        assert_eq!(
+            format_connection_address("2001:db8::42", 5520),
+            "[2001:db8::42]:5520"
+        );
+        assert_eq!(
+            format_connection_address("game.example.com", 25565),
+            "game.example.com:25565"
+        );
     }
 }

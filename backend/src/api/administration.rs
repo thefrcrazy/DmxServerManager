@@ -22,17 +22,15 @@ use crate::{
 };
 
 const PERMISSIONS: &[&str] = &[
-    "audit.read",
-    "chat.read",
-    "chat.write",
     "job.read",
     "mods.manage",
-    "notifications.read",
     "profile.manage",
     "profile.read",
     "schedule.manage",
     "server.backup",
     "server.backup.read",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.read",
     "server.console.write",
     "server.create",
@@ -56,6 +54,8 @@ const INSTANCE_PERMISSIONS: &[&str] = &[
     "schedule.manage",
     "server.backup",
     "server.backup.read",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.read",
     "server.console.write",
     "server.files.read",
@@ -70,6 +70,8 @@ const INSTANCE_PERMISSIONS: &[&str] = &[
 
 const HIGH_RISK_PERMISSIONS: &[&str] = &[
     "profile.manage",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.write",
     "server.files.write",
 ];

@@ -242,7 +242,7 @@ export default function CatalogManagement() {
                         <progress max={100} value={job.progress} aria-label={`${t("jobs.progress")} ${job.progress} %`} />
                     </div>
                     <span>{job.progress} %</span>
-                    <Link to={`/jobs?focus=${encodeURIComponent(job.id)}`}>{t("administration.catalog.view_job")}</Link>
+                    <Link to={`/activity?tab=operations&focus=${encodeURIComponent(job.id)}`}>{t("administration.catalog.view_job")}</Link>
                 </div>
             )}
 
@@ -278,7 +278,7 @@ export default function CatalogManagement() {
                                         {image ? <img src={image} alt="" /> : item.kind === "theme" ? <Palette aria-hidden="true" /> : <Boxes aria-hidden="true" />}
                                     </span>
                                     <span className="catalog-card__body"><strong>{item.name}</strong><small>{item.description}</small></span>
-                                    <span className="badge badge--neutral">r{item.revision}</span>
+                                    <span className="badge badge--neutral">{t("administration.catalog.version")} {item.revision}</span>
                                 </button>
                             );
                         })}
@@ -296,7 +296,7 @@ export default function CatalogManagement() {
                                             && activeTheme.selection.revision === item.revision;
                                         const deleteKey = `${packageKey(item)}:${item.revision}`;
                                         return <li key={item.revision}>
-                                            <div><strong>r{item.revision}</strong><time dateTime={item.created_at}>{formatDate(item.created_at)}</time><code title={item.archive_sha256}>{item.archive_sha256.slice(0, 12)}…</code></div>
+                                            <div><strong>{t("administration.catalog.version")} {item.revision}</strong><time dateTime={item.created_at}>{formatDate(item.created_at)}</time><code title={item.archive_sha256}>{item.archive_sha256.slice(0, 12)}…</code></div>
                                             <div className="catalog-revision-list__actions">
                                                 {active && <span className="badge badge--success"><Check size={13} />{t("administration.catalog.active")}</span>}
                                                 {item.kind === "theme" && !active && <Button type="button" size="sm" variant="secondary" isLoading={selectingTheme === `${item.id}:${item.revision}`} onClick={() => void selectTheme({ kind: "catalog", package_id: item.id, revision: item.revision })}>{t("administration.catalog.apply_theme")}</Button>}

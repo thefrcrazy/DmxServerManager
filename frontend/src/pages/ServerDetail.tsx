@@ -1,4 +1,4 @@
-import { Activity, Archive, CalendarClock, Download, FolderOpen, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Shield, Skull, Square, Terminal, TriangleAlert, Trash2, Users, Wrench } from "lucide-react";
+import { Activity, Archive, CalendarClock, Copy, Download, Eye, EyeOff, FolderOpen, Globe2, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Skull, Square, Terminal, TriangleAlert, Trash2, Users, Wrench } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConfigFiles, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerPlayers, ServerSchedules, profileSettingTitle } from "@/components/features/server";
@@ -11,12 +11,13 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useToast } from "@/contexts/ToastContext";
 import { usePermission, useServerEvents } from "@/hooks";
 import { SecretStatusSchema } from "@/schemas/api";
-import type { GameProfile, Instance } from "@/schemas/api";
+import type { ConnectionInfo, GameProfile, Instance } from "@/schemas/api";
 import { BedrockArchiveAuthorizationSchema, HytaleDeviceAuthorizationSchema } from "@/schemas/operations";
 import type { BedrockArchiveAuthorization, HytaleDeviceAuthorization, PlayerSnapshot } from "@/schemas/operations";
 import { apiService } from "@/services";
 import type { ServerAction } from "@/services/api/server.client";
 import type { ProfileValue } from "@/utils/profileSettings";
+import { gameProfileVisual } from "@/constants/gameProfiles";
 
 type TabId = "configuration" | "console" | "players" | "files" | "backups" | "metrics" | "mods" | "schedules";
 
@@ -50,6 +51,9 @@ export default function ServerDetail() {
     const [playerSnapshot, setPlayerSnapshot] = useState<PlayerSnapshot | null>(null);
     const [playersLoading, setPlayersLoading] = useState(true);
     const [playersError, setPlayersError] = useState<string | null>(null);
+    const [connection, setConnection] = useState<ConnectionInfo | null>(null);
+    const [connectionError, setConnectionError] = useState<string | null>(null);
+    const [connectionRevealed, setConnectionRevealed] = useState(false);
 
     const loadInstance = useCallback(async () => {
         if (!id) return;
@@ -78,13 +82,25 @@ export default function ServerDetail() {
         setPlayersError(null);
     }, [id]);
 
+    const loadConnection = useCallback(async () => {
+        if (!id) return;
+        const response = await apiService.servers.getConnection(id);
+        if (!response.success) {
+            setConnectionError(response.error.message);
+            return;
+        }
+        setConnection(response.data);
+        setConnectionError(null);
+    }, [id]);
+
     useEffect(() => {
         void loadInstance().finally(() => setLoading(false));
-    }, [loadInstance]);
+        void loadConnection();
+    }, [loadConnection, loadInstance]);
 
     useEffect(() => {
         if (!instance) return;
-        setPageTitle(instance.name, `${instance.profile_id} · ${t("servers.revision")} ${instance.profile_revision}`, { to: "/servers" });
+        setPageTitle(instance.name, gameProfileVisual(instance.profile_id).label, { to: "/servers" });
         let active = true;
         void apiService.profiles.getRevisions(instance.profile_id).then(async (response) => {
             if (!active) return;
@@ -328,6 +344,7 @@ export default function ServerDetail() {
             }
         }
         setInstance(response.data);
+        void loadConnection();
         setSecretDrafts({});
         const statuses = await apiService.servers.getSecrets(id);
         if (statuses.success) setSecretStatuses(statuses.data.items);
@@ -369,6 +386,17 @@ export default function ServerDetail() {
     const bedrockArchive = events.pendingBedrockArchive ?? fallbackBedrockArchive;
     const deviceAuthorization = events.pendingDeviceAuthorization ?? fallbackDeviceAuthorization;
     const canUploadBedrockArchive = user?.role === "owner" && hasPermission("server.files.write");
+    const primaryConnection = connection?.endpoints.find((endpoint) => endpoint.primary) ?? connection?.endpoints[0];
+    const connectionHelpKey = connection?.help_key.replace(/^connection\.help\./, "") ?? "generic";
+    const copyConnection = async () => {
+        if (!primaryConnection?.address) return;
+        try {
+            await navigator.clipboard.writeText(primaryConnection.address);
+            toast.success(t("server_detail.connection.copied"));
+        } catch {
+            toast.error(t("server_detail.connection.copy_failed"));
+        }
+    };
 
     return (
         <div className="server-detail-page">
@@ -384,16 +412,22 @@ export default function ServerDetail() {
             />}
             <div className="server-header-stats">
                 <StatPill icon={<ServerIcon size={18} />} label={t("server_detail.runtime_state")} value={t(`servers.runtime_states.${instance.runtime_state}`)} variant={running ? "success" : instance.runtime_state === "crashed" ? "danger" : "muted"} />
-                <StatPill icon={<Download size={18} />} label={t("server_detail.installation_state")} value={t(`servers.installation_states.${instance.installation_state}`)} variant={installed ? "success" : "warning"} />
-                <StatPill icon={<Shield size={18} />} label={t("server_detail.desired_state")} value={t(`servers.desired_states.${instance.desired_state}`)} variant={instance.desired_state === "running" ? "success" : "muted"} />
-                <StatPill icon={<Wrench size={18} />} label={t("server_detail.configuration_version")} value={`v${instance.config_version}`} variant="default" />
                 <StatPill icon={<Users size={18} />} label={t("server_detail.players.online")} value={playerSnapshot?.online_count ?? "—"} variant={playerSnapshot?.online_count ? "success" : "muted"} />
-                {instance.installed_version && <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={instance.installed_version} variant="default" />}
-                {instance.installed_build && <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_build")} value={instance.installed_build} variant="default" />}
+                <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={instance.installed_version ?? "—"} variant="default" />
+                <div className="stat-pill connection-pill">
+                    <div className="stat-pill__icon"><Globe2 size={18} /></div>
+                    <div className="stat-pill__content">
+                        <span className="stat-pill__label">{t("servers.connection")}</span>
+                        {connectionError ? <span className="connection-pill__error">{connectionError}</span> : connection?.configured && primaryConnection?.address ? <><span className="connection-pill__value" aria-live="polite">{connectionRevealed ? primaryConnection.address : `••••••:${primaryConnection.port}`}</span><small>{t(`server_detail.connection.help.${connectionHelpKey}`)}</small></> : <span className="connection-pill__missing">{t("server_detail.connection.not_configured")}</span>}
+                    </div>
+                    {connection?.configured && primaryConnection?.address && <div className="connection-pill__actions"><Button variant="ghost" size="icon" aria-label={connectionRevealed ? t("server_detail.connection.hide") : t("server_detail.connection.reveal")} onClick={() => setConnectionRevealed((value) => !value)}>{connectionRevealed ? <EyeOff size={16} /> : <Eye size={16} />}</Button><Button variant="ghost" size="icon" aria-label={t("server_detail.connection.copy")} onClick={() => void copyConnection()}><Copy size={16} /></Button></div>}
+                </div>
             </div>
 
+            {!connection?.configured && hasPermission("panel.network.manage") && <div className="connection-notice"><Globe2 size={18} /><span>{t("server_detail.connection.configure_hint")}</span><Button as="link" to="/administration?tab=network" variant="ghost" size="sm">{t("server_detail.connection.configure")}</Button></div>}
+
             <div className="server-actions" style={{ marginBottom: "1rem", justifyContent: "flex-end" }}>
-                {hasPermission("job.read") && <Button as="link" to={`/jobs?instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
+                {hasPermission("job.read") && <Button as="link" to={`/activity?tab=operations&instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
                 {!installed && canInstall && hasPermission("server.update_game") && <Button onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.install")}</Button>}
                 {installed && canInstall && !running && instance.desired_state === "stopped" && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
                 {installed && canStartStop && !running && instance.desired_state === "stopped" && hasPermission("server.start") && <Button variant="success" onClick={() => void runAction("start")} disabled={busy} icon={<Play size={17} />}>{t("servers.start")}</Button>}
@@ -446,7 +480,8 @@ export default function ServerDetail() {
                         loading={playersLoading}
                         error={playersError}
                         canReadAccess={hasPermission("server.files.read")}
-                        canWriteAccess={hasPermission("server.files.write")}
+                        canReadRawAccess={hasPermission("server.config.raw.read")}
+                        canWriteRawAccess={hasPermission("server.files.write") && hasPermission("server.config.raw.write")}
                         isRunning={running}
                         refreshSignal={events.operationRevision}
                         onRefresh={() => void loadPlayers()}
@@ -512,7 +547,7 @@ export default function ServerDetail() {
                                     onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
                                 />
                             </>
-                        ) : <p className="text-muted">{t("server_detail.profile_unavailable")} {instance.profile_id}@{instance.profile_revision}</p>}
+                        ) : <p className="text-muted">{t("server_detail.profile_unavailable")}</p>}
 
                         {profile && Object.entries(profile.settings_schema.properties).some(([, property]) => property.secret || property.writeOnly) && (
                             <section className="profile-settings-section">
@@ -541,11 +576,13 @@ export default function ServerDetail() {
                             <ServerConfigFiles
                                 instanceId={instance.id}
                                 category="configuration"
-                                canWrite={hasPermission("server.files.write")}
+                                canReadRaw={hasPermission("server.config.raw.read")}
+                                canWriteRaw={hasPermission("server.files.write") && hasPermission("server.config.raw.write")}
                                 isRunning={running}
                                 refreshSignal={events.operationRevision}
                             />
                         )}
+                        {(user?.role === "owner" || user?.role === "admin") && <details className="server-diagnostics"><summary>{t("server_detail.diagnostics.title")}</summary><dl><div><dt>{t("server_detail.diagnostics.profile")}</dt><dd><code>{instance.profile_id} · #{instance.profile_revision}</code></dd></div><div><dt>{t("server_detail.diagnostics.configuration")}</dt><dd><code>{instance.config_version}</code></dd></div><div><dt>{t("server_detail.diagnostics.desired_state")}</dt><dd><code>{instance.desired_state}</code></dd></div>{instance.installed_build && <div><dt>{t("server_detail.diagnostics.build")}</dt><dd><code>{instance.installed_build}</code></dd></div>}</dl></details>}
                     </div>
                 )}
             </div>

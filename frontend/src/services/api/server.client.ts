@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
     Instance,
     InstanceSchema,
+    ConnectionInfo,
+    ConnectionInfoSchema,
     Job,
     JobSchema,
     SecretStatusListSchema,
@@ -50,6 +52,10 @@ export class ServerClient extends BaseClient {
 
     async getServer(id: string): Promise<ClientResponse<Instance>> {
         return this.request(`/servers/${encodeURIComponent(id)}`, InstanceSchema);
+    }
+
+    async getConnection(id: string): Promise<ClientResponse<ConnectionInfo>> {
+        return this.request(`/servers/${encodeURIComponent(id)}/connection`, ConnectionInfoSchema);
     }
 
     async createServer(data: CreateServerInput): Promise<ClientResponse<Instance>> {

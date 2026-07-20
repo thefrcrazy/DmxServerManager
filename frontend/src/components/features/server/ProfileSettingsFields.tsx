@@ -132,12 +132,12 @@ export function ProfileConfigurationOverview({ profile, values, activeRevision }
         <div className="profile-config-overview">
             <div className="profile-config-overview__heading">
                 <div>
-                    <p className="profile-config-overview__eyebrow">{profile.name} · r{activeRevision}</p>
+                    <p className="profile-config-overview__eyebrow">{profile.name}</p>
                     <h2>{t("server_detail.profile_config.title")}</h2>
                 </div>
                 {compatibleUpgrade && (
                     <span className="badge badge--info">
-                        {t("server_detail.profile_config.compatible_upgrade")} r{profile.revision}
+                        {t("server_detail.profile_config.compatible_upgrade")}
                     </span>
                 )}
             </div>

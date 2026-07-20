@@ -86,21 +86,19 @@ test("un mot de passe temporaire bloque le panneau jusqu’à son remplacement",
     expect(await page.context().cookies()).toHaveLength(0);
 });
 
-test("le dashboard affiche les instances et masque les actions absentes des capabilities", async ({ page }) => {
+test("le dashboard affiche la santé opérationnelle et ouvre la gestion détaillée", async ({ page }) => {
     const api = new ApiMock();
     await api.install(page);
 
     await page.goto("/dashboard");
     await expect(page.getByText("Survie Valheim")).toBeVisible();
     await expect(page.getByText("Minecraft sans driver runtime")).toBeVisible();
-    await expect(page.getByText("Total Serveurs").locator("..").getByText("2", { exact: true })).toBeVisible();
+    await expect(page.locator(".health-list .health-row")).toHaveCount(2);
+    await expect(page.locator(".stat-pill").filter({ hasText: "en ligne" }).getByText("1", { exact: true })).toBeVisible();
+    await expect(page.locator(".stat-pill").filter({ hasText: "À traiter" }).getByText("0", { exact: true })).toBeVisible();
 
-    const valheimRow = page.getByRole("row").filter({ hasText: "Survie Valheim" });
-    await expect(valheimRow.locator("button")).toHaveCount(3);
-
-    const restrictedRow = page.getByRole("row").filter({ hasText: "Minecraft sans driver runtime" });
+    const restrictedRow = page.locator(".health-row").filter({ hasText: "Minecraft sans driver runtime" });
     await expect(restrictedRow.locator("button")).toHaveCount(0);
-    await expect(restrictedRow.getByText("—", { exact: true })).toBeVisible();
 
     await restrictedRow.click();
     await expect(page).toHaveURL(/\/servers\/22222222-2222-4222-8222-222222222222$/);
@@ -134,28 +132,105 @@ test("un serveur crashé garde son diagnostic visible et permet d’annuler le w
     expect(api.findRequest("POST", `/servers/${crashedServer.id}/actions/stop`)).toBeDefined();
 });
 
-test("la navigation principale reste utilisable au clavier avec un focus visible", async ({ page }) => {
+test("la navigation principale se redimensionne au clavier et conserve sa largeur", async ({ page }) => {
     const api = new ApiMock();
     await api.install(page);
     await page.goto("/dashboard");
 
-    const collapse = page.getByRole("button", { name: "Réduire la navigation" });
-    await collapse.focus();
-    await expect(collapse).toBeFocused();
-    const focusStyle = await collapse.evaluate((element) => {
+    await expect(page.getByRole("button", { name: /Réduire la navigation/ })).toHaveCount(0);
+    const separator = page.getByRole("separator", { name: "Redimensionner la navigation" });
+    await separator.focus();
+    await expect(separator).toBeFocused();
+    const focusStyle = await separator.evaluate((element) => {
         const style = getComputedStyle(element);
         return { boxShadow: style.boxShadow, outlineStyle: style.outlineStyle };
     });
     expect(focusStyle.boxShadow !== "none" || focusStyle.outlineStyle !== "none").toBe(true);
+    await separator.press("End");
+    await expect(separator).toHaveAttribute("aria-valuenow", "400");
+    expect(await page.evaluate(() => localStorage.getItem(`dmx_sidebar_width:${"019f5c30-6557-7583-8d27-03a9cc043572"}`))).toBe("400");
+    await page.reload();
+    await expect(page.getByRole("separator", { name: "Redimensionner la navigation" })).toHaveAttribute("aria-valuenow", "400");
 
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "DmxServerManager" })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "Tableau de Bord" })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "Serveurs" })).toBeFocused();
-    await page.keyboard.press("Enter");
+    await page.getByRole("link", { name: "Serveurs", exact: true }).focus();
+    await page.getByRole("link", { name: "Serveurs", exact: true }).press("Enter");
     await expect(page).toHaveURL(/\/servers$/);
+});
+
+test("la vue liste ou grille des serveurs est conservée par utilisateur", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    await page.goto("/servers");
+    await expect(page.locator(".server-grid")).toBeVisible();
+
+    await page.getByRole("button", { name: "Affichage en liste" }).click();
+    await expect(page.getByRole("table")).toBeVisible();
+    await page.goto("/dashboard");
+    await page.goto("/servers");
+    await expect(page.getByRole("table")).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("table")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("dmx_server_view:019f5c30-6557-7583-8d27-03a9cc043572"))).toBe("list");
+});
+
+test("l’adresse de connexion reste masquée, se copie sans révélation et explique l’absence d’hôte", async ({ page }) => {
+    const api = new ApiMock();
+    await page.addInitScript(() => {
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: {
+                writeText: (value: string) => {
+                    (window as typeof window & { __dmxCopiedAddress?: string }).__dmxCopiedAddress = value;
+                    return Promise.resolve();
+                },
+            },
+        });
+    });
+    await api.install(page);
+    await page.goto(`/servers/${INSTANCES[0]!.id}`);
+
+    const connection = page.locator(".connection-pill");
+    await expect(connection).toContainText("••••••:2456");
+    await expect(connection).not.toContainText("play.example.com:2456");
+    await connection.getByRole("button", { name: "Copier l’adresse sans l’afficher" }).click();
+    await expect(page.getByText("Adresse de connexion copiée.")).toBeVisible();
+    expect(await page.evaluate(() => (window as typeof window & { __dmxCopiedAddress?: string }).__dmxCopiedAddress)).toBe("play.example.com:2456");
+    await expect(connection).not.toContainText("play.example.com:2456");
+    await connection.getByRole("button", { name: "Afficher l’adresse" }).click();
+    await expect(connection).toContainText("play.example.com:2456");
+
+    const withoutHost = new ApiMock();
+    withoutHost.advertisedGameHost = null;
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await withoutHost.install(page);
+    await page.reload();
+    await expect(page.getByText("Hôte public non configuré", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Configurer le réseau" })).toHaveAttribute("href", "/administration?tab=network");
+});
+
+test("Mon compte affiche et révoque les sessions sans exposer de jeton", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    await page.goto("/user-settings");
+
+    await expect(page.getByRole("heading", { name: "Sessions actives" })).toBeVisible();
+    await expect(page.getByText("Chromium")).toBeVisible();
+    await expect(page.getByText("Safari")).toBeVisible();
+    await expect(page.getByText("Session actuelle")).toBeVisible();
+    expect(await page.locator("body").innerText()).not.toMatch(/token_hash|csrf_hash|user_agent|e2e-opaque-session-token/);
+
+    await page.getByRole("button", { name: "Révoquer la session" }).click();
+    const singleDialog = page.getByRole("dialog", { name: "Révoquer la session" });
+    await singleDialog.getByRole("button", { name: "Révoquer la session" }).click();
+    await expect(page.getByText("Safari · macOS")).toHaveCount(0);
+    expect(api.findRequest("DELETE", "/auth/sessions/20202020-2020-4020-8020-202020202020")?.headers["x-csrf-token"]).toBe("e2e-csrf-token");
+
+    await page.reload();
+    await page.getByRole("button", { name: "Révoquer les autres" }).click();
+    const othersDialog = page.getByRole("dialog", { name: "Révoquer les autres" });
+    await othersDialog.getByRole("button", { name: "Révoquer les autres" }).click();
+    await expect(page.getByText("Safari · macOS")).toHaveCount(0);
+    expect(api.findRequest("POST", "/auth/sessions/revoke-others")?.headers["x-csrf-token"]).toBe("e2e-csrf-token");
 });
 
 test("la console reçoit server.log par SSE et échappe le HTML sans jeton dans l’URL", async ({ page }) => {
@@ -213,10 +288,13 @@ test("l’onglet Joueurs affiche la présence et met les droits natifs en file",
     await page.getByRole("tab", { name: "Joueurs" }).click();
     await expect(page.getByText("DmxPlayer")).toBeVisible();
     await expect(page.getByText("adminlist.txt", { exact: true })).toBeVisible();
-    const editor = page.locator(".native-config-textarea");
-    await editor.fill("76561198000000000\n76561198000000001");
-    await page.getByRole("button", { name: "Mettre en file" }).click();
-    await expect(page.getByText("Modification en attente")).toBeVisible();
+    await page.getByText("adminlist.txt", { exact: true }).click();
+    await page.getByLabel("Entrées — adminlist.txt").fill("76561198000000000\n76561198000000001");
+    await page.getByRole("button", { name: "Mettre cette liste en file" }).click();
+    await expect(page.getByText("Modification chiffrée et mise en file.")).toBeVisible();
+    await page.getByRole("button", { name: "Modifier" }).click();
+    const editorDialog = page.getByRole("dialog", { name: "adminlist.txt" });
+    await expect(editorDialog.locator(".monaco-editor")).toBeVisible();
 
     const request = api.findRequest("PUT", `/servers/${serverId}/config-files/text`);
     expect(request?.body).toEqual({

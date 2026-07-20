@@ -28,12 +28,7 @@ pub async fn stream_events(
     Query(query): Query<EventQuery>,
     headers: HeaderMap,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
-    let can_read_servers = auth.has_permission("server.read");
-    let can_read_chat = auth.has_permission("chat.read");
-    let can_read_notifications = auth.has_permission("notifications.read");
-    if !can_read_servers && !can_read_chat && !can_read_notifications {
-        return Err(AppError::Forbidden("auth.permission_denied".into()));
-    }
+    auth.require("server.read")?;
     let selected_server = if let Some(server_id) = query.server_id {
         auth.require("server.read")?;
         uuid::Uuid::parse_str(&server_id)
@@ -58,16 +53,7 @@ pub async fn stream_events(
     let replay_events = match replay {
         ReplayResult::Found(events) => events
             .into_iter()
-            .filter(|event| {
-                visible(
-                    event,
-                    selected_server.as_deref(),
-                    &grant_scope,
-                    &auth,
-                    can_read_chat,
-                    can_read_notifications,
-                )
-            })
+            .filter(|event| visible(event, selected_server.as_deref(), &grant_scope, &auth))
             .inspect(|event| {
                 replay_ids.insert(event.id.clone());
             })
@@ -109,8 +95,6 @@ pub async fn stream_events(
             selected_server,
             replay_ids,
             auth,
-            can_read_chat,
-            can_read_notifications,
             revalidation_state,
             revalidation_interval,
         ),
@@ -120,8 +104,6 @@ pub async fn stream_events(
             selected_server,
             mut replay_ids,
             mut auth,
-            mut can_read_chat,
-            mut can_read_notifications,
             revalidation_state,
             mut revalidation_interval,
         )| async move {
@@ -155,14 +137,9 @@ pub async fn stream_events(
                         }) {
                             return None;
                         }
-                        let still_has_stream_permission = refreshed.has_permission("server.read")
-                            || refreshed.has_permission("chat.read")
-                            || refreshed.has_permission("notifications.read");
-                        if !still_has_stream_permission {
+                        if !refreshed.has_permission("server.read") {
                             return None;
                         }
-                        can_read_chat = refreshed.has_permission("chat.read");
-                        can_read_notifications = refreshed.has_permission("notifications.read");
                         auth = refreshed;
                         grant_scope = refreshed_scope;
                     }
@@ -171,14 +148,7 @@ pub async fn stream_events(
                         if replay_ids.remove(&api_event.id) {
                             continue;
                         }
-                        if !visible(
-                            &api_event,
-                            selected_server.as_deref(),
-                            &grant_scope,
-                            &auth,
-                            can_read_chat,
-                            can_read_notifications,
-                        ) {
+                        if !visible(&api_event, selected_server.as_deref(), &grant_scope, &auth) {
                             continue;
                         }
                         return Some((
@@ -189,8 +159,6 @@ pub async fn stream_events(
                                 selected_server,
                                 replay_ids,
                                 auth,
-                                can_read_chat,
-                                can_read_notifications,
                                 revalidation_state,
                                 revalidation_interval,
                             ),
@@ -208,8 +176,6 @@ pub async fn stream_events(
                                 selected_server,
                                 replay_ids,
                                 auth,
-                                can_read_chat,
-                                can_read_notifications,
                                 revalidation_state,
                                 revalidation_interval,
                             ),
@@ -236,8 +202,6 @@ fn visible(
     selected_server: Option<&str>,
     grant_scope: &crate::api::auth::InstanceGrantScope,
     auth: &AuthUser,
-    can_read_chat: bool,
-    can_read_notifications: bool,
 ) -> bool {
     if event
         .audience_user_id
@@ -251,10 +215,6 @@ fn visible(
             return false;
         }
         grant_scope.allows(auth, selected, required_instance_permission(event))
-    } else if event.event_type.starts_with("chat.") {
-        can_read_chat
-    } else if event.event_type.starts_with("notification.") {
-        can_read_notifications && event.audience_user_id.as_deref() == Some(auth.id.as_str())
     } else if let Some(instance_id) = &event.instance_id {
         grant_scope.allows(auth, instance_id, required_instance_permission(event))
     } else {
@@ -325,18 +285,8 @@ mod tests {
     }
 
     #[test]
-    fn private_notifications_never_cross_user_boundaries() {
-        let notification = event("notification.created", None, Some("alice"));
-        let alice = AuthUser::for_test("alice", "viewer", ["notifications.read"]);
-        let bob = AuthUser::for_test("bob", "viewer", ["notifications.read"]);
-        let scope = InstanceGrantScope::for_test(false, []);
-        assert!(visible(&notification, None, &scope, &alice, false, true,));
-        assert!(!visible(&notification, None, &scope, &bob, true, true,));
-    }
-
-    #[test]
-    fn instance_and_chat_events_apply_independent_permissions() {
-        let auth = AuthUser::for_test("alice", "viewer", ["server.read", "chat.read"]);
+    fn instance_events_are_scoped_to_granted_servers() {
+        let auth = AuthUser::for_test("alice", "viewer", ["server.read"]);
         let scope =
             InstanceGrantScope::for_test(false, [("server-a".to_string(), Vec::<String>::new())]);
         assert!(visible(
@@ -344,24 +294,12 @@ mod tests {
             None,
             &scope,
             &auth,
-            false,
-            false,
         ));
         assert!(!visible(
             &event("server.state", Some("server-b"), None),
             None,
             &scope,
             &auth,
-            true,
-            false,
-        ));
-        assert!(visible(
-            &event("chat.message_created", None, None),
-            None,
-            &scope,
-            &auth,
-            true,
-            false,
         ));
     }
 
@@ -386,15 +324,13 @@ mod tests {
             ..event("job.updated", Some("server-a"), None)
         };
 
-        assert!(!visible(&waiting, None, &scope, &viewer, false, false));
-        assert!(!visible(&updated, None, &scope, &viewer, false, false));
+        assert!(!visible(&waiting, None, &scope, &viewer));
+        assert!(!visible(&updated, None, &scope, &viewer));
         assert!(!visible(
             &event("server.log", Some("server-a"), None),
             None,
             &scope,
             &viewer,
-            false,
-            false,
         ));
 
         let operator = AuthUser::for_test(
@@ -407,14 +343,12 @@ mod tests {
                 "server.console.read",
             ],
         );
-        assert!(visible(&waiting, None, &scope, &operator, false, false));
+        assert!(visible(&waiting, None, &scope, &operator));
         assert!(visible(
             &event("server.log", Some("server-a"), None),
             None,
             &scope,
             &operator,
-            false,
-            false,
         ));
     }
 }

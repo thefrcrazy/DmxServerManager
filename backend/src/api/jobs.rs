@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Debug, FromRow)]
-struct JobRow {
+pub(crate) struct JobRow {
     id: String,
     instance_id: Option<String>,
     kind: String,
@@ -165,7 +165,7 @@ async fn get_one(
     )))
 }
 
-fn protect_job_interaction(
+pub(crate) fn protect_job_interaction(
     mut job: Job,
     auth: &AuthUser,
     interaction_scope: &InstanceGrantScope,
@@ -179,7 +179,7 @@ fn protect_job_interaction(
     job
 }
 
-fn job_from_row(row: JobRow) -> Result<Job, AppError> {
+pub(crate) fn job_from_row(row: JobRow) -> Result<Job, AppError> {
     let state = match row.state.as_str() {
         "queued" => JobState::Queued,
         "running" => JobState::Running,

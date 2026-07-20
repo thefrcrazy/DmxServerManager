@@ -18,7 +18,7 @@ use crate::{
     domain::v1::{GameProfile, Job},
     services::{
         installers::{ArchiveLimits, declared_backup_paths_for_profile, extract_zip},
-        instance_storage, jobs, notifications,
+        instance_storage, jobs,
         secure_fs::{self, BackupFile},
     },
 };
@@ -400,22 +400,6 @@ pub fn spawn_create(state: AppState, job: Job, backup_id: String, claim: jobs::J
                     serde_json::json!({"backup_id": backup_id}),
                 )
                 .await;
-                if let Err(error) = notifications::create(
-                    &state.pool,
-                    &state.events,
-                    &job.requested_by,
-                    "backup.created",
-                    "notifications.backup_created",
-                    serde_json::json!({
-                        "job_id": &job.id,
-                        "backup_id": &backup_id,
-                        "instance_id": job.instance_id.as_deref(),
-                    }),
-                )
-                .await
-                {
-                    tracing::warn!(job_id = %job.id, %error, "failed to create backup notification");
-                }
                 if let Some(instance_id) = job.instance_id {
                     state.events.publish(
                         "backup.created",
@@ -449,22 +433,6 @@ pub fn spawn_create(state: AppState, job: Job, backup_id: String, claim: jobs::J
                     serde_json::json!({"backup_id": backup_id}),
                 )
                 .await;
-                if let Err(notification_error) = notifications::create(
-                    &state.pool,
-                    &state.events,
-                    &job.requested_by,
-                    "backup.failed",
-                    "notifications.backup_failed",
-                    serde_json::json!({
-                        "job_id": &job.id,
-                        "backup_id": &backup_id,
-                        "instance_id": job.instance_id.as_deref(),
-                    }),
-                )
-                .await
-                {
-                    tracing::warn!(job_id = %job.id, %notification_error, "failed to create backup notification");
-                }
             }
         }
     });
@@ -506,23 +474,6 @@ pub fn spawn_restore(state: AppState, job: Job, backup_id: String, claim: jobs::
                     }),
                 )
                 .await;
-                if let Err(error) = notifications::create(
-                    &state.pool,
-                    &state.events,
-                    &job.requested_by,
-                    "backup.restored",
-                    "notifications.backup_restored",
-                    serde_json::json!({
-                        "job_id": &job.id,
-                        "backup_id": &backup_id,
-                        "pre_restore_backup_id": &pre_restore_id,
-                        "instance_id": job.instance_id.as_deref(),
-                    }),
-                )
-                .await
-                {
-                    tracing::warn!(job_id = %job.id, %error, "failed to create restore notification");
-                }
                 if let Some(instance_id) = job.instance_id {
                     state.events.publish(
                         "backup.restored",
@@ -555,22 +506,6 @@ pub fn spawn_restore(state: AppState, job: Job, backup_id: String, claim: jobs::
                     serde_json::json!({"backup_id": backup_id}),
                 )
                 .await;
-                if let Err(notification_error) = notifications::create(
-                    &state.pool,
-                    &state.events,
-                    &job.requested_by,
-                    "backup.restore_failed",
-                    "notifications.backup_restore_failed",
-                    serde_json::json!({
-                        "job_id": &job.id,
-                        "backup_id": &backup_id,
-                        "instance_id": job.instance_id.as_deref(),
-                    }),
-                )
-                .await
-                {
-                    tracing::warn!(job_id = %job.id, %notification_error, "failed to create restore notification");
-                }
             }
         }
     });

@@ -3,6 +3,7 @@ use axum::{
     extract::{Query, State},
     routing::get,
 };
+use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{FromRow, QueryBuilder, Sqlite};
@@ -22,7 +23,11 @@ struct AuditQuery {
     limit: Option<u16>,
     resource_type: Option<String>,
     resource_id: Option<String>,
+    actor_user_id: Option<String>,
+    action: Option<String>,
     outcome: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -67,6 +72,9 @@ async fn list(
     Query(query): Query<AuditQuery>,
 ) -> Result<Json<AuditPage>, AppError> {
     auth.require("audit.read")?;
+    if !matches!(auth.role.as_str(), "owner" | "admin") {
+        return Err(AppError::Forbidden("auth.forbidden".into()));
+    }
     validate_query(&query)?;
     let limit = query.limit.unwrap_or(DEFAULT_PAGE_SIZE).min(MAX_PAGE_SIZE);
 
@@ -88,8 +96,22 @@ async fn list(
             .push(" AND e.resource_id = ")
             .push_bind(resource_id);
     }
+    if let Some(actor_user_id) = query.actor_user_id.as_deref() {
+        statement
+            .push(" AND e.actor_user_id = ")
+            .push_bind(actor_user_id);
+    }
+    if let Some(action) = query.action.as_deref() {
+        statement.push(" AND e.action = ").push_bind(action);
+    }
     if let Some(outcome) = query.outcome.as_deref() {
         statement.push(" AND e.outcome = ").push_bind(outcome);
+    }
+    if let Some(from) = query.from.as_deref() {
+        statement.push(" AND e.created_at >= ").push_bind(from);
+    }
+    if let Some(to) = query.to.as_deref() {
+        statement.push(" AND e.created_at <= ").push_bind(to);
     }
     statement
         .push(" ORDER BY e.id DESC LIMIT ")
@@ -131,9 +153,25 @@ fn validate_query(query: &AuditQuery) -> Result<(), AppError> {
             .as_deref()
             .is_some_and(|value| value.is_empty() || value.len() > 128)
         || query
+            .actor_user_id
+            .as_deref()
+            .is_some_and(|value| uuid::Uuid::parse_str(value).is_err())
+        || query
+            .action
+            .as_deref()
+            .is_some_and(|value| value.is_empty() || value.len() > 128)
+        || query
             .outcome
             .as_deref()
             .is_some_and(|value| !matches!(value, "success" | "denied" | "failure"))
+        || query
+            .from
+            .as_deref()
+            .is_some_and(|value| DateTime::parse_from_rfc3339(value).is_err())
+        || query
+            .to
+            .as_deref()
+            .is_some_and(|value| DateTime::parse_from_rfc3339(value).is_err())
     {
         return Err(AppError::BadRequest("audit.invalid_query".into()));
     }
@@ -149,10 +187,45 @@ fn event_from_row(row: AuditRow) -> Result<AuditEvent, AppError> {
         resource_type: row.resource_type,
         resource_id: row.resource_id,
         outcome: row.outcome,
-        metadata: serde_json::from_str(&row.metadata)
-            .map_err(|_| AppError::Internal("stored audit metadata is invalid".into()))?,
+        metadata: redact_metadata(
+            serde_json::from_str(&row.metadata)
+                .map_err(|_| AppError::Internal("stored audit metadata is invalid".into()))?,
+        ),
         created_at: row.created_at,
     })
+}
+
+fn redact_metadata(value: Value) -> Value {
+    match value {
+        Value::Object(values) => Value::Object(
+            values
+                .into_iter()
+                .map(|(key, value)| {
+                    let normalized = key.to_ascii_lowercase();
+                    let sensitive = [
+                        "password",
+                        "secret",
+                        "token",
+                        "authorization",
+                        "cookie",
+                        "content",
+                        "command",
+                        "user_code",
+                        "verification_uri",
+                    ]
+                    .iter()
+                    .any(|part| normalized.contains(part));
+                    if sensitive {
+                        (key, Value::String("[redacted]".into()))
+                    } else {
+                        (key, redact_metadata(value))
+                    }
+                })
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(values.into_iter().map(redact_metadata).collect()),
+        other => other,
+    }
 }
 
 #[cfg(test)]
@@ -167,7 +240,11 @@ mod tests {
                 limit: None,
                 resource_type: None,
                 resource_id: None,
+                actor_user_id: None,
+                action: None,
                 outcome: None,
+                from: None,
+                to: None,
             })
             .is_err()
         );
@@ -177,7 +254,11 @@ mod tests {
                 limit: Some(10),
                 resource_type: Some("instance".into()),
                 resource_id: None,
+                actor_user_id: None,
+                action: None,
                 outcome: Some("success".into()),
+                from: None,
+                to: None,
             })
             .is_ok()
         );
@@ -187,9 +268,26 @@ mod tests {
                 limit: Some(10),
                 resource_type: None,
                 resource_id: None,
+                actor_user_id: None,
+                action: None,
                 outcome: Some("maybe".into()),
+                from: None,
+                to: None,
             })
             .is_err()
         );
+    }
+
+    #[test]
+    fn audit_metadata_redacts_nested_sensitive_values() {
+        let redacted = redact_metadata(serde_json::json!({
+            "instance_id": "safe",
+            "nested": {"access_token": "secret", "count": 2},
+            "command": "op player"
+        }));
+        assert_eq!(redacted["instance_id"], "safe");
+        assert_eq!(redacted["nested"]["access_token"], "[redacted]");
+        assert_eq!(redacted["nested"]["count"], 2);
+        assert_eq!(redacted["command"], "[redacted]");
     }
 }

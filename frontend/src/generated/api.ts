@@ -4,6 +4,38 @@
  */
 
 export interface paths {
+    "/activity/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listActivityJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/activity/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getActivitySummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit": {
         parameters: {
             query?: never;
@@ -79,6 +111,70 @@ export interface paths {
         put: operations["changePassword"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updatePreferences"];
+        trace?: never;
+    };
+    "/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions/revoke-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revokeOtherSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeSession"];
         options?: never;
         head?: never;
         patch?: never;
@@ -275,38 +371,6 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listChatMessages"];
-        put?: never;
-        post: operations["createChatMessage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/chat/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: operations["deleteChatMessage"];
         options?: never;
         head?: never;
         patch?: never;
@@ -573,54 +637,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/notifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listNotifications"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/notifications/read-all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["readAllNotifications"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/notifications/{id}/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["readNotification"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/openapi.json": {
         parameters: {
             query?: never;
@@ -630,6 +646,22 @@ export interface paths {
         };
         get: operations["openApi"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/panel/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getNetworkSettings"];
+        put: operations["updateNetworkSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -890,6 +922,22 @@ export interface paths {
         put: operations["queueServerConfigFile"];
         post?: never;
         delete: operations["cancelServerConfigFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servers/{id}/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getServerConnection"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1232,6 +1280,18 @@ export interface components {
             updated_at: string;
             version: number;
         };
+        ActivityJobsPage: {
+            items: components["schemas"]["Job"][];
+            /** Format: uuid */
+            next_cursor: string | null;
+        };
+        ActivitySummary: {
+            active_jobs: number;
+            config_conflicts: number;
+            crashed_servers: number;
+            failed_jobs_24h: number;
+            waiting_for_user: number;
+        };
         AuditEvent: {
             action: string;
             actor_user_id: string | null;
@@ -1360,23 +1420,6 @@ export interface components {
             /** Format: password */
             new_password: string;
         };
-        ChatMessage: {
-            /** Format: uuid */
-            author_user_id: string | null;
-            author_username: string | null;
-            body: string | null;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            deleted_at: string | null;
-            /** Format: uuid */
-            id: string;
-        };
-        ChatPage: {
-            items: components["schemas"]["ChatMessage"][];
-            /** Format: uuid */
-            next_before_id: string | null;
-        };
         ConfigChangeSummary: {
             content_sha256: string;
             error_code: string | null;
@@ -1416,15 +1459,27 @@ export interface components {
              */
             api_key: string;
         };
+        ConnectionEndpoint: {
+            address: string | null;
+            name: string;
+            port: number;
+            primary: boolean;
+            /** @enum {unknown} */
+            protocol: "tcp" | "udp";
+        };
+        ConnectionInfo: {
+            configured: boolean;
+            /** @enum {unknown} */
+            connection_type: "direct" | "steam";
+            endpoints: components["schemas"]["ConnectionEndpoint"][];
+            help_key: string;
+            host: string | null;
+        };
         ConsoleRequest: {
             command: string;
         };
         ConsoleResponse: {
             accepted: boolean;
-        };
-        CreateChatMessageRequest: {
-            /** @description Plain text; limited to 16384 encoded bytes, with LF and TAB as the only accepted control characters. */
-            body: string;
         };
         CreateInstanceRequest: {
             /** @default false */
@@ -1591,7 +1646,7 @@ export interface components {
             permissions: components["schemas"]["InstancePermissionId"][];
         };
         /** @enum {unknown} */
-        InstancePermissionId: "job.read" | "mods.manage" | "schedule.manage" | "server.backup" | "server.backup.read" | "server.console.read" | "server.console.write" | "server.files.read" | "server.files.write" | "server.kill" | "server.read" | "server.start" | "server.stop" | "server.update" | "server.update_game";
+        InstancePermissionId: "job.read" | "mods.manage" | "schedule.manage" | "server.backup" | "server.backup.read" | "server.config.raw.read" | "server.config.raw.write" | "server.console.read" | "server.console.write" | "server.files.read" | "server.files.write" | "server.kill" | "server.read" | "server.start" | "server.stop" | "server.update" | "server.update_game";
         InstanceRequest: {
             /** Format: uuid */
             instance_id: string;
@@ -1711,24 +1766,11 @@ export interface components {
             /** @description Locally constructed, display-only command pinning both signed checksums. The panel never executes it. */
             upgrade_command: string;
         };
-        Notification: {
+        NetworkSettings: {
+            advertised_game_host: string | null;
             /** Format: date-time */
-            created_at: string;
-            data: {
-                [key: string]: unknown;
-            };
-            /** Format: uuid */
-            id: string;
-            kind: string;
-            message_key: string;
-            /** Format: date-time */
-            read_at: string | null;
-        };
-        NotificationPage: {
-            items: components["schemas"]["Notification"][];
-            /** Format: uuid */
-            next_before_id: string | null;
-            unread_count: number;
+            updated_at: string;
+            version: number;
         };
         OauthDeviceJobInteraction: {
             /**
@@ -1749,7 +1791,7 @@ export interface components {
             instance_scoped: boolean;
         };
         /** @enum {unknown} */
-        PermissionId: "audit.read" | "chat.read" | "chat.write" | "job.read" | "mods.manage" | "notifications.read" | "profile.manage" | "profile.read" | "schedule.manage" | "server.backup" | "server.backup.read" | "server.console.read" | "server.console.write" | "server.create" | "server.delete" | "server.files.read" | "server.files.write" | "server.kill" | "server.read" | "server.start" | "server.stop" | "server.update" | "server.update_game" | "user.create" | "user.read" | "user.update";
+        PermissionId: "audit.read" | "job.read" | "mods.manage" | "panel.network.manage" | "profile.manage" | "profile.read" | "schedule.manage" | "server.backup" | "server.backup.read" | "server.config.raw.read" | "server.config.raw.write" | "server.console.read" | "server.console.write" | "server.create" | "server.delete" | "server.files.read" | "server.files.write" | "server.kill" | "server.read" | "server.start" | "server.stop" | "server.update" | "server.update_game" | "user.create" | "user.read" | "user.update";
         PlayerSnapshot: {
             /** @enum {unknown} */
             access_mode: "native_files" | "console_commands" | "shared_admin_password" | "game_managed" | "unsupported";
@@ -1909,6 +1951,18 @@ export interface components {
             /** @enum {unknown} */
             source: "hytale" | "minecraft_java" | "minecraft_bedrock" | "steam" | "console_log" | "generic_log";
         };
+        SessionInfo: {
+            browser: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            id: string;
+            is_current: boolean;
+            /** Format: date-time */
+            last_seen_at: string;
+        };
         SetGrantRequest: {
             /** @default [] */
             permissions: components["schemas"]["InstancePermissionId"][];
@@ -2031,6 +2085,15 @@ export interface components {
             } | null;
             watchdog_enabled?: boolean | null;
         };
+        UpdateNetworkSettings: {
+            advertised_game_host: string | null;
+            expected_version: number;
+        };
+        UpdatePreferencesRequest: {
+            accent_color?: string;
+            /** @enum {unknown} */
+            language?: "fr" | "en";
+        };
         UpdateRoleRequest: {
             name?: string | null;
             permissions?: components["schemas"]["PermissionId"][] | null;
@@ -2059,6 +2122,8 @@ export interface components {
             accent_color: string;
             /** Format: uuid */
             id: string;
+            /** @enum {unknown} */
+            language: "fr" | "en";
             must_change_password: boolean;
             permissions: string[];
             role: string;
@@ -2175,6 +2240,57 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listActivityJobs: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                state?: "queued" | "running" | "waiting_for_user" | "succeeded" | "failed" | "cancelled" | "interrupted";
+                instance_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stable cursor-paginated scoped operations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityJobsPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getActivitySummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scoped operational health counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivitySummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
     listAuditEvents: {
         parameters: {
             query?: {
@@ -2182,7 +2298,11 @@ export interface operations {
                 limit?: number;
                 resource_type?: string;
                 resource_id?: string;
+                actor_user_id?: string;
+                action?: string;
                 outcome?: "success" | "denied" | "failure";
+                from?: string;
+                to?: string;
             };
             header?: never;
             path?: never;
@@ -2304,6 +2424,113 @@ export interface operations {
                 headers: {
                     /** @description Expired session cookie. */
                     "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    updatePreferences: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Token bound to the current opaque session. */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description Language and accent preferences updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserInfo"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active sessions for the current account without tokens or hashes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInfo"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    revokeOtherSessions: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Token bound to the current opaque session. */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every session except the current one revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Token bound to the current opaque session. */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Selected session revoked. */
+            200: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -2761,90 +2988,6 @@ export interface operations {
                 };
                 content: {
                     "image/png": string;
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    listChatMessages: {
-        parameters: {
-            query?: {
-                before_id?: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Reverse-chronological chat page. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatPage"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    createChatMessage: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Token bound to the current opaque session. */
-                "X-CSRF-Token": components["parameters"]["CsrfToken"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateChatMessageRequest"];
-            };
-        };
-        responses: {
-            /** @description Message persisted. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatMessage"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    deleteChatMessage: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Token bound to the current opaque session. */
-                "X-CSRF-Token": components["parameters"]["CsrfToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Message contents redacted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3449,87 +3592,6 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    listNotifications: {
-        parameters: {
-            query?: {
-                before_id?: string;
-                limit?: number;
-                unread_only?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current user's notification page. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationPage"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    readAllNotifications: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Token bound to the current opaque session. */
-                "X-CSRF-Token": components["parameters"]["CsrfToken"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description All current-user notifications marked as read. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    readNotification: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Token bound to the current opaque session. */
-                "X-CSRF-Token": components["parameters"]["CsrfToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Notification marked as read. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            default: components["responses"]["Problem"];
-        };
-    };
     openApi: {
         parameters: {
             query?: never;
@@ -3552,6 +3614,60 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getNetworkSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Global advertised game host. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateNetworkSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Token bound to the current opaque session. */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNetworkSettings"];
+            };
+        };
+        responses: {
+            /** @description Global advertised game host updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             default: components["responses"]["Problem"];
         };
     };
@@ -4297,6 +4413,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getServerConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connection methods derived from the global advertised host and effective profile ports. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionInfo"];
                 };
             };
             401: components["responses"]["Unauthorized"];

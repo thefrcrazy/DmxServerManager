@@ -1,149 +1,144 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Tooltip } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { apiService } from "@/services";
 import {
+    Activity,
     LayoutDashboard,
     Server,
-    Bell,
-    ChevronsLeft,
-    MessageSquareText,
-    ListChecks,
-    UsersRound,
+    Settings,
     X,
 } from "lucide-react";
 
+const MIN_WIDTH = 200;
+const MAX_WIDTH = 400;
+const DEFAULT_WIDTH = 232;
+
 interface SidebarProps {
-    isCollapsed: boolean;
+    width: number;
     isMobileOpen: boolean;
-    onToggle: () => void;
+    onWidthChange: (width: number) => void;
     onMobileClose: () => void;
 }
 
-export default function Sidebar({ isCollapsed, isMobileOpen, onToggle, onMobileClose }: SidebarProps) {
+function boundedWidth(value: number): number {
+    return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(value)));
+}
+
+export default function Sidebar({ width, isMobileOpen, onWidthChange, onMobileClose }: SidebarProps) {
     const location = useLocation();
-    const [version, setVersion] = useState<string>("");
+    const [version, setVersion] = useState("");
     const { t } = useLanguage();
     const { user } = useAuth();
     const { activeTheme } = useTheme();
     const logoUrl = activeTheme.assets.logo?.url ?? "/dmx-server-manager-logo.png";
     const mobileCloseRef = useRef<HTMLButtonElement>(null);
-    const canReadUsers = user?.permissions.includes("*") || user?.permissions.includes("user.read");
-    const canManageProfiles = user?.permissions.includes("*") || user?.permissions.includes("profile.manage");
-    const canReadChat = user?.permissions.includes("*") || user?.permissions.includes("chat.read");
-    const canReadNotifications = user?.permissions.includes("*") || user?.permissions.includes("notifications.read");
-    const canReadJobs = user?.permissions.includes("*") || user?.permissions.includes("job.read");
+    const resizeHandleRef = useRef<HTMLDivElement>(null);
+    const canReadActivity = Boolean(user?.permissions.includes("*")
+        || user?.permissions.includes("job.read")
+        || user?.permissions.includes("audit.read"));
+    const canOpenAdministration = Boolean(user?.permissions.includes("*")
+        || user?.permissions.includes("user.read")
+        || user?.permissions.includes("profile.manage")
+        || user?.permissions.includes("panel.network.manage"));
 
     const navItems = [
         { icon: LayoutDashboard, label: t("sidebar.dashboard"), path: "/dashboard" },
         { icon: Server, label: t("sidebar.servers"), path: "/servers" },
-        ...(canReadJobs ? [{ icon: ListChecks, label: t("sidebar.jobs"), path: "/jobs" }] : []),
-        ...(canReadChat ? [{ icon: MessageSquareText, label: t("sidebar.chat"), path: "/chat" }] : []),
-        ...(canReadNotifications ? [{ icon: Bell, label: t("sidebar.notifications"), path: "/notifications" }] : []),
-        ...(canReadUsers || canManageProfiles ? [{ icon: UsersRound, label: t("sidebar.administration"), path: "/administration" }] : []),
+        ...(canReadActivity ? [{ icon: Activity, label: t("sidebar.activity"), path: "/activity" }] : []),
+        ...(canOpenAdministration ? [{ icon: Settings, label: t("sidebar.administration"), path: "/administration" }] : []),
     ];
 
     useEffect(() => {
-        fetchVersion();
+        void apiService.system.health().then((response) => {
+            if (response.success) setVersion(response.data.version);
+        });
     }, []);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!isMobileOpen) return;
-        let focusFrame = 0;
-        const visibilityFrame = requestAnimationFrame(() => {
-            focusFrame = requestAnimationFrame(() => mobileCloseRef.current?.focus());
-        });
-        return () => {
-            cancelAnimationFrame(visibilityFrame);
-            if (focusFrame) cancelAnimationFrame(focusFrame);
-        };
+        const focusClose = () => mobileCloseRef.current?.focus({ preventScroll: true });
+        focusClose();
+        const frame = requestAnimationFrame(focusClose);
+        return () => cancelAnimationFrame(frame);
     }, [isMobileOpen]);
 
-    const fetchVersion = async () => {
-        try {
-            const response = await apiService.system.health();
-            if (response.success) {
-                setVersion(response.data.version);
-            }
-        } catch (error) {
-            // Internal log, keeping in english or neutral
-            console.error("Failed to load version:", error);
-            setVersion("1.0.0");
-        }
+    const resizeFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (event.button !== 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        onWidthChange(boundedWidth(event.clientX));
+    };
+
+    const resizeWithKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        const step = event.shiftKey ? 24 : 8;
+        let next: number | null = null;
+        if (event.key === "ArrowLeft") next = width - step;
+        if (event.key === "ArrowRight") next = width + step;
+        if (event.key === "Home") next = MIN_WIDTH;
+        if (event.key === "End") next = MAX_WIDTH;
+        if (event.key === "Enter") next = DEFAULT_WIDTH;
+        if (next === null) return;
+        event.preventDefault();
+        onWidthChange(boundedWidth(next));
     };
 
     return (
-        <aside id="app-sidebar" className={`sidebar ${isCollapsed ? "sidebar--collapsed" : ""} ${isMobileOpen ? "open" : ""}`}>
-            <button
+        <aside id="app-sidebar" className={`sidebar ${isMobileOpen ? "open" : ""}`} aria-label={t("sidebar.navigation")}>
+            {isMobileOpen && <button
                 ref={mobileCloseRef}
                 type="button"
                 className="sidebar__mobile-close"
                 aria-label={t("sidebar.close_mobile_menu")}
                 onClick={onMobileClose}
+                autoFocus
             >
                 <X size={20} aria-hidden="true" />
-            </button>
-            {/* Toggle Button - Always first when collapsed */}
-            <Tooltip content={isCollapsed ? t("sidebar.expand_menu") : t("sidebar.collapse_menu")} position="right">
-                <button
-                    className="sidebar__toggle"
-                    onClick={onToggle}
-                    aria-label={isCollapsed ? t("sidebar.expand_menu") : t("sidebar.collapse_menu")}
-                    aria-expanded={!isCollapsed}
-                >
-                    <ChevronsLeft size={16} />
-                </button>
-            </Tooltip>
+            </button>}
 
             <div className="sidebar__header">
-                <Link to="/" className="sidebar__logo-link" onClick={onMobileClose}>
-                    {isCollapsed ? (
-                        <img
-                            src={logoUrl}
-                            alt="DmxServerManager"
-                            className="sidebar__logo sidebar__logo--small"
-                        />
-                    ) : (
-                        <img
-                            src={logoUrl}
-                            alt="DmxServerManager"
-                            className="sidebar__logo sidebar__logo--full"
-                        />
-                    )}
+                <Link to="/dashboard" className="sidebar__logo-link" onClick={onMobileClose}>
+                    <img src={logoUrl} alt="DmxServerManager" className="sidebar__logo sidebar__logo--full" />
                 </Link>
             </div>
 
             <nav className="sidebar__nav">
                 {navItems.map((item) => (
-                    <Tooltip
+                    <Link
                         key={item.path}
-                        content={item.label}
-                        position="right"
-                        disabled={!isCollapsed}
+                        to={item.path}
+                        className={`sidebar__link ${location.pathname.startsWith(item.path) ? "active" : ""}`}
+                        onClick={onMobileClose}
                     >
-                        <Link
-                            to={item.path}
-                            className={`sidebar__link ${location.pathname.startsWith(item.path) ? "active" : ""}`}
-                            onClick={onMobileClose}
-                        >
-                            <item.icon size={20} />
-                            <span className="sidebar__label">{item.label}</span>
-                        </Link>
-                    </Tooltip>
+                        <item.icon size={19} aria-hidden="true" />
+                        <span className="sidebar__label">{item.label}</span>
+                    </Link>
                 ))}
             </nav>
 
-            {/* Version footer */}
             <div className="sidebar__footer">
-                <Tooltip content={`${t("sidebar.version")} ${version}`} position="right" disabled={!isCollapsed}>
-                    <span className="sidebar__version">
-                        {isCollapsed ? `v${version.split(".")[0]}` : `v${version}`}
-                    </span>
-                </Tooltip>
+                <span className="sidebar__version">v{version || "…"}</span>
             </div>
+
+            <div
+                ref={resizeHandleRef}
+                className="sidebar__resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t("sidebar.resize")}
+                aria-valuemin={MIN_WIDTH}
+                aria-valuemax={MAX_WIDTH}
+                aria-valuenow={width}
+                tabIndex={0}
+                onPointerDown={resizeFromPointer}
+                onPointerMove={(event) => {
+                    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                        onWidthChange(boundedWidth(event.clientX));
+                    }
+                }}
+                onKeyDown={resizeWithKeyboard}
+            />
         </aside>
     );
 }

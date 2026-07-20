@@ -13,7 +13,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, Method, StatusCode, header, request::Parts},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, Utc};
@@ -49,6 +49,7 @@ pub struct UserInfo {
     pub username: String,
     pub role: String,
     pub permissions: Vec<String>,
+    pub language: String,
     pub accent_color: String,
     pub must_change_password: bool,
 }
@@ -82,12 +83,40 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdatePreferencesRequest {
+    pub language: Option<String>,
+    pub accent_color: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionInfo {
+    pub id: String,
+    pub browser: String,
+    pub created_at: String,
+    pub last_seen_at: String,
+    pub expires_at: String,
+    pub is_current: bool,
+}
+
+#[derive(Debug, FromRow)]
+struct SessionMetadataRow {
+    id: String,
+    user_agent: String,
+    created_at: String,
+    last_seen_at: String,
+    expires_at: String,
+    is_current: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct AuthUser {
     pub id: String,
     pub username: String,
     pub role: String,
     pub permissions: Vec<String>,
+    pub language: Option<String>,
     pub accent_color: Option<String>,
     pub must_change_password: bool,
     pub session_id: String,
@@ -135,6 +164,7 @@ struct UserRow {
     password_hash: String,
     role_id: String,
     permissions: String,
+    language: String,
     accent_color: String,
     must_change_password: bool,
 }
@@ -147,6 +177,7 @@ struct SessionRow {
     username: String,
     role_id: String,
     permissions: String,
+    language: String,
     accent_color: String,
     must_change_password: bool,
 }
@@ -156,9 +187,17 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/me", get(me))
         .route("/logout", post(logout))
         .route("/password", put(change_password))
+        .route("/preferences", patch(update_preferences))
+        .route("/sessions", get(list_sessions))
+        .route("/sessions/revoke-others", post(revoke_other_sessions))
+        .route("/sessions/{id}", axum::routing::delete(delete_session))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             csrf_middleware,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            super::audit_failed_mutation,
         ))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -180,11 +219,12 @@ pub async fn require_session(
     let token = cookie_value(request.headers(), SESSION_COOKIE)
         .ok_or_else(|| AppError::Unauthorized("auth.session_required".into()))?;
     let token_hash = hash_token(&token);
-    let now = Utc::now().to_rfc3339();
+    let now = Utc::now();
+    let now_text = now.to_rfc3339();
     let row: SessionRow = sqlx::query_as(
         r#"
         SELECT s.id AS session_id, s.csrf_hash, u.id AS user_id, u.username,
-               u.role_id, r.permissions, u.accent_color, u.must_change_password
+               u.role_id, r.permissions, u.language, u.accent_color, u.must_change_password
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         JOIN roles r ON r.id = u.role_id
@@ -192,10 +232,17 @@ pub async fn require_session(
         "#,
     )
     .bind(token_hash)
-    .bind(&now)
+    .bind(&now_text)
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::Unauthorized("auth.invalid_session".into()))?;
+
+    sqlx::query("UPDATE sessions SET last_seen_at = ? WHERE id = ? AND last_seen_at < ?")
+        .bind(&now_text)
+        .bind(&row.session_id)
+        .bind((now - ChronoDuration::minutes(1)).to_rfc3339())
+        .execute(&state.pool)
+        .await?;
 
     let auth = auth_from_session_row(row);
     request.extensions_mut().insert(auth);
@@ -286,6 +333,7 @@ impl AuthUser {
             username: self.username.clone(),
             role: self.role.clone(),
             permissions: self.permissions.clone(),
+            language: self.language.clone().unwrap_or_else(|| "fr".into()),
             accent_color: self
                 .accent_color
                 .clone()
@@ -305,6 +353,7 @@ impl AuthUser {
             username: id.into(),
             role: role.into(),
             permissions: permissions.into_iter().map(str::to_string).collect(),
+            language: Some("fr".into()),
             accent_color: None,
             must_change_password: false,
             session_id: "test-session".into(),
@@ -378,7 +427,7 @@ pub(crate) async fn refresh_session_auth(
     let row: Option<SessionRow> = sqlx::query_as(
         r#"
         SELECT s.id AS session_id, s.csrf_hash, u.id AS user_id, u.username,
-               u.role_id, r.permissions, u.accent_color, u.must_change_password
+               u.role_id, r.permissions, u.language, u.accent_color, u.must_change_password
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         JOIN roles r ON r.id = u.role_id
@@ -398,6 +447,7 @@ fn auth_from_session_row(row: SessionRow) -> AuthUser {
         username: row.username,
         role: row.role_id,
         permissions: parse_permissions(&row.permissions),
+        language: Some(row.language),
         accent_color: Some(row.accent_color),
         must_change_password: row.must_change_password,
         session_id: row.session_id,
@@ -489,10 +539,12 @@ async fn setup(
             password_hash: String::new(),
             role_id: "owner".into(),
             permissions: "[\"*\"]".into(),
+            language: "fr".into(),
             accent_color: "#3A82F6".into(),
             must_change_password: false,
         },
         StatusCode::CREATED,
+        sanitized_user_agent(&headers),
     )
     .await
 }
@@ -510,7 +562,7 @@ async fn login(
     let user: Option<UserRow> = sqlx::query_as(
         r#"
         SELECT u.id, u.username, u.password_hash, u.role_id, r.permissions,
-               u.accent_color, u.must_change_password
+               u.language, u.accent_color, u.must_change_password
         FROM users u
         JOIN roles r ON r.id = u.role_id
         WHERE u.username = ? COLLATE NOCASE AND u.is_active = 1
@@ -547,7 +599,7 @@ async fn login(
         serde_json::json!({"client": client}),
     )
     .await?;
-    issue_session(&state, user, StatusCode::OK).await
+    issue_session(&state, user, StatusCode::OK, sanitized_user_agent(&headers)).await
 }
 
 async fn me(State(state): State<AppState>, auth: AuthUser) -> Result<Json<AuthResponse>, AppError> {
@@ -637,10 +689,151 @@ async fn change_password(
         .into_response())
 }
 
+async fn update_preferences(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(body): Json<UpdatePreferencesRequest>,
+) -> Result<Json<UserInfo>, AppError> {
+    if body.language.is_none() && body.accent_color.is_none() {
+        return Err(AppError::BadRequest("auth.preferences_empty".into()));
+    }
+    if let Some(language) = body.language.as_deref() {
+        validate_language(language)?;
+    }
+    if let Some(accent_color) = body.accent_color.as_deref() {
+        validate_accent_color(accent_color)?;
+    }
+
+    let language = body
+        .language
+        .as_deref()
+        .unwrap_or_else(|| auth.language.as_deref().unwrap_or("fr"))
+        .to_string();
+    let accent_color = body
+        .accent_color
+        .as_deref()
+        .unwrap_or_else(|| auth.accent_color.as_deref().unwrap_or("#3A82F6"))
+        .to_string();
+    sqlx::query("UPDATE users SET language = ?, accent_color = ?, updated_at = ? WHERE id = ?")
+        .bind(&language)
+        .bind(&accent_color)
+        .bind(Utc::now().to_rfc3339())
+        .bind(&auth.id)
+        .execute(&state.pool)
+        .await?;
+    database::audit(
+        &state.pool,
+        Some(&auth.id),
+        "auth.preferences_updated",
+        "user",
+        Some(&auth.id),
+        "success",
+        serde_json::json!({
+            "language_changed": body.language.is_some(),
+            "accent_changed": body.accent_color.is_some(),
+        }),
+    )
+    .await?;
+
+    Ok(Json(UserInfo {
+        id: auth.id,
+        username: auth.username,
+        role: auth.role,
+        permissions: auth.permissions,
+        language,
+        accent_color,
+        must_change_password: auth.must_change_password,
+    }))
+}
+
+async fn list_sessions(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<SessionInfo>>, AppError> {
+    let sessions = sqlx::query_as::<_, SessionMetadataRow>(
+        "SELECT id, user_agent, created_at, last_seen_at, expires_at, id = ? AS is_current \
+         FROM sessions WHERE user_id = ? AND expires_at > ? \
+         ORDER BY is_current DESC, last_seen_at DESC, id DESC",
+    )
+    .bind(&auth.session_id)
+    .bind(&auth.id)
+    .bind(Utc::now().to_rfc3339())
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        sessions
+            .into_iter()
+            .map(|session| SessionInfo {
+                id: session.id,
+                browser: browser_label(&session.user_agent).into(),
+                created_at: session.created_at,
+                last_seen_at: session.last_seen_at,
+                expires_at: session.expires_at,
+                is_current: session.is_current,
+            })
+            .collect(),
+    ))
+}
+
+async fn delete_session(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Response, AppError> {
+    Uuid::parse_str(&session_id)
+        .map_err(|_| AppError::BadRequest("auth.invalid_session_id".into()))?;
+    let deleted = sqlx::query("DELETE FROM sessions WHERE id = ? AND user_id = ?")
+        .bind(&session_id)
+        .bind(&auth.id)
+        .execute(&state.pool)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound("auth.session_not_found".into()));
+    }
+    database::audit(
+        &state.pool,
+        Some(&auth.id),
+        "auth.session_revoked",
+        "session",
+        Some(&session_id),
+        "success",
+        serde_json::json!({"current": session_id == auth.session_id}),
+    )
+    .await?;
+    let mut headers = HeaderMap::new();
+    if session_id == auth.session_id {
+        headers.insert(header::SET_COOKIE, expired_cookie(&state)?);
+    }
+    Ok((headers, SuccessResponse::ok()).into_response())
+}
+
+async fn revoke_other_sessions(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<SuccessResponse>, AppError> {
+    let result = sqlx::query("DELETE FROM sessions WHERE user_id = ? AND id <> ?")
+        .bind(&auth.id)
+        .bind(&auth.session_id)
+        .execute(&state.pool)
+        .await?;
+    database::audit(
+        &state.pool,
+        Some(&auth.id),
+        "auth.sessions_revoked",
+        "user",
+        Some(&auth.id),
+        "success",
+        serde_json::json!({"count": result.rows_affected()}),
+    )
+    .await?;
+    Ok(SuccessResponse::with_message("auth.sessions_revoked"))
+}
+
 async fn issue_session(
     state: &AppState,
     user: UserRow,
     status: StatusCode,
+    user_agent: String,
 ) -> Result<Response, AppError> {
     let session_id = Uuid::new_v4().to_string();
     let session_token = random_token();
@@ -650,8 +843,8 @@ async fn issue_session(
     sqlx::query(
         r#"
         INSERT INTO sessions
-            (id, user_id, token_hash, csrf_hash, expires_at, created_at, last_seen_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, user_id, token_hash, csrf_hash, expires_at, created_at, last_seen_at, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(session_id)
@@ -661,6 +854,7 @@ async fn issue_session(
     .bind(expires.to_rfc3339())
     .bind(now.to_rfc3339())
     .bind(now.to_rfc3339())
+    .bind(user_agent)
     .execute(&state.pool)
     .await?;
 
@@ -671,6 +865,7 @@ async fn issue_session(
             username: user.username,
             role: user.role_id,
             permissions,
+            language: user.language,
             accent_color: user.accent_color,
             must_change_password: user.must_change_password,
         },
@@ -715,6 +910,59 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .split(';')
         .filter_map(|pair| pair.trim().split_once('='))
         .find_map(|(key, value)| (key == name).then(|| value.to_string()))
+}
+
+fn sanitized_user_agent(headers: &HeaderMap) -> String {
+    let value = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("Unknown client")
+        .trim();
+    let value = value
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(200)
+        .collect::<String>();
+    if value.is_empty() {
+        "Unknown client".into()
+    } else {
+        value
+    }
+}
+
+fn browser_label(user_agent: &str) -> &'static str {
+    if user_agent.contains("Edg/") || user_agent.contains("EdgiOS/") {
+        "Microsoft Edge"
+    } else if user_agent.contains("OPR/") || user_agent.contains("Opera/") {
+        "Opera"
+    } else if user_agent.contains("Firefox/") || user_agent.contains("FxiOS/") {
+        "Firefox"
+    } else if user_agent.contains("Chrome/") || user_agent.contains("CriOS/") {
+        "Chrome"
+    } else if user_agent.contains("Safari/") {
+        "Safari"
+    } else {
+        "Unknown browser"
+    }
+}
+
+fn validate_language(value: &str) -> Result<(), AppError> {
+    if matches!(value, "fr" | "en") {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest("users.invalid_language".into()))
+    }
+}
+
+fn validate_accent_color(value: &str) -> Result<(), AppError> {
+    if value.len() == 7
+        && value.starts_with('#')
+        && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest("users.invalid_accent_color".into()))
+    }
 }
 
 pub(crate) fn hash_password(password: &str) -> Result<String, AppError> {
@@ -902,12 +1150,30 @@ mod tests {
     }
 
     #[test]
+    fn session_metadata_exposes_only_a_browser_label() {
+        assert_eq!(
+            browser_label("Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36"),
+            "Chrome"
+        );
+        assert_eq!(
+            browser_label("Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36 Edg/126.0"),
+            "Microsoft Edge"
+        );
+        assert_eq!(
+            browser_label("Mozilla/5.0 Version/17.5 Safari/605.1.15"),
+            "Safari"
+        );
+        assert_eq!(browser_label("curl/8.7.1"), "Unknown browser");
+    }
+
+    #[test]
     fn permission_checks_are_closed_by_default() {
         let auth = AuthUser {
             id: "id".into(),
             username: "user".into(),
             role: "viewer".into(),
             permissions: vec!["server.read".into()],
+            language: Some("fr".into()),
             accent_color: None,
             must_change_password: false,
             session_id: "session".into(),

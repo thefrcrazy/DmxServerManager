@@ -115,6 +115,25 @@ test("l’Owner gère un rôle personnalisé avec signalement des permissions à
     expect(api.findRequest("DELETE", `/roles/${customRole!.id}`)?.headers["x-csrf-token"]).toBe("e2e-csrf-token");
 });
 
+test("l’Owner configure l’hôte public global avec concurrence explicite", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    await page.goto("/administration?tab=network");
+
+    const host = page.getByLabel("Hôte annoncé");
+    await expect(page.getByRole("heading", { name: "Adresse publique des jeux" })).toBeVisible();
+    await expect(host).toHaveValue("play.example.com");
+    await host.fill("2001:db8::42");
+    await page.getByRole("button", { name: "Sauvegarder" }).click();
+
+    expect(api.findRequest("PUT", "/panel/network")).toEqual(expect.objectContaining({
+        body: { advertised_game_host: "2001:db8::42", expected_version: 1 },
+        headers: expect.objectContaining({ "x-csrf-token": "e2e-csrf-token" }),
+    }));
+    await expect(page.getByText("Configuration réseau enregistrée.")).toBeVisible();
+    await expect(host).toHaveValue("2001:db8::42");
+});
+
 test("l’Owner crée, révise et supprime un profil Steam versionné sans champ d’instance dangereux", async ({ page }) => {
     const api = new ApiMock();
     await api.install(page);
@@ -151,7 +170,7 @@ test("l’Owner crée, révise et supprime un profil Steam versionné sans champ
     await expect(page.getByRole("button", { name: /Steam E2E/ })).toBeVisible();
 
     await form.getByLabel("Nom public").fill("Steam E2E révisé");
-    await form.getByRole("button", { name: "Créer la révision" }).click();
+    await form.getByRole("button", { name: "Créer une nouvelle version" }).click();
     const revision = api.findRequest("PUT", "/game-profiles/steam/steam-e2e");
     expect(revision?.headers["if-match"]).toBe('"1"');
     expect((revision?.body as { app_id?: number }).app_id).toBe(654321);

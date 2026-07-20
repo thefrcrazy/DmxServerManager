@@ -280,6 +280,32 @@ fn auth_paths() -> Value {
                     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}
                 }}
             }
+        },
+        "/auth/preferences": {
+            "patch": {
+                "operationId": "updatePreferences", "tags": ["auth"],
+                "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdatePreferencesRequest"}}}},
+                "responses": {"200": {"description": "Language and accent preferences updated.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserInfo"}}}}}
+            }
+        },
+        "/auth/sessions": {
+            "get": {
+                "operationId": "listSessions", "tags": ["auth"],
+                "responses": {"200": {"description": "Active sessions for the current account without tokens or hashes.", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/SessionInfo"}}}}}}
+            }
+        },
+        "/auth/sessions/revoke-others": {
+            "post": {
+                "operationId": "revokeOtherSessions", "tags": ["auth"],
+                "responses": {"200": {"description": "Every session except the current one revoked.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
+            }
+        },
+        "/auth/sessions/{id}": {
+            "delete": {
+                "operationId": "revokeSession", "tags": ["auth"],
+                "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+                "responses": {"200": {"description": "Selected session revoked.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
+            }
         }
     })
 }
@@ -481,7 +507,11 @@ fn administration_paths() -> Value {
                     {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}},
                     {"name": "resource_type", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 64}},
                     {"name": "resource_id", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 128}},
-                    {"name": "outcome", "in": "query", "required": false, "schema": {"enum": ["success", "denied", "failure"]}}
+                    {"name": "actor_user_id", "in": "query", "required": false, "schema": {"type": "string", "format": "uuid"}},
+                    {"name": "action", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 128}},
+                    {"name": "outcome", "in": "query", "required": false, "schema": {"enum": ["success", "denied", "failure"]}},
+                    {"name": "from", "in": "query", "required": false, "schema": {"type": "string", "format": "date-time"}},
+                    {"name": "to", "in": "query", "required": false, "schema": {"type": "string", "format": "date-time"}}
                 ],
                 "responses": {"200": {"description": "Immutable audit page.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuditPage"}}}}}
             }
@@ -560,6 +590,20 @@ fn administration_paths() -> Value {
                 ],
                 "responses": {"200": {"description": "Assignment removed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
             }
+        },
+        "/panel/network": {
+            "get": {
+                "operationId": "getNetworkSettings", "tags": ["administration"],
+                "responses": {"200": {"description": "Global advertised game host.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NetworkSettings"}}}}}
+            },
+            "put": {
+                "operationId": "updateNetworkSettings", "tags": ["administration"],
+                "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateNetworkSettings"}}}},
+                "responses": {
+                    "200": {"description": "Global advertised game host updated.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NetworkSettings"}}}},
+                    "409": {"$ref": "#/components/responses/Conflict"}
+                }
+            }
         }
     })
 }
@@ -623,6 +667,13 @@ fn server_paths() -> Value {
                     },
                     "409": {"$ref": "#/components/responses/Conflict"}, "428": {"$ref": "#/components/responses/PreconditionRequired"}
                 }
+            }
+        },
+        "/servers/{id}/connection": {
+            "get": {
+                "operationId": "getServerConnection", "tags": ["servers"],
+                "parameters": [{"$ref": "#/components/parameters/ServerId"}],
+                "responses": {"200": {"description": "Connection methods derived from the global advertised host and effective profile ports.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConnectionInfo"}}}}}
             }
         },
         "/servers/{id}/secrets": {
@@ -778,6 +829,24 @@ fn server_paths() -> Value {
 
 fn operations_paths() -> Value {
     json!({
+        "/activity/summary": {
+            "get": {
+                "operationId": "getActivitySummary", "tags": ["activity"],
+                "responses": {"200": {"description": "Scoped operational health counters.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ActivitySummary"}}}}}
+            }
+        },
+        "/activity/jobs": {
+            "get": {
+                "operationId": "listActivityJobs", "tags": ["activity"],
+                "parameters": [
+                    {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string", "format": "uuid"}},
+                    {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
+                    {"name": "state", "in": "query", "required": false, "schema": {"enum": ["queued", "running", "waiting_for_user", "succeeded", "failed", "cancelled", "interrupted"]}},
+                    {"name": "instance_id", "in": "query", "required": false, "schema": {"type": "string", "format": "uuid"}}
+                ],
+                "responses": {"200": {"description": "Stable cursor-paginated scoped operations.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ActivityJobsPage"}}}}}
+            }
+        },
         "/jobs": {
             "get": {
                 "operationId": "listJobs", "tags": ["jobs"],
@@ -1052,52 +1121,6 @@ fn operations_paths() -> Value {
                 "responses": {"200": {"description": "Schedule removed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
             }
         },
-        "/chat": {
-            "get": {
-                "operationId": "listChatMessages", "tags": ["chat"],
-                "parameters": [
-                    {"name": "before_id", "in": "query", "required": false, "schema": {"type": "string", "format": "uuid"}},
-                    {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}}
-                ],
-                "responses": {"200": {"description": "Reverse-chronological chat page.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ChatPage"}}}}}
-            },
-            "post": {
-                "operationId": "createChatMessage", "tags": ["chat"],
-                "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateChatMessageRequest"}}}},
-                "responses": {"201": {"description": "Message persisted.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ChatMessage"}}}}}
-            }
-        },
-        "/chat/{id}": {
-            "delete": {
-                "operationId": "deleteChatMessage", "tags": ["chat"],
-                "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
-                "responses": {"200": {"description": "Message contents redacted.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
-            }
-        },
-        "/notifications": {
-            "get": {
-                "operationId": "listNotifications", "tags": ["notifications"],
-                "parameters": [
-                    {"name": "before_id", "in": "query", "required": false, "schema": {"type": "string", "format": "uuid"}},
-                    {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
-                    {"name": "unread_only", "in": "query", "required": false, "schema": {"type": "boolean", "default": false}}
-                ],
-                "responses": {"200": {"description": "Current user's notification page.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NotificationPage"}}}}}
-            }
-        },
-        "/notifications/read-all": {
-            "post": {
-                "operationId": "readAllNotifications", "tags": ["notifications"],
-                "responses": {"200": {"description": "All current-user notifications marked as read.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
-            }
-        },
-        "/notifications/{id}/read": {
-            "put": {
-                "operationId": "readNotification", "tags": ["notifications"],
-                "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
-                "responses": {"200": {"description": "Notification marked as read.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessResponse"}}}}}
-            }
-        },
         "/webhooks": {
             "get": {
                 "operationId": "listWebhooks", "tags": ["webhooks"],
@@ -1188,14 +1211,22 @@ fn core_schemas() -> Value {
                 "new_password": {"type": "string", "format": "password", "writeOnly": true, "minLength": 12, "maxLength": 256}
             }
         },
+        "UpdatePreferencesRequest": {
+            "type": "object", "additionalProperties": false, "minProperties": 1,
+            "properties": {
+                "language": {"enum": ["fr", "en"]},
+                "accent_color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"}
+            }
+        },
         "UserInfo": {
             "type": "object", "additionalProperties": false,
-            "required": ["id", "username", "role", "permissions", "accent_color", "must_change_password"],
+            "required": ["id", "username", "role", "permissions", "language", "accent_color", "must_change_password"],
             "properties": {
                 "id": {"type": "string", "format": "uuid"},
                 "username": {"type": "string"},
                 "role": {"type": "string"},
                 "permissions": {"type": "array", "items": {"type": "string"}},
+                "language": {"enum": ["fr", "en"]},
                 "accent_color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
                 "must_change_password": {"type": "boolean"}
             }
@@ -1203,6 +1234,18 @@ fn core_schemas() -> Value {
         "AuthResponse": {
             "type": "object", "additionalProperties": false, "required": ["user", "csrf_token"],
             "properties": {"user": {"$ref": "#/components/schemas/UserInfo"}, "csrf_token": {"type": "string", "minLength": 1}}
+        },
+        "SessionInfo": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "browser", "created_at", "last_seen_at", "expires_at", "is_current"],
+            "properties": {
+                "id": {"type": "string", "format": "uuid"},
+                "browser": {"type": "string", "maxLength": 64},
+                "created_at": {"type": "string", "format": "date-time"},
+                "last_seen_at": {"type": "string", "format": "date-time"},
+                "expires_at": {"type": "string", "format": "date-time"},
+                "is_current": {"type": "boolean"}
+            }
         },
         "AuditEvent": {
             "type": "object", "additionalProperties": false,
@@ -1557,22 +1600,39 @@ fn release_schemas() -> Value {
 fn administration_schemas() -> Value {
     json!({
         "PermissionId": {"enum": [
-            "audit.read", "chat.read", "chat.write", "job.read", "mods.manage",
-            "notifications.read", "profile.manage", "profile.read", "schedule.manage",
-            "server.backup", "server.backup.read", "server.console.read",
+            "audit.read", "job.read", "mods.manage", "panel.network.manage",
+            "profile.manage", "profile.read", "schedule.manage",
+            "server.backup", "server.backup.read", "server.config.raw.read", "server.config.raw.write", "server.console.read",
             "server.console.write", "server.create", "server.delete", "server.files.read",
             "server.files.write", "server.kill", "server.read", "server.start", "server.stop",
             "server.update", "server.update_game", "user.create", "user.read", "user.update"
         ]},
         "InstancePermissionId": {"enum": [
             "job.read", "mods.manage", "schedule.manage", "server.backup", "server.backup.read",
-            "server.console.read", "server.console.write", "server.files.read", "server.files.write",
+            "server.config.raw.read", "server.config.raw.write", "server.console.read", "server.console.write", "server.files.read", "server.files.write",
             "server.kill", "server.read", "server.start", "server.stop", "server.update",
             "server.update_game"
         ]},
         "Permission": {
             "type": "object", "additionalProperties": false, "required": ["id", "high_risk", "instance_scoped"],
             "properties": {"id": {"$ref": "#/components/schemas/PermissionId"}, "high_risk": {"type": "boolean"}, "instance_scoped": {"type": "boolean"}}
+        },
+        "NetworkSettings": {
+            "type": "object", "additionalProperties": false,
+            "required": ["advertised_game_host", "version", "updated_at"],
+            "properties": {
+                "advertised_game_host": {"type": ["string", "null"], "maxLength": 253},
+                "version": {"type": "integer", "minimum": 1},
+                "updated_at": {"type": "string", "format": "date-time"}
+            }
+        },
+        "UpdateNetworkSettings": {
+            "type": "object", "additionalProperties": false,
+            "required": ["advertised_game_host", "expected_version"],
+            "properties": {
+                "advertised_game_host": {"type": ["string", "null"], "maxLength": 253},
+                "expected_version": {"type": "integer", "minimum": 1}
+            }
         },
         "Role": {
             "type": "object", "additionalProperties": false,
@@ -1672,6 +1732,28 @@ fn server_schemas() -> Value {
             "type": "object", "additionalProperties": false, "required": ["items"],
             "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/SecretStatus"}}}
         },
+        "ConnectionEndpoint": {
+            "type": "object", "additionalProperties": false,
+            "required": ["name", "protocol", "port", "primary", "address"],
+            "properties": {
+                "name": {"type": "string"},
+                "protocol": {"enum": ["tcp", "udp"]},
+                "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+                "primary": {"type": "boolean"},
+                "address": {"type": ["string", "null"]}
+            }
+        },
+        "ConnectionInfo": {
+            "type": "object", "additionalProperties": false,
+            "required": ["configured", "host", "connection_type", "help_key", "endpoints"],
+            "properties": {
+                "configured": {"type": "boolean"},
+                "host": {"type": ["string", "null"]},
+                "connection_type": {"enum": ["direct", "steam"]},
+                "help_key": {"type": "string"},
+                "endpoints": {"type": "array", "items": {"$ref": "#/components/schemas/ConnectionEndpoint"}}
+            }
+        },
         "Instance": {
             "type": "object", "additionalProperties": false,
             "required": ["id", "name", "profile_id", "profile_revision", "settings", "config_version", "installation_state", "installed_version", "installed_build", "desired_state", "runtime_state", "managed", "auto_start", "watchdog_enabled", "created_at", "updated_at"],
@@ -1765,6 +1847,25 @@ fn server_schemas() -> Value {
 
 fn operations_schemas() -> Value {
     json!({
+        "ActivitySummary": {
+            "type": "object", "additionalProperties": false,
+            "required": ["active_jobs", "waiting_for_user", "failed_jobs_24h", "crashed_servers", "config_conflicts"],
+            "properties": {
+                "active_jobs": {"type": "integer", "minimum": 0},
+                "waiting_for_user": {"type": "integer", "minimum": 0},
+                "failed_jobs_24h": {"type": "integer", "minimum": 0},
+                "crashed_servers": {"type": "integer", "minimum": 0},
+                "config_conflicts": {"type": "integer", "minimum": 0}
+            }
+        },
+        "ActivityJobsPage": {
+            "type": "object", "additionalProperties": false,
+            "required": ["items", "next_cursor"],
+            "properties": {
+                "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/Job"}},
+                "next_cursor": {"type": ["string", "null"], "format": "uuid"}
+            }
+        },
         "EventEnvelope": {
             "type": "object", "additionalProperties": false,
             "required": ["type", "server_id", "payload", "created_at"],
@@ -2002,42 +2103,6 @@ fn operations_schemas() -> Value {
                 "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}
             }
         },
-        "CreateChatMessageRequest": {
-            "type": "object", "additionalProperties": false, "required": ["body"],
-            "properties": {"body": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "Plain text; limited to 16384 encoded bytes, with LF and TAB as the only accepted control characters."}}
-        },
-        "ChatMessage": {
-            "type": "object", "additionalProperties": false,
-            "required": ["id", "author_user_id", "author_username", "body", "created_at", "deleted_at"],
-            "properties": {
-                "id": {"type": "string", "format": "uuid"}, "author_user_id": {"type": ["string", "null"], "format": "uuid"},
-                "author_username": {"type": ["string", "null"]}, "body": {"type": ["string", "null"]},
-                "created_at": {"type": "string", "format": "date-time"}, "deleted_at": {"type": ["string", "null"], "format": "date-time"}
-            }
-        },
-        "ChatPage": {
-            "type": "object", "additionalProperties": false, "required": ["items", "next_before_id"],
-            "properties": {
-                "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/ChatMessage"}},
-                "next_before_id": {"type": ["string", "null"], "format": "uuid"}
-            }
-        },
-        "Notification": {
-            "type": "object", "additionalProperties": false,
-            "required": ["id", "kind", "message_key", "data", "read_at", "created_at"],
-            "properties": {
-                "id": {"type": "string", "format": "uuid"}, "kind": {"type": "string", "minLength": 1, "maxLength": 64},
-                "message_key": {"type": "string", "minLength": 1, "maxLength": 128}, "data": {"type": "object", "additionalProperties": true},
-                "read_at": {"type": ["string", "null"], "format": "date-time"}, "created_at": {"type": "string", "format": "date-time"}
-            }
-        },
-        "NotificationPage": {
-            "type": "object", "additionalProperties": false, "required": ["items", "next_before_id", "unread_count"],
-            "properties": {
-                "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/Notification"}},
-                "next_before_id": {"type": ["string", "null"], "format": "uuid"}, "unread_count": {"type": "integer", "minimum": 0}
-            }
-        },
         "WebhookEvent": {"enum": [
             "backup.created", "backup.restored", "job.failed", "server.crashed", "server.started", "server.stopped",
             "server.update_applied", "server.update_failed", "server.update_rolled_back"
@@ -2144,13 +2209,15 @@ mod tests {
     }
 
     const EXPECTED_OPERATIONS: &[&str] = &[
+        "GET /activity/jobs",
+        "GET /activity/summary",
         "GET /audit",
         "GET /auth/me",
+        "GET /auth/sessions",
         "GET /auth/status",
         "GET /backups",
         "GET /backups/{id}",
         "GET /backups/{id}/download",
-        "GET /chat",
         "GET /catalog",
         "GET /catalog/theme",
         "GET /catalog/{kind}/{id}/revisions",
@@ -2167,8 +2234,8 @@ mod tests {
         "GET /jobs",
         "GET /jobs/{id}",
         "GET /mods/providers",
-        "GET /notifications",
         "GET /openapi.json",
+        "GET /panel/network",
         "GET /permissions",
         "GET /releases/panel",
         "GET /roles",
@@ -2178,6 +2245,7 @@ mod tests {
         "GET /servers/{id}",
         "GET /servers/{id}/config-files",
         "GET /servers/{id}/config-files/text",
+        "GET /servers/{id}/connection",
         "GET /servers/{id}/logs",
         "GET /servers/{id}/metrics",
         "GET /servers/{id}/mods",
@@ -2187,19 +2255,19 @@ mod tests {
         "GET /users/{id}/instances",
         "GET /webhooks",
         "PATCH /roles/{id}",
+        "PATCH /auth/preferences",
         "PATCH /servers/{id}",
         "PATCH /users/{id}",
         "POST /auth/login",
         "POST /auth/logout",
+        "POST /auth/sessions/revoke-others",
         "POST /auth/setup",
         "POST /backups",
         "POST /backups/{id}/restore",
-        "POST /chat",
         "POST /catalog/import",
         "POST /files/directories",
         "POST /game-profiles/steam",
         "POST /jobs/{id}/cancel",
-        "POST /notifications/read-all",
         "POST /releases/panel/check",
         "POST /roles",
         "POST /schedules",
@@ -2223,7 +2291,7 @@ mod tests {
         "PUT /files/text",
         "PUT /game-profiles/steam/{id}",
         "PUT /mods/providers/curseforge",
-        "PUT /notifications/{id}/read",
+        "PUT /panel/network",
         "PUT /schedules/{id}",
         "PUT /servers/{id}/profile-revision",
         "PUT /servers/{id}/config-files/text",
@@ -2231,7 +2299,7 @@ mod tests {
         "PUT /users/{user_id}/instances/{instance_id}",
         "PUT /webhooks/{id}",
         "DELETE /backups/{id}",
-        "DELETE /chat/{id}",
+        "DELETE /auth/sessions/{id}",
         "DELETE /catalog/{kind}/{id}/revisions/{revision}",
         "DELETE /files",
         "DELETE /game-profiles/steam/{id}",

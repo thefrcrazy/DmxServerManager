@@ -72,33 +72,6 @@ impl EventHub {
         let _ = self.sender.send(event);
     }
 
-    pub fn publish_to_user(
-        &self,
-        event_type: impl Into<String>,
-        user_id: impl Into<String>,
-        payload: serde_json::Value,
-    ) {
-        let event = ApiEvent {
-            id: uuid::Uuid::new_v4().to_string(),
-            event_type: event_type.into(),
-            instance_id: None,
-            audience_user_id: Some(user_id.into()),
-            payload,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-        {
-            let mut history = self
-                .history
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if history.len() == self.capacity {
-                history.pop_front();
-            }
-            history.push_back(event.clone());
-        }
-        let _ = self.sender.send(event);
-    }
-
     pub fn replay_after(&self, last_event_id: Option<&str>) -> ReplayResult {
         let Some(last_event_id) = last_event_id else {
             return ReplayResult::NotRequested;

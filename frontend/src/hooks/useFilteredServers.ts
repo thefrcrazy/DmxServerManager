@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { ServerAction } from "@/services/api/server.client";
 import { useServers } from "./useServers";
 
@@ -9,10 +10,23 @@ interface UseFilteredServersOptions {
 }
 
 export function useFilteredServers(options: UseFilteredServersOptions = {}) {
+    const { user } = useAuth();
     const serverState = useServers();
     const [search, setSearch] = useState(options.initialSearch ?? "");
     const [profileId, setProfileId] = useState(options.initialProfile ?? "all");
-    const [viewMode, setViewMode] = useState<"grid" | "list">(options.initialViewMode ?? "grid");
+    const [viewMode, setViewModeState] = useState<"grid" | "list">(options.initialViewMode ?? "grid");
+    const viewStorageKey = user ? `dmx_server_view:${user.id}` : null;
+
+    useEffect(() => {
+        if (!viewStorageKey) return;
+        const saved = localStorage.getItem(viewStorageKey);
+        if (saved === "grid" || saved === "list") setViewModeState(saved);
+    }, [viewStorageKey]);
+
+    const setViewMode = useCallback((mode: "grid" | "list") => {
+        setViewModeState(mode);
+        if (viewStorageKey) localStorage.setItem(viewStorageKey, mode);
+    }, [viewStorageKey]);
 
     const servers = useMemo(() => serverState.servers.filter((server) => (
         server.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())

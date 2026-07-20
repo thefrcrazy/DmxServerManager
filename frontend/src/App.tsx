@@ -4,7 +4,7 @@ import { DialogContainer, LoadingScreen, ToastContainer } from "@/components/sha
 import { Layout } from "@/components/layout";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DialogProvider } from "@/contexts/DialogContext";
-import { LanguageProvider } from "@/contexts/LanguageContext";
+import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ToastProvider } from "@/contexts/ToastContext";
@@ -18,9 +18,7 @@ const UserSettings = lazy(() => import("@/pages/UserSettings"));
 const Setup = lazy(() => import("@/pages/Setup"));
 const CreateServer = lazy(() => import("@/pages/CreateServer"));
 const Administration = lazy(() => import("@/pages/Administration"));
-const Chat = lazy(() => import("@/pages/Chat"));
-const Notifications = lazy(() => import("@/pages/Notifications"));
-const Jobs = lazy(() => import("@/pages/Jobs"));
+const Activity = lazy(() => import("@/pages/Activity"));
 const MandatoryPasswordChange = lazy(() => import("@/pages/MandatoryPasswordChange"));
 
 function RequireReadySession() {
@@ -37,6 +35,15 @@ function RequirePasswordChange() {
     if (!user) return <Navigate to="/login" replace />;
     if (!user.must_change_password) return <Navigate to="/dashboard" replace />;
     return <Outlet />;
+}
+
+function AccountPreferenceSync() {
+    const { user } = useAuth();
+    const { setLanguage } = useLanguage();
+    useEffect(() => {
+        if (user?.language) setLanguage(user.language);
+    }, [setLanguage, user?.language]);
+    return null;
 }
 
 function SetupCheck({ children }: { children: ReactNode }) {
@@ -66,6 +73,7 @@ export default function App() {
                     <DialogContainer />
                     <AuthProvider>
                         <ThemeProvider>
+                            <AccountPreferenceSync />
                             <PageTitleProvider>
                                 <SetupCheck>
                                     <Suspense fallback={<LoadingScreen />}>
@@ -81,9 +89,10 @@ export default function App() {
                                                     <Route path="/servers" element={<Servers />} />
                                                     <Route path="/servers/create" element={<CreateServer />} />
                                                     <Route path="/servers/:id" element={<ServerDetail />} />
-                                                    <Route path="/jobs" element={<Jobs />} />
-                                                    <Route path="/chat" element={<Chat />} />
-                                                    <Route path="/notifications" element={<Notifications />} />
+                                                    <Route path="/activity" element={<Activity />} />
+                                                    <Route path="/jobs" element={<Navigate to="/activity?tab=operations" replace />} />
+                                                    <Route path="/chat" element={<Navigate to="/activity" replace />} />
+                                                    <Route path="/notifications" element={<Navigate to="/activity?tab=attention" replace />} />
                                                     <Route path="/administration" element={<Administration />} />
                                                     <Route path="/user-settings" element={<UserSettings />} />
                                                     <Route path="/settings" element={<Navigate to="/user-settings" replace />} />

@@ -6,6 +6,7 @@ export interface User {
     username: string;
     role: string;
     permissions: string[];
+    language: "fr" | "en";
     accent_color?: string;
     must_change_password: boolean;
 }

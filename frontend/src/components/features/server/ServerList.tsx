@@ -1,7 +1,7 @@
 import { Download, Play, RotateCw, Skull, Square } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { GameProfile, Instance } from "@/schemas/api";
+import type { ConnectionInfo, GameProfile, Instance } from "@/schemas/api";
 import type { ServerAction } from "@/services/api/server.client";
 import { Table, Tooltip } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -9,6 +9,8 @@ import { usePermission } from "@/hooks";
 import { useToast } from "@/contexts/ToastContext";
 import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles";
 import ServerCard from "./ServerCard";
+import { apiService } from "@/services";
+import MaskedConnection from "./MaskedConnection";
 
 interface ServerListProps {
     servers: Instance[];
@@ -29,6 +31,25 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
     const toast = useToast();
     const { hasPermission } = usePermission();
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
+    const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
+    const [connections, setConnections] = useState<Record<string, ConnectionInfo>>({});
+    const profilesById = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
+
+    useEffect(() => {
+        let active = true;
+        void Promise.all(servers.map(async (server) => {
+            const [players, connection] = await Promise.all([
+                apiService.players.snapshot(server.id),
+                apiService.servers.getConnection(server.id),
+            ]);
+            return { id: server.id, players: players.success ? players.data.online_count : undefined, connection: connection.success ? connection.data : undefined };
+        })).then((entries) => {
+            if (!active) return;
+            setPlayerCounts(Object.fromEntries(entries.filter((entry) => entry.players !== undefined).map((entry) => [entry.id, entry.players!] as const)));
+            setConnections(Object.fromEntries(entries.filter((entry) => entry.connection !== undefined).map((entry) => [entry.id, entry.connection!] as const)));
+        });
+        return () => { active = false; };
+    }, [servers]);
 
     const run = async (id: string, action: ServerAction) => {
         if (loadingAction) return;
@@ -49,7 +70,9 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                 {servers.map((server) => <ServerCard
                     key={server.id}
                     server={server}
-                    capabilities={new Set(profiles.find((profile) => profile.id === server.profile_id)?.capabilities ?? [])}
+                    capabilities={new Set(profilesById.get(server.profile_id)?.capabilities ?? [])}
+                    playerCount={playerCounts[server.id]}
+                    connection={connections[server.id]}
                     onAction={(id, action) => void run(id, action)}
                 />)}
             </div>
@@ -59,14 +82,14 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
     return (
         <Table>
             <thead><tr>
-                <th>{t("servers.server_header")}</th><th>{t("servers.profile")}</th><th>{t("servers.installation")}</th><th>{t("servers.status")}</th><th>{t("servers.actions")}</th>
+                <th>{t("servers.server_header")}</th><th>{t("servers.game")}</th><th>{t("servers.status")}</th><th>{t("servers.players")}</th><th>{t("servers.installed_version")}</th><th>{t("servers.connection")}</th><th>{t("servers.actions")}</th>
             </tr></thead>
             <tbody>{servers.map((server) => {
                 const running = server.runtime_state === "running";
                 const needsInstall = ["not_installed", "failed"].includes(server.installation_state);
                 const busy = loadingAction?.startsWith(`${server.id}-`) ?? false;
-                const capabilities = new Set(profiles.find((profile) => profile.id === server.profile_id)?.capabilities ?? []);
-                const profile = profiles.find((candidate) => candidate.id === server.profile_id);
+                const profile = profilesById.get(server.profile_id);
+                const capabilities = new Set(profile?.capabilities ?? []);
                 const visual = gameProfileVisual(server.profile_id, profile?.name);
                 const canInstall = capabilities.has("install") && hasPermission("server.update_game");
                 const canStartStop = capabilities.has("lifecycle");
@@ -86,12 +109,13 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                                 <span>{server.name}</span>
                             </div>
                         </td>
-                        <td>{visual.label} <span className="text-muted">r{server.profile_revision}</span></td>
+                        <td>{visual.label}</td>
                         <td>
-                            <span className={`badge badge--${server.installation_state === "installed" ? "success" : "warning"}`}>{t(`servers.installation_states.${server.installation_state}`)}</span>
-                            {server.installed_version && <small className="server-version">{server.installed_version}{server.installed_build ? ` · ${server.installed_build}` : ""}</small>}
+                            <span className={`badge badge--${running ? "success" : server.runtime_state === "crashed" ? "danger" : needsInstall ? "warning" : "info"}`}>{needsInstall ? t(`servers.installation_states.${server.installation_state}`) : t(`servers.runtime_states.${server.runtime_state}`)}</span>
                         </td>
-                        <td><span className={`badge badge--${running ? "success" : server.runtime_state === "crashed" ? "danger" : "info"}`}>{t(`servers.runtime_states.${server.runtime_state}`)}</span></td>
+                        <td>{playerCounts[server.id] ?? "—"}</td>
+                        <td>{server.installed_version ?? "—"}</td>
+                        <td><MaskedConnection connection={connections[server.id]} compact /></td>
                         <td onClick={(event) => event.stopPropagation()}><div className="server-actions">
                             {needsInstall && canInstall ? (
                                 <Tooltip content={t("servers.install")} position="top"><button aria-label={t("servers.install")} className="btn btn--icon btn--ghost" disabled={busy} onClick={() => void run(server.id, "install")}><Download size={17} aria-hidden="true" /></button></Tooltip>

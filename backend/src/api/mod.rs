@@ -1,14 +1,21 @@
-use axum::{Json, Router, extract::State, http::StatusCode, middleware, routing::get};
+use axum::{
+    Json, Router,
+    extract::{OriginalUri, Request, State},
+    http::{Method, StatusCode},
+    middleware::{self, Next},
+    response::Response,
+    routing::get,
+};
 use serde::Serialize;
 
 use crate::core::AppState;
 
+pub mod activity;
 pub mod administration;
 pub mod audit;
 pub mod auth;
 pub mod backups;
 pub mod catalog;
-pub mod chat;
 pub mod config_files;
 pub mod events;
 pub mod files;
@@ -16,8 +23,8 @@ pub mod game_profiles;
 pub mod jobs;
 pub mod metrics;
 pub mod mods;
-pub mod notifications;
 pub mod openapi;
+pub mod panel;
 pub mod players;
 pub mod releases;
 pub mod schedules;
@@ -58,11 +65,11 @@ pub fn routes(state: AppState) -> Router<AppState> {
     let protected = Router::new()
         .route("/openapi.json", get(openapi::get_document))
         .merge(game_profiles::routes())
+        .merge(activity::routes())
         .merge(administration::routes())
         .merge(audit::routes())
         .merge(backups::routes())
         .merge(catalog::routes())
-        .merge(chat::routes())
         .merge(config_files::routes())
         .merge(files::routes())
         .merge(schedules::routes())
@@ -70,7 +77,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .merge(jobs::routes())
         .merge(metrics::routes())
         .merge(mods::routes())
-        .merge(notifications::routes())
+        .merge(panel::routes())
         .merge(players::routes())
         .merge(releases::routes())
         .merge(webhooks::routes())
@@ -82,6 +89,10 @@ pub fn routes(state: AppState) -> Router<AppState> {
         ))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
+            audit_failed_mutation,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
             auth::require_session,
         ));
 
@@ -89,6 +100,51 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/health", get(health))
         .nest("/auth", auth::routes(state))
         .merge(protected)
+}
+
+async fn audit_failed_mutation(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let method = request.method().clone();
+    let path = request.extensions().get::<OriginalUri>().map_or_else(
+        || request.uri().path().to_string(),
+        |uri| uri.0.path().to_string(),
+    );
+    let auth = request.extensions().get::<auth::AuthUser>().cloned();
+    let response = next.run(request).await;
+    if matches!(
+        method,
+        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+    ) && !response.status().is_success()
+        && let Some(auth) = auth
+    {
+        let status = response.status();
+        let outcome = if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            "denied"
+        } else {
+            "failure"
+        };
+        if let Err(error) = crate::core::database::audit(
+            &state.pool,
+            Some(&auth.id),
+            "api.mutation_failed",
+            "api",
+            None,
+            outcome,
+            serde_json::json!({
+                "method": method.as_str(),
+                "path": path,
+                "status": status.as_u16(),
+            }),
+        )
+        .await
+        {
+            tracing::warn!(%error, "failed to persist mutation failure audit event");
+        }
+    }
+    response
 }
 
 async fn health(
@@ -566,7 +622,7 @@ mod tests {
     #[tokio::test]
     async fn every_private_api_family_rejects_an_anonymous_request() {
         let state = test_state().await;
-        let router = api(state);
+        let router = api(state.clone());
         let instance_id = uuid::Uuid::new_v4();
         let paths = [
             "/api/v1/openapi.json".to_string(),
@@ -578,18 +634,20 @@ mod tests {
             "/api/v1/backups".to_string(),
             "/api/v1/catalog".to_string(),
             "/api/v1/catalog/theme".to_string(),
-            "/api/v1/chat".to_string(),
+            "/api/v1/activity/summary".to_string(),
+            "/api/v1/activity/jobs".to_string(),
             "/api/v1/files".to_string(),
             "/api/v1/schedules".to_string(),
             "/api/v1/servers".to_string(),
             "/api/v1/jobs".to_string(),
-            "/api/v1/notifications".to_string(),
+            "/api/v1/panel/network".to_string(),
             "/api/v1/releases/panel".to_string(),
             "/api/v1/webhooks".to_string(),
             "/api/v1/events".to_string(),
             format!("/api/v1/servers/{instance_id}/metrics"),
             format!("/api/v1/servers/{instance_id}/mods"),
             format!("/api/v1/servers/{instance_id}/secrets"),
+            format!("/api/v1/servers/{instance_id}/connection"),
         ];
         for path in paths {
             let response = router
@@ -603,6 +661,260 @@ mod tests {
                 "private route {path} did not reject an anonymous request"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn removed_collaboration_apis_return_not_found() {
+        let (state, session, _) = authenticated_state().await;
+        let router = api(state);
+        for path in ["/api/v1/chat", "/api/v1/notifications"] {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::get(path)
+                        .header(header::COOKIE, format!("dmx_session={session}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn global_audit_and_network_settings_stay_restricted_to_administrative_roles() {
+        let (state, session, _) = authenticated_state().await;
+        sqlx::query("UPDATE roles SET permissions = '[\"audit.read\",\"job.read\",\"panel.network.manage\",\"server.read\"]' WHERE id = 'operator'")
+            .execute(&state.pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE users SET role_id = 'operator' WHERE username = 'owner'")
+            .execute(&state.pool)
+            .await
+            .unwrap();
+
+        let response = api(state.clone())
+            .oneshot(
+                Request::get("/api/v1/audit")
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let response = api(state)
+            .oneshot(
+                Request::get("/api/v1/panel/network")
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn activity_jobs_use_a_stable_non_overlapping_cursor() {
+        let (state, session, _) = authenticated_state().await;
+        let user_id: String = sqlx::query_scalar("SELECT id FROM users WHERE username = 'owner'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+        for (id, created_at) in [
+            (
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "2026-07-20T10:00:03Z",
+            ),
+            (
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                "2026-07-20T10:00:02Z",
+            ),
+            (
+                "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                "2026-07-20T10:00:01Z",
+            ),
+        ] {
+            sqlx::query(
+                "INSERT INTO jobs (id, kind, state, progress, requested_by, created_at) \
+                 VALUES (?, 'test', 'succeeded', 100, ?, ?)",
+            )
+            .bind(id)
+            .bind(&user_id)
+            .bind(created_at)
+            .execute(&state.pool)
+            .await
+            .unwrap();
+        }
+        let router = api(state);
+        let first = router
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/activity/jobs?limit=2")
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+        let first: serde_json::Value =
+            serde_json::from_slice(&to_bytes(first.into_body(), 64 * 1024).await.unwrap()).unwrap();
+        assert_eq!(first["items"].as_array().unwrap().len(), 2);
+        let cursor = first["next_cursor"].as_str().unwrap();
+        assert_eq!(cursor, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+
+        let second = router
+            .oneshot(
+                Request::get(format!("/api/v1/activity/jobs?limit=2&cursor={cursor}"))
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.status(), StatusCode::OK);
+        let second: serde_json::Value =
+            serde_json::from_slice(&to_bytes(second.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        let second_ids = second["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(second_ids, ["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]);
+        assert!(second["next_cursor"].is_null());
+    }
+
+    #[tokio::test]
+    async fn preferences_and_session_management_return_only_safe_metadata() {
+        let (state, session, csrf) = authenticated_state().await;
+        let user_id: String = sqlx::query_scalar("SELECT id FROM users WHERE username = 'owner'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+        let other_session = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO sessions (id, user_id, token_hash, csrf_hash, expires_at, created_at, last_seen_at, user_agent) \
+             VALUES (?, ?, ?, 'other-csrf', ?, ?, ?, 'Firefox test')",
+        )
+        .bind(&other_session)
+        .bind(&user_id)
+        .bind(token_hash("other-session-token"))
+        .bind((Utc::now() + Duration::hours(1)).to_rfc3339())
+        .bind(&now)
+        .bind(&now)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+        let router = api(state.clone());
+
+        let sessions = router
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/auth/sessions")
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sessions.status(), StatusCode::OK);
+        let sessions: serde_json::Value =
+            serde_json::from_slice(&to_bytes(sessions.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        assert_eq!(sessions.as_array().unwrap().len(), 2);
+        let serialized = sessions.to_string();
+        assert!(!serialized.contains("token_hash"));
+        assert!(!serialized.contains("csrf_hash"));
+        assert!(!serialized.contains("user_agent"));
+        assert!(serialized.contains("browser"));
+
+        let preferences = router
+            .clone()
+            .oneshot(
+                Request::patch("/api/v1/auth/preferences")
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .header("x-csrf-token", &csrf)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "language": "en",
+                            "accent_color": "#22C55E"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(preferences.status(), StatusCode::OK);
+        let preferences: serde_json::Value =
+            serde_json::from_slice(&to_bytes(preferences.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        assert_eq!(preferences["language"], "en");
+        assert_eq!(preferences["accent_color"], "#22C55E");
+
+        let invalid_preferences = router
+            .clone()
+            .oneshot(
+                Request::patch("/api/v1/auth/preferences?secret=must-not-be-audited")
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .header("x-csrf-token", &csrf)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"accent_color": "secret-value"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid_preferences.status(), StatusCode::BAD_REQUEST);
+        let failure_metadata: String = sqlx::query_scalar(
+            "SELECT metadata FROM audit_events WHERE action = 'api.mutation_failed' \
+             ORDER BY id DESC LIMIT 1",
+        )
+        .fetch_one(&state.pool)
+        .await
+        .unwrap();
+        assert!(
+            failure_metadata.contains("/api/v1/auth/preferences"),
+            "unexpected failure audit metadata: {failure_metadata}"
+        );
+        assert!(!failure_metadata.contains("must-not-be-audited"));
+        assert!(!failure_metadata.contains("secret-value"));
+
+        let revoked = router
+            .oneshot(
+                Request::delete(format!("/api/v1/auth/sessions/{other_session}"))
+                    .header(header::COOKIE, format!("dmx_session={session}"))
+                    .header("x-csrf-token", csrf)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(revoked.status(), StatusCode::OK);
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE user_id = ?")
+            .bind(&user_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+        assert_eq!(remaining, 1);
+        let audited: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_events WHERE actor_user_id = ? \
+             AND action IN ('auth.preferences_updated', 'auth.session_revoked')",
+        )
+        .bind(&user_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap();
+        assert_eq!(audited, 2);
     }
 
     #[tokio::test]
@@ -1213,7 +1525,7 @@ mod tests {
         .await
         .unwrap();
 
-        let router = api(state);
+        let router = api(state.clone());
         let request = |instance_id: &str| {
             Request::get(format!("/api/v1/files?instance_id={instance_id}"))
                 .header(header::COOKIE, format!("dmx_session={session_token}"))
@@ -1254,6 +1566,25 @@ mod tests {
             .unwrap();
         let diagnostic: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(diagnostic["content"], "native library load failed");
+
+        let raw_config_request = || {
+            Request::get(format!("/api/v1/servers/{allowed_instance}/config-files"))
+                .header(header::COOKIE, format!("dmx_session={session_token}"))
+                .body(Body::empty())
+                .unwrap()
+        };
+        let raw_denied = router.clone().oneshot(raw_config_request()).await.unwrap();
+        assert_eq!(raw_denied.status(), StatusCode::FORBIDDEN);
+
+        sqlx::query(
+            "UPDATE roles SET permissions = '[\"server.files.read\",\"server.config.raw.read\"]' \
+             WHERE id = 'operator'",
+        )
+        .execute(&state.pool)
+        .await
+        .unwrap();
+        let raw_allowed = router.clone().oneshot(raw_config_request()).await.unwrap();
+        assert_eq!(raw_allowed.status(), StatusCode::OK);
 
         let denied = router.oneshot(request(&denied_instance)).await.unwrap();
         assert_eq!(denied.status(), StatusCode::FORBIDDEN);

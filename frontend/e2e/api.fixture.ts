@@ -21,14 +21,10 @@ import {
 import {
     Backup,
     BackupSchema,
-    ChatMessage,
-    ChatMessageSchema,
     ManagedFileEntry,
     ManagedFileEntrySchema,
     MetricPoint,
     MetricPointSchema,
-    Notification,
-    NotificationSchema,
     Schedule,
     ScheduleSchema,
     CreateScheduleSchema,
@@ -101,6 +97,7 @@ export const OWNER: UserInfo = UserInfoSchema.parse({
     username: "owner",
     role: "owner",
     permissions: ["*"],
+    language: "fr",
     accent_color: "#4f46e5",
     must_change_password: false,
 });
@@ -298,8 +295,8 @@ export const ROLES: ManagedRole[] = [
         id: "admin",
         name: "Admin",
         permissions: [
-            "chat.read", "chat.write", "job.read", "mods.manage", "notifications.read", "profile.read",
-            "schedule.manage", "server.backup", "server.backup.read", "server.console.read", "server.console.write",
+            "audit.read", "job.read", "mods.manage", "panel.network.manage", "profile.read",
+            "schedule.manage", "server.backup", "server.backup.read", "server.config.raw.read", "server.config.raw.write", "server.console.read", "server.console.write",
             "server.create", "server.delete", "server.files.read", "server.files.write", "server.kill", "server.read",
             "server.start", "server.stop", "server.update", "server.update_game", "user.create", "user.read", "user.update",
         ],
@@ -311,7 +308,7 @@ export const ROLES: ManagedRole[] = [
         id: "operator",
         name: "Operator",
         permissions: [
-            "chat.read", "chat.write", "job.read", "mods.manage", "notifications.read", "profile.read",
+            "job.read", "mods.manage", "profile.read",
             "schedule.manage", "server.backup", "server.backup.read", "server.console.read", "server.console.write",
             "server.files.read", "server.files.write", "server.read", "server.start", "server.stop", "server.update",
             "server.update_game",
@@ -323,7 +320,7 @@ export const ROLES: ManagedRole[] = [
     ManagedRoleSchema.parse({
         id: "viewer",
         name: "Viewer",
-        permissions: ["chat.read", "job.read", "notifications.read", "profile.read", "server.backup.read", "server.console.read", "server.read"],
+        permissions: ["job.read", "profile.read", "server.backup.read", "server.console.read", "server.read"],
         is_system: true,
         created_at: NOW,
         updated_at: NOW,
@@ -427,24 +424,6 @@ export const GRANTS: Record<string, InstanceGrant[]> = {
     })],
 };
 
-const CHAT_MESSAGES: ChatMessage[] = [ChatMessageSchema.parse({
-    id: "55555555-5555-4555-8555-555555555555",
-    author_user_id: OWNER.id,
-    author_username: OWNER.username,
-    body: "Bienvenue dans le chat d’équipe.",
-    created_at: NOW,
-    deleted_at: null,
-})];
-
-const NOTIFICATIONS: Notification[] = [NotificationSchema.parse({
-    id: "66666666-6666-4666-8666-666666666666",
-    kind: "job.succeeded",
-    message_key: "notifications.job_succeeded",
-    data: { action: "start", instance_id: INSTANCES[0]!.id },
-    read_at: null,
-    created_at: NOW,
-})];
-
 const FILES: ManagedFileEntry[] = [
     ManagedFileEntrySchema.parse({ name: "server.properties", path: "server.properties", kind: "file", size_bytes: 32, modified_at: NOW }),
     ManagedFileEntrySchema.parse({ name: "world", path: "world", kind: "directory", size_bytes: 0, modified_at: NOW }),
@@ -521,8 +500,6 @@ export class ApiMock {
     readonly profileRevisions = new Map<string, GameProfile[]>();
     readonly grants: Map<string, InstanceGrant[]>;
     readonly user: UserInfo;
-    readonly chatMessages = CHAT_MESSAGES.map((item) => ChatMessageSchema.parse(item));
-    readonly notifications = NOTIFICATIONS.map((item) => NotificationSchema.parse(item));
     readonly files = FILES.map((item) => ManagedFileEntrySchema.parse(item));
     readonly backups = BACKUPS.map((item) => BackupSchema.parse(item));
     readonly metrics = METRICS.map((item) => MetricPointSchema.parse(item));
@@ -533,6 +510,8 @@ export class ApiMock {
     activeTheme: ActiveTheme;
     releaseStatus: PanelReleaseStatus;
     curseForgeConfigured = false;
+    advertisedGameHost: string | null = "play.example.com";
+    networkVersion = 1;
     needsSetup: boolean;
     authenticated: boolean;
     readonly hytaleDeviceAuthorization: boolean;
@@ -625,7 +604,7 @@ export class ApiMock {
             return this.json(route, 200, { needs_setup: this.needsSetup });
         }
         if (path === "/health" && request.method() === "GET") {
-            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.0.0" });
+            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.1.0" });
         }
         if (path === "/auth/setup" && request.method() === "POST") {
             if (!this.needsSetup) return this.problem(route, 409, "Setup already completed");
@@ -684,8 +663,55 @@ export class ApiMock {
             await page.context().clearCookies({ name: SESSION_COOKIE });
             return this.json(route, 200, { success: true, message: "auth.password_updated" });
         }
+        if (path === "/auth/preferences" && request.method() === "PATCH") {
+            const body = record.body as { language?: unknown; accent_color?: unknown };
+            if (body.language === "fr" || body.language === "en") this.user.language = body.language;
+            if (typeof body.accent_color === "string") this.user.accent_color = body.accent_color;
+            return this.json(route, 200, this.user);
+        }
+        if (path === "/auth/sessions" && request.method() === "GET") {
+            return this.json(route, 200, [{
+                id: "10101010-1010-4010-8010-101010101010",
+                browser: "Chromium",
+                created_at: NOW,
+                last_seen_at: NOW,
+                expires_at: "2026-08-13T12:00:00.000Z",
+                is_current: true,
+            }, {
+                id: "20202020-2020-4020-8020-202020202020",
+                browser: "Safari",
+                created_at: NOW,
+                last_seen_at: NOW,
+                expires_at: "2026-08-13T12:00:00.000Z",
+                is_current: false,
+            }]);
+        }
+        if (path === "/auth/sessions/revoke-others" && request.method() === "POST") {
+            return this.json(route, 200, { success: true });
+        }
+        if (/^\/auth\/sessions\/[0-9a-f-]+$/i.test(path) && request.method() === "DELETE") {
+            return this.json(route, 200, { success: true });
+        }
         if (this.user.must_change_password) {
             return this.problem(route, 403, "auth.password_change_required", "AUTH_009");
+        }
+        if (path === "/panel/network" && request.method() === "GET") {
+            return this.json(route, 200, {
+                advertised_game_host: this.advertisedGameHost,
+                version: this.networkVersion,
+                updated_at: NOW,
+            });
+        }
+        if (path === "/panel/network" && request.method() === "PUT") {
+            const body = record.body as { advertised_game_host?: unknown; expected_version?: unknown };
+            if (body.expected_version !== this.networkVersion) return this.problem(route, 409, "Version réseau obsolète");
+            this.advertisedGameHost = typeof body.advertised_game_host === "string" ? body.advertised_game_host : null;
+            this.networkVersion += 1;
+            return this.json(route, 200, {
+                advertised_game_host: this.advertisedGameHost,
+                version: this.networkVersion,
+                updated_at: NOW,
+            });
         }
         if (path === "/permissions" && request.method() === "GET") {
             return this.user.role === "owner"
@@ -1119,50 +1145,6 @@ export class ApiMock {
             this.instances.push(instance);
             return this.json(route, 201, instance, { etag: '"1"' });
         }
-        if (path === "/chat" && request.method() === "GET") {
-            return this.json(route, 200, { items: this.chatMessages, next_before_id: null });
-        }
-        if (path === "/chat" && request.method() === "POST") {
-            const body = record.body as { body?: unknown };
-            if (typeof body?.body !== "string" || !body.body.trim()) return this.problem(route, 400, "Message invalide");
-            const message = ChatMessageSchema.parse({
-                id: "99999999-9999-4999-8999-999999999999",
-                author_user_id: this.user.id,
-                author_username: this.user.username,
-                body: body.body.trim(),
-                created_at: NOW,
-                deleted_at: null,
-            });
-            this.chatMessages.unshift(message);
-            return this.json(route, 201, message);
-        }
-        const chatMatch = path.match(/^\/chat\/([0-9a-f-]+)$/i);
-        if (chatMatch && request.method() === "DELETE") {
-            const message = this.chatMessages.find((item) => item.id === chatMatch[1]);
-            if (!message) return this.problem(route, 404, "Message introuvable");
-            message.body = null;
-            message.deleted_at = NOW;
-            return this.json(route, 200, { success: true });
-        }
-        if (path === "/notifications" && request.method() === "GET") {
-            const unreadOnly = url.searchParams.get("unread_only") === "true";
-            return this.json(route, 200, {
-                items: unreadOnly ? this.notifications.filter((item) => !item.read_at) : this.notifications,
-                next_before_id: null,
-                unread_count: this.notifications.filter((item) => !item.read_at).length,
-            });
-        }
-        if (path === "/notifications/read-all" && request.method() === "POST") {
-            for (const notification of this.notifications) notification.read_at ??= NOW;
-            return this.json(route, 200, { success: true });
-        }
-        const notificationMatch = path.match(/^\/notifications\/([0-9a-f-]+)\/read$/i);
-        if (notificationMatch && request.method() === "PUT") {
-            const notification = this.notifications.find((item) => item.id === notificationMatch[1]);
-            if (!notification) return this.problem(route, 404, "Notification introuvable");
-            notification.read_at ??= NOW;
-            return this.json(route, 200, { success: true });
-        }
         if (path === "/files" && request.method() === "GET") {
             const directory = url.searchParams.get("path") ?? "";
             return this.json(route, 200, { items: directory === "" ? this.files : [] });
@@ -1239,6 +1221,38 @@ export class ApiMock {
         if (path === "/backups" && request.method() === "GET") {
             const instanceId = url.searchParams.get("instance_id");
             return this.json(route, 200, this.backups.filter((backup) => backup.instance_id === instanceId));
+        }
+        if (path === "/activity/summary" && request.method() === "GET") {
+            return this.json(route, 200, {
+                active_jobs: this.jobs.filter((job) => ["queued", "running", "waiting_for_user"].includes(job.state)).length,
+                waiting_for_user: this.jobs.filter((job) => job.state === "waiting_for_user").length,
+                failed_jobs_24h: this.jobs.filter((job) => ["failed", "interrupted"].includes(job.state)).length,
+                crashed_servers: this.instances.filter((instance) => instance.runtime_state === "crashed").length,
+                config_conflicts: 0,
+            });
+        }
+        if (path === "/activity/jobs" && request.method() === "GET") {
+            const state = url.searchParams.get("state");
+            const instanceId = url.searchParams.get("instance_id");
+            const items = this.jobs.filter((job) => (!state || job.state === state)
+                && (!instanceId || job.instance_id === instanceId));
+            return this.json(route, 200, { items, next_cursor: null });
+        }
+        if (path === "/audit" && request.method() === "GET") {
+            return this.json(route, 200, {
+                items: [{
+                    id: 1,
+                    actor_user_id: this.user.id,
+                    actor_username: this.user.username,
+                    action: "server.updated",
+                    resource_type: "instance",
+                    resource_id: this.instances[0]?.id ?? null,
+                    outcome: "success",
+                    metadata: {},
+                    created_at: NOW,
+                }],
+                next_before_id: null,
+            });
         }
         if (path === "/jobs" && request.method() === "GET") {
             return this.json(route, 200, this.jobs);
@@ -1409,6 +1423,31 @@ export class ApiMock {
             return this.json(route, 202, { accepted: true });
         }
 
+        const connectionMatch = path.match(/^\/servers\/([0-9a-f-]+)\/connection$/i);
+        if (connectionMatch && request.method() === "GET") {
+            const instance = this.instances.find((candidate) => candidate.id === connectionMatch[1]);
+            const profile = this.profiles.find((candidate) => candidate.id === instance?.profile_id);
+            if (!instance || !profile) return this.problem(route, 404, "Instance introuvable");
+            const endpoints = profile.ports.map((port, index) => {
+                const configured = instance.settings[port.name];
+                const value = typeof configured === "number" ? configured : port.default;
+                return {
+                    name: port.name,
+                    protocol: port.protocol,
+                    port: value,
+                    primary: index === 0,
+                    address: this.advertisedGameHost ? `${this.advertisedGameHost}:${value}` : null,
+                };
+            });
+            return this.json(route, 200, {
+                configured: this.advertisedGameHost !== null,
+                host: this.advertisedGameHost,
+                connection_type: instance.profile_id === "valheim" ? "steam" : "direct",
+                help_key: instance.profile_id === "valheim" ? "connection.help.steam" : "connection.help.minecraft_java",
+                endpoints,
+            });
+        }
+
         const serverMatch = path.match(/^\/servers\/([0-9a-f-]+)$/i);
         if (serverMatch && request.method() === "GET") {
             const instance = this.instances.find((candidate) => candidate.id === serverMatch[1]);
@@ -1448,34 +1487,6 @@ export class ApiMock {
                 },
                 created_at: NOW,
             });
-            const realtimeChatMessage = ChatMessageSchema.parse({
-                id: "cccccccc-1111-4111-8111-111111111111",
-                author_user_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                author_username: "alice",
-                body: "Message reçu en temps réel.",
-                created_at: NOW,
-                deleted_at: null,
-            });
-            const chatEvent = JSON.stringify({
-                type: "chat.message_created",
-                server_id: null,
-                payload: realtimeChatMessage,
-                created_at: NOW,
-            });
-            const realtimeNotification = NotificationSchema.parse({
-                id: "dddddddd-1111-4111-8111-111111111111",
-                kind: "job.failed",
-                message_key: "notifications.job_failed",
-                data: { action: "update" },
-                read_at: null,
-                created_at: NOW,
-            });
-            const notificationEvent = JSON.stringify({
-                type: "notification.created",
-                server_id: null,
-                payload: realtimeNotification,
-                created_at: NOW,
-            });
             const deviceAuthorization = JSON.stringify({
                 type: "job.waiting_for_user",
                 server_id: serverId,
@@ -1492,17 +1503,9 @@ export class ApiMock {
             // `route.fulfill` closes its response body immediately. Keep the retry
             // interval long so the finite E2E fixture behaves like the production
             // long-lived SSE stream instead of replaying the same event in a loop.
-            if (!serverId) {
-                if (!this.chatMessages.some((item) => item.id === realtimeChatMessage.id)) {
-                    this.chatMessages.unshift(realtimeChatMessage);
-                }
-                if (!this.notifications.some((item) => item.id === realtimeNotification.id)) {
-                    this.notifications.unshift(realtimeNotification);
-                }
-            }
             const body = serverId
                 ? `retry: 60000\nid: e2e-log-1\nevent: server.log\ndata: ${event}\n\n${this.hytaleDeviceAuthorization ? `id: e2e-device-1\nevent: job.waiting_for_user\ndata: ${deviceAuthorization}\n\n` : ""}`
-                : `retry: 60000\nid: e2e-chat-1\nevent: chat.message_created\ndata: ${chatEvent}\n\nid: e2e-notification-1\nevent: notification.created\ndata: ${notificationEvent}\n\n`;
+                : "retry: 60000\n\n";
             return route.fulfill({
                 status: 200,
                 contentType: "text/event-stream",

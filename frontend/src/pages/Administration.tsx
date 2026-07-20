@@ -1,6 +1,7 @@
 import { KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, RefreshCw, ShieldX } from "lucide-react";
-import { CatalogManagement, ModProviderManagement, PanelReleaseManagement, RoleManagement, SteamProfileManagement, UserManagement, WebhookManagement } from "@/components/features/administration";
+import { CatalogManagement, ModProviderManagement, NetworkManagement, PanelReleaseManagement, RoleManagement, SteamProfileManagement, UserManagement, WebhookManagement } from "@/components/features/administration";
 import { PERMISSION_CATALOG } from "@/constants/permissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -10,16 +11,21 @@ import { Instance, ManagedRole, ManagedUser, PermissionDescription } from "@/sch
 import { apiService } from "@/services";
 import { translatedError } from "@/utils/roles";
 
-type AdministrationTab = "users" | "roles" | "steam_profiles" | "catalog" | "mod_providers" | "webhooks" | "releases";
+type AdministrationTab = "users" | "roles" | "network" | "steam_profiles" | "catalog" | "mod_providers" | "webhooks" | "releases";
 
 export default function Administration() {
     const { user } = useAuth();
     const { t } = useLanguage();
     const { setPageTitle } = usePageTitle();
     const { hasPermission } = usePermission();
+    const isOwner = user?.role === "owner";
+    const isAdministrativeRole = isOwner || user?.role === "admin";
     const canRead = hasPermission("user.read");
     const canManageProfiles = hasPermission("profile.manage");
-    const [activeTab, setActiveTab] = useState<AdministrationTab>(() => canRead ? "users" : "steam_profiles");
+    const canManageNetwork = isAdministrativeRole && hasPermission("panel.network.manage");
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestedTab = searchParams.get("tab") as AdministrationTab | null;
+    const [activeTab, setActiveTab] = useState<AdministrationTab>(() => requestedTab ?? (canRead ? "users" : canManageNetwork ? "network" : "steam_profiles"));
     const [users, setUsers] = useState<ManagedUser[]>([]);
     const [roles, setRoles] = useState<ManagedRole[]>([]);
     const [servers, setServers] = useState<Instance[]>([]);
@@ -27,7 +33,6 @@ export default function Administration() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    const isOwner = user?.role === "owner";
     const canCreate = hasPermission("user.create");
     const canUpdate = hasPermission("user.update");
     const canReadServers = hasPermission("server.read");
@@ -99,16 +104,29 @@ export default function Administration() {
     const tabs = useMemo<AdministrationTab[]>(() => [
         ...(canRead ? ["users" as const] : []),
         ...(isOwner && canRead ? ["roles" as const] : []),
+        ...(canManageNetwork ? ["network" as const] : []),
         ...(canManageProfiles ? ["steam_profiles" as const] : []),
         ...(isOwner ? ["catalog" as const] : []),
         ...(isOwner ? ["mod_providers" as const] : []),
         ...(isOwner ? ["webhooks" as const] : []),
         ...(isOwner ? ["releases" as const] : []),
-    ], [canManageProfiles, canRead, isOwner]);
+    ], [canManageNetwork, canManageProfiles, canRead, isOwner]);
 
     useEffect(() => {
-        if (!tabs.includes(activeTab)) setActiveTab(tabs[0] ?? "users");
-    }, [activeTab, tabs]);
+        const nextTab = requestedTab && tabs.includes(requestedTab) ? requestedTab : activeTab;
+        if (tabs.includes(nextTab)) {
+            if (nextTab !== activeTab) setActiveTab(nextTab);
+            return;
+        }
+        setActiveTab(tabs[0] ?? "users");
+    }, [activeTab, requestedTab, tabs]);
+
+    const selectTab = (tab: AdministrationTab) => {
+        setActiveTab(tab);
+        const next = new URLSearchParams(searchParams);
+        next.set("tab", tab);
+        setSearchParams(next, { replace: true });
+    };
     const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: AdministrationTab) => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
@@ -120,11 +138,11 @@ export default function Administration() {
                 : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
         const target = tabs[targetIndex];
         if (!target) return;
-        setActiveTab(target);
+        selectTab(target);
         document.getElementById(`administration-tab-${target}`)?.focus();
     };
 
-    if (!canRead && !canManageProfiles) {
+    if (!canRead && !canManageProfiles && !canManageNetwork) {
         return (
             <section className="card administration-state" role="alert">
                 <ShieldX size={32} aria-hidden="true" />
@@ -168,7 +186,7 @@ export default function Administration() {
                         aria-controls={`administration-panel-${tab}`}
                         tabIndex={activeTab === tab ? 0 : -1}
                         className={activeTab === tab ? "administration-tabs__tab administration-tabs__tab--active" : "administration-tabs__tab"}
-                        onClick={() => setActiveTab(tab)}
+                        onClick={() => selectTab(tab)}
                         onKeyDown={(event) => handleTabKeyDown(event, tab)}
                     >
                         {t(`administration.tabs.${tab}`)}
@@ -207,6 +225,12 @@ export default function Administration() {
             {canManageProfiles && activeTab === "steam_profiles" && (
                 <div id="administration-panel-steam_profiles" role="tabpanel" aria-labelledby="administration-tab-steam_profiles">
                     <SteamProfileManagement />
+                </div>
+            )}
+
+            {canManageNetwork && activeTab === "network" && (
+                <div id="administration-panel-network" role="tabpanel" aria-labelledby="administration-tab-network">
+                    <NetworkManagement />
                 </div>
             )}
 

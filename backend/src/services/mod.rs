@@ -6,7 +6,6 @@ pub mod instance_storage;
 pub mod jobs;
 pub mod metrics;
 pub mod mod_providers;
-pub mod notifications;
 pub mod players;
 pub mod profiles;
 pub mod releases;

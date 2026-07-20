@@ -238,7 +238,7 @@ export default function SteamProfileManagement() {
                             <li key={profile.id}>
                                 <button type="button" aria-pressed={!creating && selected?.id === profile.id} className={`administration-list__item ${!creating && selected?.id === profile.id ? "administration-list__item--active" : ""}`} onClick={() => { setCreating(false); setSelectedId(profile.id); }}>
                                     <span className="administration-list__icon"><ServerCog size={18} aria-hidden="true" /></span>
-                                    <span className="administration-list__content"><strong>{profile.name}</strong><span>{profile.id} · r{profile.revision}</span></span>
+                                    <span className="administration-list__content"><strong>{profile.name}</strong><span>{profile.id}</span></span>
                                 </button>
                             </li>
                         ))}
@@ -248,7 +248,6 @@ export default function SteamProfileManagement() {
                         <form className="card administration-editor steam-profile-editor" onSubmit={save} noValidate>
                             <div className="administration-editor__header">
                                 <div><h3>{t(creating ? "administration.steam.create" : "administration.steam.edit")}</h3><p>{t("administration.steam.best_effort")}</p></div>
-                                {!creating && <span className="badge badge--info">r{selected?.revision}</span>}
                             </div>
 
                             <div className="administration-form-grid">
@@ -297,12 +296,12 @@ export default function SteamProfileManagement() {
                                 <div className="form-group"><label htmlFor="steam-stop-timeout">{t("administration.steam.stop_timeout")}</label><input id="steam-stop-timeout" className="input" type="number" min={1} max={300} value={draft.stopTimeout} onChange={(event) => setDraft({ ...draft, stopTimeout: event.target.value })} /></div>
                             </div></fieldset>
 
-                            {!creating && revisions.length > 0 && <details className="steam-revisions"><summary><History size={16} aria-hidden="true" />{t("administration.steam.revisions")} ({revisions.length})</summary><ol>{revisions.map((revision) => <li key={revision.revision}><span><strong>r{revision.revision}</strong> · AppID {revision.steam_profile?.app_id}</span><span>{revision.platforms.join(", ")} · {revision.ports.length} {t("administration.steam.ports_count")}</span></li>)}</ol></details>}
+                            {!creating && revisions.length > 0 && <details className="steam-revisions"><summary><History size={16} aria-hidden="true" />{t("administration.steam.versions")} ({revisions.length})</summary><ol>{revisions.map((revision) => <li key={revision.revision}><span><strong>{t("administration.steam.version")} {revision.revision}</strong> · AppID {revision.steam_profile?.app_id}</span><span>{revision.platforms.join(", ")} · {revision.ports.length} {t("administration.steam.ports_count")}</span></li>)}</ol></details>}
 
                             <div className="administration-editor__footer">
-                                <p><Clock3 size={14} aria-hidden="true" />{t("administration.steam.revision_hint")}</p>
+                                <p><Clock3 size={14} aria-hidden="true" />{t("administration.steam.version_hint")}</p>
                                 {creating ? <Button type="button" variant="secondary" onClick={cancelCreate}>{t("common.cancel")}</Button> : <Button type="button" variant="danger" onClick={() => void remove()} disabled={saving} icon={<Trash2 size={16} />}>{t("common.delete")}</Button>}
-                                <Button type="submit" isLoading={saving}>{t(creating ? "administration.steam.create" : "administration.steam.create_revision")}</Button>
+                                <Button type="submit" isLoading={saving}>{t(creating ? "administration.steam.create" : "administration.steam.create_version")}</Button>
                             </div>
                         </form>
                     ) : <div className="card administration-empty">{t("administration.steam.empty")}</div>}

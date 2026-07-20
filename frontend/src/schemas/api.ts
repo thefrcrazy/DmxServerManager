@@ -22,6 +22,7 @@ export const UserInfoSchema = z.object({
     username: z.string(),
     role: z.string(),
     permissions: z.array(z.string()),
+    language: z.enum(["fr", "en"]),
     accent_color: z.string(),
     must_change_password: z.boolean(),
 });
@@ -38,6 +39,17 @@ export const SetupStatusSchema = z.object({
 export type UserInfo = z.infer<typeof UserInfoSchema>;
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;
 export type SetupStatus = z.infer<typeof SetupStatusSchema>;
+
+export const SessionInfoSchema = z.object({
+    id: z.string().uuid(),
+    browser: z.string().max(64),
+    created_at: z.string(),
+    last_seen_at: z.string(),
+    expires_at: z.string(),
+    is_current: z.boolean(),
+}).strict();
+
+export type SessionInfo = z.infer<typeof SessionInfoSchema>;
 
 export const JsonSchemaPropertySchema = z.object({
     type: z.enum(["string", "integer", "number", "boolean", "array", "object"]),
@@ -256,6 +268,24 @@ export const JobSchema = z.object({
 export type Job = z.infer<typeof JobSchema>;
 export type JobInteraction = z.infer<typeof JobInteractionSchema>;
 
+export const ConnectionEndpointSchema = z.object({
+    name: z.string(),
+    protocol: z.enum(["tcp", "udp"]),
+    port: z.number().int().min(1).max(65_535),
+    primary: z.boolean(),
+    address: z.string().nullable(),
+}).strict();
+
+export const ConnectionInfoSchema = z.object({
+    configured: z.boolean(),
+    host: z.string().nullable(),
+    connection_type: z.enum(["direct", "steam"]),
+    help_key: z.string(),
+    endpoints: z.array(ConnectionEndpointSchema),
+}).strict();
+
+export type ConnectionInfo = z.infer<typeof ConnectionInfoSchema>;
+
 export const SecretStatusSchema = z.object({
     name: z.string(),
     configured: z.boolean(),
@@ -284,16 +314,16 @@ export type EventEnvelope = z.infer<typeof EventEnvelopeSchema>;
 
 export const PermissionIdSchema = z.enum([
     "audit.read",
-    "chat.read",
-    "chat.write",
     "job.read",
     "mods.manage",
-    "notifications.read",
+    "panel.network.manage",
     "profile.manage",
     "profile.read",
     "schedule.manage",
     "server.backup",
     "server.backup.read",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.read",
     "server.console.write",
     "server.create",
@@ -317,6 +347,8 @@ export const InstancePermissionIdSchema = z.enum([
     "schedule.manage",
     "server.backup",
     "server.backup.read",
+    "server.config.raw.read",
+    "server.config.raw.write",
     "server.console.read",
     "server.console.write",
     "server.files.read",

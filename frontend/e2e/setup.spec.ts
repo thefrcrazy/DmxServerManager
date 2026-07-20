@@ -10,17 +10,17 @@ test("le premier Owner est créé avec un jeton d’installation et une session 
     await expect(page).toHaveURL(/\/setup$/);
     await expect(page.getByRole("heading", { name: "DmxServerManager" })).toBeVisible();
 
-    await page.getByLabel("Mot de passe", { exact: true }).fill("A-Strong-Owner-Passphrase-2026!");
-    await page.getByLabel("Confirmer le mot de passe").fill("A-Strong-Owner-Passphrase-2026!");
-    await page.getByLabel("Jeton d’installation distant (optionnel)").fill(setupToken);
     const username = page.getByLabel("Nom d'utilisateur");
     await username.fill("primary-owner");
     await expect(username).toHaveValue("primary-owner");
+    await page.getByLabel("Mot de passe", { exact: true }).fill("A-Strong-Owner-Passphrase-2026!");
+    await page.getByLabel("Confirmer le mot de passe").fill("A-Strong-Owner-Passphrase-2026!");
+    await page.getByLabel("Jeton d’installation distant (optionnel)").fill(setupToken);
     await Promise.all([
         page.waitForURL(/\/dashboard$/, { timeout: 10_000 }),
         page.getByRole("button", { name: "Terminer l'installation" }).click(),
     ]);
-    await expect(page.getByText("Total Serveurs")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Vue d’ensemble opérationnelle" })).toBeVisible();
 
     const setup = api.findRequest("POST", "/auth/setup");
     expect(setup).toBeDefined();

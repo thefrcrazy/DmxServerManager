@@ -19,7 +19,7 @@
         justify-content: center;
         font-size: 1.75rem;
         font-weight: 600;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        box-shadow: none;
     }
 
     &__info {
@@ -72,16 +72,14 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.2s ease;
+        transition: border-color var(--transition-fast);
         padding: 0;
 
-        &:hover {
-            transform: scale(1.1);
-        }
+        &:hover { border-color: var(--color-border-hover); }
 
         &--active {
             border-color: var(--color-bg-primary);
-            transform: scale(1.1);
+            box-shadow: 0 0 0 2px var(--color-accent);
         }
     }
 
@@ -119,6 +117,118 @@
             pointer-events: none;
         }
     }
+}
+
+.account-page {
+    display: flex;
+    max-width: 70rem;
+    margin: 0 auto;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+.account-section {
+    padding: 0;
+    overflow: hidden;
+
+    > header {
+        min-height: 66px;
+        padding: var(--spacing-4);
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-3);
+        border-bottom: 1px solid var(--color-border);
+
+        > svg { color: var(--color-accent); flex: 0 0 auto; }
+        > div { min-width: 0; }
+        h2 { font-size: var(--font-size-base); }
+        p { margin-top: 2px; color: var(--color-text-muted); font-size: var(--font-size-xs); }
+        > .btn { margin-left: auto; }
+    }
+
+    > .alert { margin: var(--spacing-4) var(--spacing-4) 0; }
+    > footer { padding: 0 var(--spacing-4) var(--spacing-4); display: flex; justify-content: flex-end; }
+}
+
+.account-identity {
+    padding: var(--spacing-4);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+
+    .user-profile__avatar { width: 52px; height: 52px; font-size: var(--font-size-xl); }
+    > div:last-child { display: flex; flex-direction: column; gap: 3px; }
+    > div:last-child strong { font-size: var(--font-size-lg); }
+    > div:last-child span { color: var(--color-text-muted); font-size: var(--font-size-sm); }
+}
+
+.account-preferences {
+    padding: var(--spacing-4);
+    display: grid;
+    grid-template-columns: minmax(14rem, 0.65fr) minmax(18rem, 1.35fr);
+    gap: var(--spacing-6);
+
+    .form-label { display: flex; align-items: center; gap: var(--spacing-2); }
+}
+
+.account-password-form {
+    padding: var(--spacing-4);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--spacing-4);
+
+    .alert,
+    .form-grid { width: 100%; }
+}
+
+.form-grid--3col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.account-sessions { display: flex; flex-direction: column; }
+.account-sessions__loading { min-height: 7rem; display: flex; align-items: center; justify-content: center; gap: var(--spacing-3); color: var(--color-text-muted); }
+.account-session {
+    min-height: 64px;
+    padding: var(--spacing-3) var(--spacing-4);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--spacing-3);
+    border-bottom: 1px solid var(--color-border);
+
+    &:last-child { border-bottom: 0; }
+    > svg { color: var(--color-text-muted); }
+    > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-sm); }
+    span { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+}
+
+.network-settings__form {
+    max-width: 52rem;
+    padding: var(--spacing-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+
+    footer { display: flex; justify-content: flex-end; }
+}
+
+.network-settings__preview {
+    padding: var(--spacing-3);
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-primary);
+    span { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+}
+
+@media (max-width: 800px) {
+    .account-preferences,
+    .form-grid--3col { grid-template-columns: 1fr; }
+    .account-section > header { align-items: flex-start; flex-wrap: wrap; }
+    .account-section > header > .btn { width: 100%; margin-left: 0; }
+    .language-selector { flex-direction: column; }
 }
 
 // Utility classes for saving states

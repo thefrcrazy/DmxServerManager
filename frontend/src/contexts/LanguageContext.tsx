@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { fr } from "../i18n/fr";
 import { en } from "../i18n/en";
 import { TranslationType } from "../i18n/fr";
@@ -27,24 +27,26 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         return (saved === "fr" || saved === "en") ? saved : "fr";
     });
 
-    const setLanguage = (lang: Language) => {
+    const setLanguage = useCallback((lang: Language) => {
         setLanguageState(lang);
         localStorage.setItem("dmx_server_manager_language", lang);
         document.documentElement.lang = lang;
-    };
+    }, []);
 
     useEffect(() => {
         document.documentElement.lang = language;
     }, [language]);
 
-    const translations = language === "fr" ? fr : en;
+    const translations = useMemo(() => language === "fr" ? fr : en, [language]);
 
-    const t = (path: string): string => {
+    const t = useCallback((path: string): string => {
         return getNestedValue(translations, path);
-    };
+    }, [translations]);
+
+    const value = useMemo(() => ({ language, setLanguage, t, translations }), [language, setLanguage, t, translations]);
 
     return (
-        <LanguageContext.Provider value={{ language, setLanguage, t, translations }}>
+        <LanguageContext.Provider value={value}>
             {children}
         </LanguageContext.Provider>
     );

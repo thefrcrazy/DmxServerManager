@@ -28,7 +28,7 @@ test("l'Owner importe, suit, applique et supprime une révision .dmxpack exacte"
     expect(upload?.headers.authorization).toBeUndefined();
 
     await page.getByRole("button", { name: /Midnight/ }).click();
-    await expect(page.locator(".catalog-revision-list").getByText("r1", { exact: true })).toBeVisible();
+    await expect(page.locator(".catalog-revision-list").getByText("Version 1", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Appliquer ce thème" }).click();
     await expect(page.getByText("Thème global appliqué.")).toBeVisible();
     await expect.poll(() => page.evaluate(() => (
@@ -54,10 +54,10 @@ test("l'Owner importe, suit, applique et supprime une révision .dmxpack exacte"
     expect(api.findRequest("PUT", "/catalog/theme")?.body).toEqual({ kind: "default" });
 
     await page.getByRole("button", { name: "Supprimer", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Supprimer la révision" });
+    const dialog = page.getByRole("dialog", { name: "Supprimer la version" });
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Supprimer", exact: true }).click();
-    await expect(page.getByText("Révision supprimée.")).toBeVisible();
+    await expect(page.getByText("Version supprimée.")).toBeVisible();
     expect(api.findRequest("DELETE", "/catalog/theme/theme-midnight/revisions/1")?.headers["x-csrf-token"])
         .toBe("e2e-csrf-token");
     await expect(page.getByText("Aucun paquet n’est installé.", { exact: true })).toBeVisible();

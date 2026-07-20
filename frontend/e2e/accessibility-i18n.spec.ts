@@ -8,15 +8,17 @@ test("le changement FR/EN est immédiat et persiste sans donnée sensible", asyn
     await page.goto("/user-settings");
 
     await expect(page.locator("html")).toHaveAttribute("lang", "fr");
-    await expect(page.getByRole("heading", { name: "Paramètres Utilisateur" })).toBeVisible();
-    await page.getByRole("button", { name: "🇺🇸 English" }).click();
+    await expect(page.getByRole("heading", { name: "Mon compte" })).toBeVisible();
+    await page.getByRole("button", { name: "English" }).click();
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
-    await expect(page.getByRole("heading", { name: "User Settings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My account" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Servers" })).toBeVisible();
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect.poll(() => api.findRequest("PATCH", "/auth/preferences")?.body).toEqual({ language: "en", accent_color: "#4f46e5" });
 
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
-    await expect(page.getByRole("heading", { name: "User Settings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My account" })).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("dmx_server_manager_language"))).toBe("en");
 });
 
@@ -32,14 +34,14 @@ test.describe("responsive", () => {
         await expect(page.getByRole("button", { name: "Menu utilisateur" })).toBeVisible();
         await expect.poll(() => api.findRequest("GET", "/health") !== undefined).toBe(true);
         await page.getByRole("button", { name: "Ouvrir la navigation" }).click();
-        await expect(page.getByRole("button", { name: "Fermer la navigation" }).first()).toBeFocused();
+        await expect(page.locator(".sidebar__mobile-close")).toBeFocused();
         await expect(page.getByRole("link", { name: "Tableau de Bord" })).toBeVisible();
         await page.keyboard.press("Tab");
         await expect(page.getByRole("link", { name: "DmxServerManager" })).toBeFocused();
         await page.keyboard.press("Tab");
         await expect(page.getByRole("link", { name: "Tableau de Bord" })).toBeFocused();
         await page.keyboard.press("Tab");
-        await expect(page.getByRole("link", { name: "Serveurs" })).toBeFocused();
+        await expect(page.getByRole("link", { name: "Serveurs", exact: true })).toBeFocused();
         await page.keyboard.press("Enter");
         await expect(page).toHaveURL(/\/servers$/);
         const dimensions = await page.evaluate(() => ({

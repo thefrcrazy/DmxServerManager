@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { type CSSProperties, useState, useRef, useEffect, useCallback } from "react";
 import { Outlet, Navigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -19,7 +19,7 @@ export default function Layout() {
     const { t } = useLanguage();
     const location = useLocation();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [sidebarWidth, setSidebarWidth] = useState(232);
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const mobileMenuRef = useRef<HTMLButtonElement>(null);
@@ -37,13 +37,10 @@ export default function Layout() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Load sidebar state from localStorage
     useEffect(() => {
-        const saved = localStorage.getItem("dmx_server_manager_sidebar_collapsed");
-        if (saved) {
-            setIsSidebarCollapsed(saved === "true");
-        }
-    }, []);
+        const saved = Number(localStorage.getItem(`dmx_sidebar_width:${user?.id}`));
+        setSidebarWidth(Number.isFinite(saved) && saved >= 200 && saved <= 400 ? saved : 232);
+    }, [user?.id]);
 
     useEffect(() => {
         if (previousPathnameRef.current === location.pathname) return;
@@ -62,11 +59,11 @@ export default function Layout() {
         return () => document.removeEventListener("keydown", closeOnEscape);
     }, [isMobileSidebarOpen]);
 
-    const toggleSidebar = () => {
-        const newState = !isSidebarCollapsed;
-        setIsSidebarCollapsed(newState);
-        localStorage.setItem("dmx_server_manager_sidebar_collapsed", String(newState));
-    };
+    const updateSidebarWidth = useCallback((width: number) => {
+        const safeWidth = Math.min(400, Math.max(200, Math.round(width)));
+        setSidebarWidth(safeWidth);
+        if (user?.id) localStorage.setItem(`dmx_sidebar_width:${user.id}`, String(safeWidth));
+    }, [user?.id]);
 
     if (isLoading) return <div className="loading-screen"><div className="spinner" /></div>;
 
@@ -75,11 +72,11 @@ export default function Layout() {
     }
 
     return (
-        <div className={`layout ${isSidebarCollapsed ? "layout--sidebar-collapsed" : ""}`}>
+        <div className="layout" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
             <Sidebar
-                isCollapsed={isSidebarCollapsed}
+                width={sidebarWidth}
                 isMobileOpen={isMobileSidebarOpen}
-                onToggle={toggleSidebar}
+                onWidthChange={updateSidebarWidth}
                 onMobileClose={() => {
                     setIsMobileSidebarOpen(false);
                     mobileMenuRef.current?.focus();
@@ -94,7 +91,7 @@ export default function Layout() {
             />}
 
             {/* Topbar */}
-            <header className={`topbar ${isSidebarCollapsed ? "topbar--sidebar-collapsed" : ""}`}>
+            <header className="topbar">
                 <div className="topbar__left">
                     <button
                         ref={mobileMenuRef}

@@ -20,7 +20,7 @@
         background-color: var(--color-bg-primary);
         height: 100vh; // Fixed height
         min-width: 0;
-        transition: margin-left var(--transition-smooth);
+        transition: none;
         display: flex;
         flex-direction: column;
         overflow: hidden; // Prevent main scroll
@@ -33,17 +33,6 @@
             margin: 0 auto;
             overflow-y: auto; // Scroll happens here
             padding: 1.75rem 2rem 3rem;
-        }
-    }
-
-    // Sidebar collapsed state - after .main-content for correct specificity
-    &--sidebar-collapsed {
-        .main-content {
-            margin-left: var(--sidebar-collapsed-width);
-        }
-
-        .topbar {
-            left: var(--sidebar-collapsed-width);
         }
     }
 

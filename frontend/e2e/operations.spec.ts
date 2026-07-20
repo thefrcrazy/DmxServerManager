@@ -1,45 +1,73 @@
 import { expect, test } from "@playwright/test";
-import { GameProfileSchema } from "../src/schemas/api";
-import { ApiMock, GAME_PROFILES, INSTANCES } from "./api.fixture";
+import { GameProfileSchema, JobSchema, UserInfoSchema } from "../src/schemas/api";
+import { ApiMock, GAME_PROFILES, INSTANCES, OWNER } from "./api.fixture";
 
-test("le chat est paginé, persistant, temps réel et protégé par CSRF", async ({ page }) => {
+test("les anciennes routes redirigent vers Activité sans appeler les API supprimées", async ({ page }) => {
     const api = new ApiMock();
     await api.install(page);
 
     await page.goto("/chat");
-    await expect(page.getByRole("heading", { name: "Chat d’équipe" })).toBeVisible();
-    await expect(page.getByText("Bienvenue dans le chat d’équipe.")).toBeVisible();
-    await expect(page.getByText("Message reçu en temps réel.")).toBeVisible();
-
-    await page.getByLabel("Nouveau message").fill("Message depuis Playwright");
-    await page.getByRole("button", { name: "Envoyer" }).click();
-    await expect(page.getByText("Message depuis Playwright")).toBeVisible();
-
-    const request = api.findRequest("POST", "/chat");
-    expect(request?.body).toEqual({ body: "Message depuis Playwright" });
-    expect(request?.headers["x-csrf-token"]).toBe("e2e-csrf-token");
-    expect(request?.headers.authorization).toBeUndefined();
-    const events = api.findRequest("GET", "/events");
-    expect(events?.search).toBe("");
-    expect(events?.headers.authorization).toBeUndefined();
-});
-
-test("le centre de notifications applique le ciblage, le filtre non lu et le temps réel", async ({ page }) => {
-    const api = new ApiMock();
-    await api.install(page);
+    await expect(page).toHaveURL(/\/activity$/);
+    await expect(page.getByRole("tab", { name: "À traiter" })).toBeVisible();
 
     await page.goto("/notifications");
-    await expect(page.getByRole("heading", { name: "Centre de notifications" })).toBeVisible();
-    await expect(page.getByText("L’opération s’est terminée avec succès.")).toBeVisible();
-    await expect(page.getByText("L’opération a échoué.")).toBeVisible();
+    await expect(page).toHaveURL(/\/activity\?tab=attention$/);
 
-    await page.getByRole("button", { name: "Tout marquer comme lu" }).click();
-    await expect(page.getByText(/^0 non lue/)).toBeVisible();
-    const readAll = api.findRequest("POST", "/notifications/read-all");
-    expect(readAll?.headers["x-csrf-token"]).toBe("e2e-csrf-token");
+    await page.goto("/jobs");
+    await expect(page).toHaveURL(/\/activity\?tab=operations$/);
+    expect(api.findRequest("GET", "/chat")).toBeUndefined();
+    expect(api.findRequest("GET", "/notifications")).toBeUndefined();
+});
 
-    await page.getByLabel("Non lues uniquement").check();
-    await expect(page.getByText("Aucune notification à afficher.")).toBeVisible();
+test("Activité sépare les incidents, les opérations et le journal réservé", async ({ page }) => {
+    const failedJob = JobSchema.parse({
+        id: "56565656-5656-4565-8565-565656565656",
+        instance_id: INSTANCES[0]!.id,
+        kind: "restart",
+        state: "failed",
+        progress: 100,
+        requested_by: OWNER.id,
+        created_at: "2026-07-13T12:00:00.000Z",
+        started_at: "2026-07-13T12:00:00.000Z",
+        finished_at: "2026-07-13T12:01:00.000Z",
+        error_code: "runtime.failed",
+        error_message: "Le processus a quitté.",
+        interaction: null,
+    });
+    const api = new ApiMock({ jobs: [failedJob] });
+    await api.install(page);
+
+    await page.goto("/activity");
+    await expect(page.getByText("Le processus a quitté.")).toHaveCount(0);
+    await page.getByRole("button", { name: /Redémarrage/ }).click();
+    await expect(page.getByText("Le processus a quitté.")).toBeVisible();
+    await page.getByRole("button", { name: "Fermer" }).click();
+
+    await page.getByRole("tab", { name: "Opérations" }).click();
+    await expect(page).toHaveURL(/tab=operations/);
+    await expect(page.getByRole("button", { name: /Redémarrage/ })).toBeVisible();
+
+    await page.getByRole("tab", { name: "Journal" }).click();
+    await expect(page.getByText("server.updated", { exact: true })).toBeVisible();
+    expect(api.findRequest("GET", "/audit")).toBeDefined();
+});
+
+test("le Journal reste masqué pour un rôle non administrateur même si une permission obsolète subsiste", async ({ page }) => {
+    const api = new ApiMock({
+        user: UserInfoSchema.parse({
+            ...OWNER,
+            id: "34343434-3434-4434-8434-343434343434",
+            username: "legacy-auditor",
+            role: "operator",
+            permissions: ["server.read", "job.read", "audit.read"],
+        }),
+    });
+    await api.install(page);
+
+    await page.goto("/activity?tab=journal");
+    await expect(page.getByRole("tab", { name: "Journal" })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "À traiter" })).toHaveAttribute("aria-selected", "true");
+    expect(api.findRequest("GET", "/audit")).toBeUndefined();
 });
 
 test("les onglets fichiers, sauvegardes et métriques sont opérationnels et pilotés par capabilities", async ({ page }) => {

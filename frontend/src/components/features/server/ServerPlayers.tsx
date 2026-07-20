@@ -11,7 +11,8 @@ interface ServerPlayersProps {
     loading: boolean;
     error: string | null;
     canReadAccess: boolean;
-    canWriteAccess: boolean;
+    canReadRawAccess: boolean;
+    canWriteRawAccess: boolean;
     isRunning: boolean;
     refreshSignal?: number;
     onRefresh: () => void;
@@ -23,7 +24,8 @@ export default function ServerPlayers({
     loading,
     error,
     canReadAccess,
-    canWriteAccess,
+    canReadRawAccess,
+    canWriteRawAccess,
     isRunning,
     refreshSignal = 0,
     onRefresh,
@@ -90,7 +92,8 @@ export default function ServerPlayers({
                         <ServerConfigFiles
                             instanceId={instanceId}
                             category="access"
-                            canWrite={canWriteAccess}
+                            canReadRaw={canReadRawAccess}
+                            canWriteRaw={canWriteRawAccess}
                             isRunning={isRunning}
                             refreshSignal={refreshSignal}
                         />

@@ -140,7 +140,7 @@ jobs:
         shell: bash
         run: |
           if ! compgen -G 'playwright.config.*' > /dev/null; then
-            echo "BLOCKING: the 1.0 release requires a Playwright configuration."
+            echo "BLOCKING: the release requires a Playwright configuration."
             exit 1
           fi
           bun -e 'const p = await Bun.file("package.json").json(); process.exit(p.scripts?.["test:e2e"] && p.devDependencies?.["@playwright/test"] ? 0 : 1)' || {
