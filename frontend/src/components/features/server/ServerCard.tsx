@@ -84,7 +84,7 @@ export default function ServerCard({ server, capabilities, playerCount, connecti
                 <div className="server-card__stats">
                     <div className="server-card__stat-row"><span>{t("servers.status")}</span><span>{stateLabel(server, t)}</span></div>
                     <div className="server-card__stat-row"><span>{t("servers.players")}</span><span>{playerCount ?? "—"}</span></div>
-                    <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version ?? "—"}</span></div>
+                    <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version ?? server.installed_build ?? "—"}</span></div>
                     <div className="server-card__stat-row server-card__stat-row--connection"><span>{t("servers.connection")}</span><MaskedConnection connection={connection} compact /></div>
                 </div>
 

@@ -1,6 +1,6 @@
 import { Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { ConnectionInfo, GameProfile, Instance } from "@/schemas/api";
 import type { ServerAction } from "@/services/api/server.client";
 import { Table, Tooltip } from "@/components/ui";
@@ -27,7 +27,6 @@ function actionPermission(action: ServerAction): string {
 
 export default function ServerList({ servers, profiles, viewMode, onAction }: ServerListProps) {
     const { t } = useLanguage();
-    const navigate = useNavigate();
     const toast = useToast();
     const { hasPermission } = usePermission();
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -80,9 +79,9 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
     }
 
     return (
-        <Table>
+        <Table className="server-list-table">
             <thead><tr>
-                <th>{t("servers.server_header")}</th><th>{t("servers.game")}</th><th>{t("servers.status")}</th><th>{t("servers.players")}</th><th>{t("servers.installed_version")}</th><th>{t("servers.connection")}</th><th>{t("servers.actions")}</th>
+                <th>{t("servers.server_header")}</th><th>{t("servers.status")}</th><th>{t("servers.players")}</th><th>{t("servers.installed_version")}</th><th>{t("servers.connection")}</th><th><span className="sr-only">{t("servers.actions")}</span></th>
             </tr></thead>
             <tbody>{servers.map((server) => {
                 const running = server.runtime_state === "running";
@@ -94,9 +93,9 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                 const canInstall = capabilities.has("install") && hasPermission("server.update_game");
                 const canStartStop = capabilities.has("lifecycle");
                 return (
-                    <tr key={server.id} onClick={() => navigate(`/servers/${server.id}`)} style={{ cursor: "pointer" }}>
+                    <tr key={server.id}>
                         <td>
-                            <div className="server-name">
+                            <Link className="server-list-table__identity" to={`/servers/${server.id}`}>
                                 <img
                                     className="server-game-thumb"
                                     src={visual.artwork}
@@ -106,25 +105,27 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                                     style={{ objectPosition: visual.artworkPosition }}
                                     onError={(event) => fallbackGameArtwork(event, visual.fallbackArtwork)}
                                 />
-                                <span>{server.name}</span>
-                            </div>
+                                <span className="server-list-table__identity-copy">
+                                    <strong>{server.name}</strong>
+                                    <small>{visual.label}</small>
+                                </span>
+                            </Link>
                         </td>
-                        <td>{visual.label}</td>
                         <td>
                             <span className={`badge badge--${running ? "success" : server.runtime_state === "crashed" ? "danger" : needsInstall ? "warning" : "info"}`}>{needsInstall ? t(`servers.installation_states.${server.installation_state}`) : t(`servers.runtime_states.${server.runtime_state}`)}</span>
                         </td>
-                        <td>{playerCounts[server.id] ?? "—"}</td>
-                        <td>{server.installed_version ?? "—"}</td>
+                        <td className="server-list-table__players">{playerCounts[server.id] ?? "—"}</td>
+                        <td><code className="server-list-table__version">{server.installed_version ?? server.installed_build ?? "—"}</code></td>
                         <td><MaskedConnection connection={connections[server.id]} compact /></td>
-                        <td onClick={(event) => event.stopPropagation()}><div className="server-actions">
+                        <td><div className="server-actions">
                             {needsInstall && canInstall ? (
-                                <Tooltip content={t("servers.install")} position="top"><button aria-label={t("servers.install")} className="btn btn--icon btn--ghost" disabled={busy} onClick={() => void run(server.id, "install")}><Download size={17} aria-hidden="true" /></button></Tooltip>
+                                <button className="btn btn--secondary server-list-table__primary-action" disabled={busy} onClick={() => void run(server.id, "install")}><Download size={16} aria-hidden="true" /><span>{t("servers.install")}</span></button>
                             ) : running && canStartStop ? <>
                                 {hasPermission("server.start") && hasPermission("server.stop") && <Tooltip content={t("servers.restart")} position="top"><button aria-label={t("servers.restart")} className="btn btn--icon btn--ghost" disabled={busy} onClick={() => void run(server.id, "restart")}><RotateCw size={17} /></button></Tooltip>}
                                 {hasPermission("server.stop") && <Tooltip content={t("servers.stop")} position="top"><button aria-label={t("servers.stop")} className="btn btn--icon btn--ghost" disabled={busy} onClick={() => void run(server.id, "stop")}><Square size={17} /></button></Tooltip>}
                                 {hasPermission("server.kill") && <Tooltip content={t("servers.kill")} position="top"><button aria-label={t("servers.kill")} className="btn btn--icon btn--ghost text-danger" disabled={busy} onClick={() => void run(server.id, "kill")}><Skull size={17} /></button></Tooltip>}
                             </> : !running && canStartStop && hasPermission("server.start") && server.installation_state === "installed" ? (
-                                <Tooltip content={t("servers.start")} position="top"><button aria-label={t("servers.start")} className="btn btn--icon btn--ghost text-success" disabled={busy || server.installation_state !== "installed"} onClick={() => void run(server.id, "start")}><Play size={18} /></button></Tooltip>
+                                <button className="btn btn--success server-list-table__primary-action" disabled={busy || server.installation_state !== "installed"} onClick={() => void run(server.id, "start")}><Play size={16} aria-hidden="true" /><span>{t("servers.start")}</span></button>
                             ) : <span className="text-muted">—</span>}
                         </div></td>
                     </tr>

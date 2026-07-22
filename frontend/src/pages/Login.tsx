@@ -71,7 +71,7 @@ export default function Login() {
                         {t("auth.login")}
                     </button>
                 </form>
-                <footer className="login-footer"><p>DmxServerManager v1.1.1</p></footer>
+                <footer className="login-footer"><p>DmxServerManager v1.1.2</p></footer>
             </section>
         </main>
     );

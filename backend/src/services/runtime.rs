@@ -56,6 +56,10 @@ const HYTALE_UPDATE_ROLLBACK: &str = ".hytale-update-rollback";
 const HYTALE_UPDATE_FAILED: &str = ".hytale-update-failed";
 const LEASE_RELEASE_TIMEOUT: Duration = Duration::from_secs(5);
 const LEASE_RELEASE_RETRY_DELAY: Duration = Duration::from_millis(100);
+const GAME_UPDATE_CHECK_TTL: Duration = Duration::from_secs(10 * 60);
+const GAME_UPDATE_CHECK_FAILURE_TTL: Duration = Duration::from_secs(60);
+const GAME_UPDATE_PROCESS_TIMEOUT: Duration = Duration::from_secs(90);
+const MAX_GAME_UPDATE_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeAction {
@@ -98,6 +102,32 @@ impl RuntimeLogSource {
 pub struct RuntimeLogLine {
     pub stream: String,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GameUpdateState {
+    NotInstalled,
+    UpToDate,
+    UpdateAvailable,
+    CheckFailed,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GameUpdateStatus {
+    pub state: GameUpdateState,
+    pub installed_version: Option<String>,
+    pub installed_build: Option<String>,
+    pub available_version: Option<String>,
+    pub available_build: Option<String>,
+    pub checked_at: String,
+}
+
+#[derive(Debug, Clone)]
+struct CachedGameUpdateStatus {
+    fingerprint: String,
+    expires_at: Instant,
+    status: GameUpdateStatus,
 }
 
 #[derive(Debug)]
@@ -257,6 +287,8 @@ struct RuntimeInner {
     actors: Mutex<HashMap<String, mpsc::Sender<ActorCommand>>>,
     actor_crash_restarts: Mutex<HashMap<String, u8>>,
     install_cancellations: Mutex<HashMap<String, ActiveInstallCancellation>>,
+    game_update_checks: Mutex<HashMap<String, CachedGameUpdateStatus>>,
+    game_update_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
 }
 
 struct ActiveInstallCancellation {
@@ -281,8 +313,207 @@ impl RuntimeManager {
                 actors: Mutex::new(HashMap::new()),
                 actor_crash_restarts: Mutex::new(HashMap::new()),
                 install_cancellations: Mutex::new(HashMap::new()),
+                game_update_checks: Mutex::new(HashMap::new()),
+                game_update_locks: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    pub async fn game_update_status(
+        &self,
+        instance_id: &str,
+    ) -> Result<GameUpdateStatus, AppError> {
+        let instance = load_runtime_instance(&self.inner.pool, instance_id)
+            .await
+            .map_err(operation_failure_to_app)?;
+        let fingerprint = game_update_fingerprint(&instance);
+        if let Some(cached) = self
+            .inner
+            .game_update_checks
+            .lock()
+            .await
+            .get(instance_id)
+            .filter(|cached| {
+                cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
+            })
+            .cloned()
+        {
+            return Ok(cached.status);
+        }
+        let check_lock = {
+            let mut locks = self.inner.game_update_locks.lock().await;
+            Arc::clone(
+                locks
+                    .entry(instance_id.to_string())
+                    .or_insert_with(|| Arc::new(Mutex::new(()))),
+            )
+        };
+        let _check_guard = check_lock.lock().await;
+        if let Some(cached) = self
+            .inner
+            .game_update_checks
+            .lock()
+            .await
+            .get(instance_id)
+            .filter(|cached| {
+                cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
+            })
+            .cloned()
+        {
+            return Ok(cached.status);
+        }
+        let status = if instance.installation_state != "installed" {
+            game_update_status_from_target(&instance, None, None, GameUpdateState::NotInstalled)
+        } else {
+            match self.resolve_game_update_target(&instance).await {
+                Ok((available_version, available_build)) => {
+                    let update_available = has_game_update(
+                        &instance,
+                        available_version.as_deref(),
+                        available_build.as_deref(),
+                    );
+                    game_update_status_from_target(
+                        &instance,
+                        available_version,
+                        available_build,
+                        if update_available {
+                            GameUpdateState::UpdateAvailable
+                        } else {
+                            GameUpdateState::UpToDate
+                        },
+                    )
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        instance_id,
+                        code = error.code,
+                        detail = ?error.internal,
+                        "game update check failed"
+                    );
+                    game_update_status_from_target(
+                        &instance,
+                        None,
+                        None,
+                        GameUpdateState::CheckFailed,
+                    )
+                }
+            }
+        };
+        let ttl = if status.state == GameUpdateState::CheckFailed {
+            GAME_UPDATE_CHECK_FAILURE_TTL
+        } else {
+            GAME_UPDATE_CHECK_TTL
+        };
+        self.inner.game_update_checks.lock().await.insert(
+            instance_id.to_string(),
+            CachedGameUpdateStatus {
+                fingerprint,
+                expires_at: Instant::now() + ttl,
+                status: status.clone(),
+            },
+        );
+        Ok(status)
+    }
+
+    async fn resolve_game_update_target(
+        &self,
+        instance: &RuntimeInstance,
+    ) -> Result<(Option<String>, Option<String>), OperationFailure> {
+        if instance.profile_id == "hytale" {
+            return self
+                .resolve_hytale_update_version(&instance.id)
+                .await
+                .map(|version| (Some(version), None));
+        }
+        if installers::native_install_supported(&instance.profile_id) {
+            let settings: Value =
+                serde_json::from_str(&instance.settings).map_err(OperationFailure::internal)?;
+            let context = InstallContext::official_with_bedrock(&self.inner.settings)
+                .map_err(installer_failure)?;
+            let target =
+                installers::native_update_target(&instance.profile_id, &settings, &context)
+                    .await
+                    .map_err(installer_failure)?;
+            return Ok((Some(target.version), target.build));
+        }
+        let steam_profile = steam_profile_for_instance(&self.inner.pool, instance).await?;
+        let (app_id, branch) = steam_install_target(instance, steam_profile.as_ref())?;
+        let build = resolve_steam_available_build(
+            &self.inner.settings.steamcmd_path,
+            app_id,
+            branch.as_deref().unwrap_or("public"),
+        )
+        .await?;
+        Ok((None, Some(build)))
+    }
+
+    async fn resolve_hytale_update_version(
+        &self,
+        instance_id: &str,
+    ) -> Result<String, OperationFailure> {
+        let checks_root = self
+            .inner
+            .settings
+            .data_dir
+            .join("runtime/update-checks")
+            .join(instance_id);
+        tokio::fs::create_dir_all(&checks_root)
+            .await
+            .map_err(OperationFailure::internal)?;
+        let session = checks_root.join(format!(".hytale-{}", uuid::Uuid::new_v4().as_simple()));
+        tokio::fs::create_dir(&session)
+            .await
+            .map_err(OperationFailure::internal)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(&session, std::fs::Permissions::from_mode(0o700))
+                .await
+                .map_err(OperationFailure::internal)?;
+        }
+        let result = async {
+            let context = InstallContext::official().map_err(installer_failure)?;
+            let plan = installers::hytale::prepare_hytale_downloader(&session, &context)
+                .await
+                .map_err(installer_failure)?;
+            if let Some(credentials) = self
+                .inner
+                .secrets
+                .get(
+                    &self.inner.pool,
+                    instance_id,
+                    installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
+                )
+                .await
+                .map_err(OperationFailure::internal)?
+            {
+                installers::hytale::write_plaintext_credentials(
+                    &plan.credential_file,
+                    &credentials,
+                )
+                .await
+                .map_err(installer_failure)?;
+            }
+            let mut command = Command::new(&plan.executable);
+            command
+                .current_dir(&plan.cwd)
+                .args(plan.version_args())
+                .env_clear()
+                .envs(filtered_tool_environment())
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let output = run_contained_capture(&mut command, GAME_UPDATE_PROCESS_TIMEOUT).await?;
+            installers::hytale::parse_printed_version(&output).ok_or_else(|| {
+                OperationFailure::new(
+                    "hytale_version_invalid",
+                    "servers.provider_response_invalid",
+                )
+            })
+        }
+        .await;
+        remove_dir_if_exists(&session).await.ok();
+        result
     }
 
     pub async fn enqueue(&self, job: Job, action: RuntimeAction) -> Result<(), AppError> {
@@ -1162,6 +1393,12 @@ impl InstanceActor {
                         )
                     };
                     let _ = self.write_install_log(&root, &outcome).await;
+                    if !error.cancelled
+                        && let Some(detail) = public_install_failure_detail(&error, &root)
+                    {
+                        let diagnostic = format!("[DMX] Technical detail: {detail}");
+                        let _ = self.write_install_log(&root, &diagnostic).await;
+                    }
                 }
                 match action {
                     RuntimeAction::Install => {
@@ -1835,7 +2072,7 @@ impl InstanceActor {
         }
 
         if let Err(error) = self
-            .mark_install_committed(None, installed_build.as_deref())
+            .mark_install_committed(None, installed_build.as_deref(), None)
             .await
         {
             if had_previous {
@@ -2008,7 +2245,8 @@ impl InstanceActor {
     async fn load_update_transaction(&self) -> Result<Option<UpdateTransaction>, OperationFailure> {
         sqlx::query_as(
             "SELECT instance_id, job_id, previous_installation_state, previous_installed_version, \
-             previous_installed_build, previous_desired_state, restart_after, phase \
+             previous_installed_build, previous_settings, previous_config_version, \
+             previous_desired_state, restart_after, phase \
              FROM instance_update_transactions WHERE instance_id = ?",
         )
         .bind(&self.instance_id)
@@ -2065,13 +2303,16 @@ impl InstanceActor {
         sqlx::query(
             "INSERT INTO instance_update_transactions \
              (instance_id, job_id, previous_installation_state, previous_installed_version, \
-              previous_installed_build, previous_desired_state, restart_after, phase, created_at, updated_at) \
-             VALUES (?, ?, 'installed', ?, ?, ?, ?, 'preparing', ?, ?)",
+              previous_installed_build, previous_settings, previous_config_version, \
+              previous_desired_state, restart_after, phase, created_at, updated_at) \
+             VALUES (?, ?, 'installed', ?, ?, ?, ?, ?, ?, 'preparing', ?, ?)",
         )
         .bind(&self.instance_id)
         .bind(&job.id)
         .bind(&instance.installed_version)
         .bind(&instance.installed_build)
+        .bind(&instance.settings)
+        .bind(instance.config_version)
         .bind(&instance.desired_state)
         .bind(restart_after)
         .bind(&now)
@@ -2081,7 +2322,8 @@ impl InstanceActor {
         .map_err(OperationFailure::internal)?;
         sqlx::query_as(
             "SELECT instance_id, job_id, previous_installation_state, previous_installed_version, \
-             previous_installed_build, previous_desired_state, restart_after, phase \
+             previous_installed_build, previous_settings, previous_config_version, \
+             previous_desired_state, restart_after, phase \
              FROM instance_update_transactions WHERE instance_id = ?",
         )
         .bind(&self.instance_id)
@@ -2220,12 +2462,16 @@ impl InstanceActor {
             .map_err(OperationFailure::internal)?;
         sqlx::query(
             "UPDATE instances SET installation_state = ?, installed_version = ?, \
-             installed_build = ?, runtime_state = 'stopped', desired_state = ?, updated_at = ? \
+             installed_build = ?, settings = COALESCE(?, settings), \
+             config_version = COALESCE(?, config_version), runtime_state = 'stopped', \
+             desired_state = ?, updated_at = ? \
              WHERE id = ?",
         )
         .bind(&transaction.previous_installation_state)
         .bind(&transaction.previous_installed_version)
         .bind(&transaction.previous_installed_build)
+        .bind(&transaction.previous_settings)
+        .bind(transaction.previous_config_version)
         .bind(desired_state.unwrap_or(&transaction.previous_desired_state))
         .bind(&now)
         .bind(&self.instance_id)
@@ -2491,7 +2737,7 @@ impl InstanceActor {
                         ));
                     }
                     return self
-                        .commit_native_install(job_id, instance, &root, &payload, installed)
+                        .commit_native_install(job_id, instance, &root, &payload, installed, None)
                         .await;
                 }
                 Err(error) => {
@@ -2741,7 +2987,7 @@ impl InstanceActor {
                 return Err(error);
             }
         };
-        self.commit_native_install(job_id, instance, &root, &payload, installed)
+        self.commit_native_install(job_id, instance, &root, &payload, installed, None)
             .await
     }
 
@@ -3063,11 +3309,21 @@ impl InstanceActor {
         .await?;
         let staging_parent = ensure_staging_parent(&root).await?;
         let staging = staging_parent.join(job_id);
-        let settings: Value =
+        let configured_settings: Value =
             serde_json::from_str(&instance.settings).map_err(OperationFailure::internal)?;
         let mut context = InstallContext::official_with_bedrock(&self.inner.settings)
             .map_err(installer_failure)?
             .with_toolchain_root(self.inner.settings.data_dir.join("toolchains/java"));
+        let settings = if instance.installed_version.is_some() || instance.installed_build.is_some()
+        {
+            installers::native_update_target(&instance.profile_id, &configured_settings, &context)
+                .await
+                .map_err(installer_failure)?
+                .settings
+        } else {
+            configured_settings.clone()
+        };
+        let resolved_settings = (settings != configured_settings).then_some(settings.clone());
         match tokio::fs::symlink_metadata(&staging).await {
             Ok(_) => {
                 match installers::resume_native_install(&instance.profile_id, &settings, &staging)
@@ -3088,7 +3344,14 @@ impl InstanceActor {
                             ));
                         }
                         let result = self
-                            .commit_native_install(job_id, instance, &root, &staging, installed)
+                            .commit_native_install(
+                                job_id,
+                                instance,
+                                &root,
+                                &staging,
+                                installed,
+                                resolved_settings.as_ref(),
+                            )
                             .await;
                         if instance.profile_id == "minecraft-bedrock" {
                             let _ = installers::remove_bedrock_upload(&root, job_id).await;
@@ -3217,7 +3480,14 @@ impl InstanceActor {
         )
         .await?;
         let result = self
-            .commit_native_install(job_id, instance, &root, &staging, installed)
+            .commit_native_install(
+                job_id,
+                instance,
+                &root,
+                &staging,
+                installed,
+                resolved_settings.as_ref(),
+            )
             .await;
         if instance.profile_id == "minecraft-bedrock" {
             let _ = installers::remove_bedrock_upload(&root, job_id).await;
@@ -3232,6 +3502,7 @@ impl InstanceActor {
         root: &Path,
         staging: &Path,
         installed: installers::InstallResult,
+        resolved_settings: Option<&Value>,
     ) -> Result<(), OperationFailure> {
         self.write_install_log(
             root,
@@ -3269,6 +3540,7 @@ impl InstanceActor {
             .mark_install_committed(
                 Some(&installed.installed_version),
                 installed.installed_build.as_deref(),
+                resolved_settings,
             )
             .await
         {
@@ -3309,19 +3581,35 @@ impl InstanceActor {
         &self,
         installed_version: Option<&str>,
         installed_build: Option<&str>,
+        resolved_settings: Option<&Value>,
     ) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().to_rfc3339();
         let mut transaction = self.inner.pool.begin().await?;
-        sqlx::query(
-            "UPDATE instances SET installation_state = 'installed', installed_version = ?, \
-             installed_build = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(installed_version)
-        .bind(installed_build)
-        .bind(&now)
-        .bind(&self.instance_id)
-        .execute(&mut *transaction)
-        .await?;
+        if let Some(settings) = resolved_settings {
+            sqlx::query(
+                "UPDATE instances SET installation_state = 'installed', installed_version = ?, \
+                 installed_build = ?, settings = ?, config_version = config_version + 1, \
+                 updated_at = ? WHERE id = ?",
+            )
+            .bind(installed_version)
+            .bind(installed_build)
+            .bind(settings.to_string())
+            .bind(&now)
+            .bind(&self.instance_id)
+            .execute(&mut *transaction)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE instances SET installation_state = 'installed', installed_version = ?, \
+                 installed_build = ?, updated_at = ? WHERE id = ?",
+            )
+            .bind(installed_version)
+            .bind(installed_build)
+            .bind(&now)
+            .bind(&self.instance_id)
+            .execute(&mut *transaction)
+            .await?;
+        }
         sqlx::query(
             "UPDATE instance_update_transactions SET phase = 'committed', updated_at = ? \
              WHERE instance_id = ?",
@@ -4697,16 +4985,7 @@ impl InstanceActor {
     }
 
     async fn instance(&self) -> Result<RuntimeInstance, OperationFailure> {
-        sqlx::query_as(
-            "SELECT id, profile_id, profile_revision, settings, installation_state, installed_version, \
-             installed_build, desired_state, runtime_state, auto_start, watchdog_enabled \
-             FROM instances WHERE id = ?",
-        )
-        .bind(&self.instance_id)
-        .fetch_optional(&self.inner.pool)
-        .await
-        .map_err(OperationFailure::internal)?
-        .ok_or_else(|| OperationFailure::new("server_not_found", "servers.not_found"))
+        load_runtime_instance(&self.inner.pool, &self.instance_id).await
     }
 
     async fn instance_root(&self) -> Result<PathBuf, OperationFailure> {
@@ -4857,6 +5136,7 @@ struct RuntimeInstance {
     profile_id: String,
     profile_revision: i64,
     settings: String,
+    config_version: i64,
     installation_state: String,
     installed_version: Option<String>,
     installed_build: Option<String>,
@@ -4866,6 +5146,100 @@ struct RuntimeInstance {
     watchdog_enabled: bool,
 }
 
+async fn load_runtime_instance(
+    pool: &DbPool,
+    instance_id: &str,
+) -> Result<RuntimeInstance, OperationFailure> {
+    sqlx::query_as(
+        "SELECT id, profile_id, profile_revision, settings, config_version, installation_state, installed_version, \
+         installed_build, desired_state, runtime_state, auto_start, watchdog_enabled \
+         FROM instances WHERE id = ?",
+    )
+    .bind(instance_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(OperationFailure::internal)?
+    .ok_or_else(|| OperationFailure::new("server_not_found", "servers.not_found"))
+}
+
+fn game_update_fingerprint(instance: &RuntimeInstance) -> String {
+    format!(
+        "{}\0{}\0{}\0{}\0{}",
+        instance.profile_id,
+        instance.settings,
+        instance.installation_state,
+        instance.installed_version.as_deref().unwrap_or_default(),
+        instance.installed_build.as_deref().unwrap_or_default(),
+    )
+}
+
+fn game_update_status_from_target(
+    instance: &RuntimeInstance,
+    available_version: Option<String>,
+    available_build: Option<String>,
+    state: GameUpdateState,
+) -> GameUpdateStatus {
+    GameUpdateStatus {
+        state,
+        installed_version: instance.installed_version.clone(),
+        installed_build: instance.installed_build.clone(),
+        available_version,
+        available_build,
+        checked_at: chrono::Utc::now().to_rfc3339(),
+    }
+}
+
+fn has_game_update(
+    instance: &RuntimeInstance,
+    available_version: Option<&str>,
+    available_build: Option<&str>,
+) -> bool {
+    available_version
+        .zip(instance.installed_version.as_deref())
+        .is_some_and(|(available, installed)| is_newer_release(available, installed))
+        || available_build
+            .zip(instance.installed_build.as_deref())
+            .is_some_and(|(available, installed)| {
+                let Ok(available) = available.parse::<u128>() else {
+                    return false;
+                };
+                let Ok(installed) = installed.parse::<u128>() else {
+                    return false;
+                };
+                available > installed
+            })
+}
+
+fn is_newer_release(available: &str, installed: &str) -> bool {
+    if let (Ok(available), Ok(installed)) = (
+        semver::Version::parse(available.trim_start_matches(['v', 'V'])),
+        semver::Version::parse(installed.trim_start_matches(['v', 'V'])),
+    ) {
+        return available > installed;
+    }
+    let Some(mut available) = numeric_release_components(available) else {
+        return false;
+    };
+    let Some(mut installed) = numeric_release_components(installed) else {
+        return false;
+    };
+    let width = available.len().max(installed.len());
+    available.resize(width, 0);
+    installed.resize(width, 0);
+    available > installed
+}
+
+fn numeric_release_components(value: &str) -> Option<Vec<u64>> {
+    let value = value.trim_start_matches(['v', 'V']);
+    let core = value.split(['-', '+']).next()?;
+    if core.is_empty() {
+        return None;
+    }
+    core.split('.')
+        .map(|component| component.parse::<u64>().ok())
+        .collect()
+}
+
 #[derive(Debug, Clone, FromRow)]
 struct UpdateTransaction {
     instance_id: String,
@@ -4873,6 +5247,8 @@ struct UpdateTransaction {
     previous_installation_state: String,
     previous_installed_version: Option<String>,
     previous_installed_build: Option<String>,
+    previous_settings: Option<String>,
+    previous_config_version: Option<i64>,
     previous_desired_state: String,
     restart_after: bool,
     phase: String,
@@ -5149,6 +5525,50 @@ fn installer_failure(error: installers::InstallerError) -> OperationFailure {
         cancelled: false,
         deferred: false,
     }
+}
+
+fn public_install_failure_detail(error: &OperationFailure, instance_root: &Path) -> Option<String> {
+    if !matches!(
+        error.code,
+        "archive_extract_failed"
+            | "archive_invalid"
+            | "archive_open_failed"
+            | "archive_worker_failed"
+            | "hytale_archive_read_failed"
+            | "hytale_layout_invalid"
+            | "hytale_preserve_failed"
+            | "install_artifact_invalid"
+            | "install_artifact_missing"
+            | "install_artifact_read_failed"
+            | "install_artifact_worker_failed"
+            | "install_metadata_failed"
+            | "install_metadata_invalid"
+            | "install_metadata_missing"
+            | "install_metadata_worker_failed"
+            | "install_tree_invalid"
+            | "install_tree_worker_failed"
+            | "staging_create_failed"
+            | "staging_read_failed"
+    ) {
+        return None;
+    }
+    let detail = error.internal.as_deref()?;
+    let instance_root = instance_root.to_string_lossy();
+    let redacted = detail.replace(instance_root.as_ref(), "<instance>");
+    let mut sanitized = redacted
+        .chars()
+        .map(|character| {
+            if matches!(character, '\n' | '\r' | '\t') {
+                ' '
+            } else {
+                character
+            }
+        })
+        .filter(|character| !character.is_control())
+        .take(512)
+        .collect::<String>();
+    sanitized = sanitized.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!sanitized.is_empty()).then_some(sanitized)
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -5721,6 +6141,180 @@ fn steam_install_target(
                 )
             }),
     }
+}
+
+async fn resolve_steam_available_build(
+    steamcmd_path: &Path,
+    app_id: u32,
+    branch: &str,
+) -> Result<String, OperationFailure> {
+    let mut command = Command::new(steamcmd_path);
+    command
+        .arg("+login")
+        .arg("anonymous")
+        .arg("+app_info_update")
+        .arg("1")
+        .arg("+app_info_print")
+        .arg(app_id.to_string())
+        .arg("+quit")
+        .env_clear()
+        .envs(filtered_tool_environment())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = run_contained_capture(&mut command, GAME_UPDATE_PROCESS_TIMEOUT).await?;
+    parse_steam_branch_build(&output, branch).ok_or_else(|| {
+        OperationFailure::new(
+            "steam_update_metadata_invalid",
+            "servers.provider_response_invalid",
+        )
+    })
+}
+
+fn parse_steam_branch_build(output: &str, branch: &str) -> Option<String> {
+    if branch.is_empty()
+        || branch.len() > 64
+        || !branch
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+    {
+        return None;
+    }
+    let branches = vdf_object(output, "branches")?;
+    let branch = vdf_object(branches, branch)?;
+    Regex::new(r#"(?m)^\s*"buildid"\s+"([0-9]{1,20})"\s*$"#)
+        .ok()?
+        .captures(branch)
+        .and_then(|captures| captures.get(1))
+        .map(|value| value.as_str().to_string())
+}
+
+fn vdf_object<'a>(input: &'a str, key: &str) -> Option<&'a str> {
+    let key = format!("\"{key}\"");
+    let key_start = input.find(&key)?;
+    let object_start = input[key_start + key.len()..].find('{')? + key_start + key.len();
+    let bytes = input.as_bytes();
+    let mut depth = 0_u32;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, byte) in bytes.iter().copied().enumerate().skip(object_start) {
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                quoted = false;
+            }
+            continue;
+        }
+        if byte == b'"' {
+            quoted = true;
+        } else if byte == b'{' {
+            depth = depth.saturating_add(1);
+        } else if byte == b'}' {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return input.get(object_start + 1..index);
+            }
+        }
+    }
+    None
+}
+
+async fn run_contained_capture(
+    command: &mut Command,
+    timeout: Duration,
+) -> Result<String, OperationFailure> {
+    let spawned = spawn_contained(command).map_err(|error| match error {
+        ContainedSpawnError::Spawn(error) => OperationFailure::with_internal(
+            "update_check_start_failed",
+            "servers.update_check_unavailable",
+            error,
+        ),
+        ContainedSpawnError::Containment(error) => OperationFailure::with_internal(
+            "process_containment_failed",
+            "servers.process_containment_failed",
+            error,
+        ),
+    })?;
+    let mut child = spawned.child;
+    #[cfg(windows)]
+    let windows_job = spawned.windows_job;
+    let pid = child.id().ok_or_else(|| {
+        OperationFailure::new(
+            "update_check_start_failed",
+            "servers.update_check_unavailable",
+        )
+    })?;
+    #[cfg(windows)]
+    let job_handle = Some(windows_job.handle);
+    #[cfg(not(windows))]
+    let job_handle = None;
+    let stdout = child
+        .stdout
+        .take()
+        .map(|stdout| tokio::spawn(read_bounded_process_output(stdout)));
+    let stderr = child
+        .stderr
+        .take()
+        .map(|stderr| tokio::spawn(read_bounded_process_output(stderr)));
+    let status = tokio::select! {
+        status = child.wait() => status.map_err(OperationFailure::internal)?,
+        () = tokio::time::sleep(timeout) => {
+            let _ = terminate_installer(&mut child, pid, job_handle).await;
+            return Err(OperationFailure::new(
+                "update_check_timeout",
+                "servers.update_check_unavailable",
+            ));
+        }
+    };
+    let stdout = match stdout {
+        Some(task) => task
+            .await
+            .map_err(OperationFailure::internal)?
+            .map_err(OperationFailure::internal)?,
+        None => Vec::new(),
+    };
+    let stderr = match stderr {
+        Some(task) => task
+            .await
+            .map_err(OperationFailure::internal)?
+            .map_err(OperationFailure::internal)?,
+        None => Vec::new(),
+    };
+    if !status.success() {
+        return Err(OperationFailure::with_internal(
+            "update_check_failed",
+            "servers.update_check_unavailable",
+            format!("provider checker exited with {:?}", status.code()),
+        ));
+    }
+    let mut output = String::from_utf8_lossy(&stdout).into_owned();
+    if !stderr.is_empty() {
+        output.push('\n');
+        output.push_str(&String::from_utf8_lossy(&stderr));
+    }
+    Ok(output)
+}
+
+async fn read_bounded_process_output<R>(mut reader: R) -> std::io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut captured = Vec::new();
+    let mut chunk = [0_u8; 8 * 1024];
+    loop {
+        let read = reader.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+        let remaining = MAX_GAME_UPDATE_OUTPUT_BYTES.saturating_sub(captured.len());
+        if remaining > 0 {
+            captured.extend_from_slice(&chunk[..read.min(remaining)]);
+        }
+    }
+    Ok(captured)
 }
 
 async fn read_steam_build_id(
@@ -7791,6 +8385,122 @@ impl Drop for WindowsJob {
 mod tests {
     use super::*;
 
+    #[test]
+    fn steam_update_parser_selects_the_requested_branch_build() {
+        let output = r#"
+            "branches"
+            {
+                "public"
+                {
+                    "buildid" "123456"
+                }
+                "preview"
+                {
+                    "buildid" "987654"
+                }
+            }
+        "#;
+        assert_eq!(
+            parse_steam_branch_build(output, "public").as_deref(),
+            Some("123456")
+        );
+        assert_eq!(
+            parse_steam_branch_build(output, "preview").as_deref(),
+            Some("987654")
+        );
+        assert!(parse_steam_branch_build(output, "../public").is_none());
+        assert!(parse_steam_branch_build(output, "missing").is_none());
+    }
+
+    #[test]
+    fn game_update_status_reports_only_a_real_target_difference() {
+        let instance = RuntimeInstance {
+            id: uuid::Uuid::new_v4().to_string(),
+            profile_id: "hytale".to_string(),
+            profile_revision: 1,
+            settings: "{}".to_string(),
+            config_version: 1,
+            installation_state: "installed".to_string(),
+            installed_version: Some("0.5.7".to_string()),
+            installed_build: None,
+            desired_state: "stopped".to_string(),
+            runtime_state: "stopped".to_string(),
+            auto_start: false,
+            watchdog_enabled: true,
+        };
+        assert!(!has_game_update(&instance, Some("0.5.7"), None));
+        assert!(has_game_update(&instance, Some("0.5.8"), None));
+        assert!(!has_game_update(&instance, Some("0.5.6"), None));
+        assert!(!has_game_update(&instance, Some("unknown"), None));
+        assert!(!has_game_update(&instance, None, None));
+
+        let date_release = RuntimeInstance {
+            installed_version: Some("2026.06.15-abcd".to_string()),
+            ..instance
+        };
+        assert!(has_game_update(
+            &date_release,
+            Some("2026.07.01-efgh"),
+            None
+        ));
+        assert!(!has_game_update(
+            &date_release,
+            Some("2026.06.14-efgh"),
+            None
+        ));
+    }
+
+    #[tokio::test]
+    async fn committed_native_update_persists_the_resolved_version_settings() {
+        let (_root, actor, _user_id) =
+            runtime_actor_fixture("minecraft-java-vanilla", "stopped").await;
+        let resolved = serde_json::json!({
+            "version": "1.22.0",
+            "eula_accepted": true,
+            "max_memory_mb": 8192
+        });
+
+        actor
+            .mark_install_committed(Some("1.22.0"), None, Some(&resolved))
+            .await
+            .unwrap();
+
+        let (stored, config_version): (String, i64) =
+            sqlx::query_as("SELECT settings, config_version FROM instances WHERE id = ?")
+                .bind(&actor.instance_id)
+                .fetch_one(&actor.inner.pool)
+                .await
+                .unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&stored).unwrap(), resolved);
+        assert_eq!(config_version, 2);
+        assert_eq!(
+            actor.instance().await.unwrap().installed_version.as_deref(),
+            Some("1.22.0")
+        );
+    }
+
+    #[test]
+    fn public_install_failure_detail_is_bounded_and_redacts_the_instance_path() {
+        let error = OperationFailure::with_internal(
+            "install_metadata_failed",
+            "servers.installation_failed",
+            "/data/instances/example/game/.dmx-install.json\nFile exists (os error 17)",
+        );
+        assert_eq!(
+            public_install_failure_detail(&error, Path::new("/data/instances/example")).as_deref(),
+            Some("<instance>/game/.dmx-install.json File exists (os error 17)")
+        );
+        let private_error = OperationFailure::with_internal(
+            "hytale_credentials_failed",
+            "servers.installation_failed",
+            "secret-bearing provider detail",
+        );
+        assert!(
+            public_install_failure_detail(&private_error, Path::new("/data/instances/example"))
+                .is_none()
+        );
+    }
+
     async fn runtime_actor_fixture(
         profile_id: &str,
         desired_state: &str,
@@ -7862,6 +8572,8 @@ mod tests {
             actors: Mutex::new(HashMap::new()),
             actor_crash_restarts: Mutex::new(HashMap::new()),
             install_cancellations: Mutex::new(HashMap::new()),
+            game_update_checks: Mutex::new(HashMap::new()),
+            game_update_locks: Mutex::new(HashMap::new()),
         });
         let (sender, _receiver) = mpsc::channel(ACTOR_QUEUE_SIZE);
         let actor = InstanceActor {
@@ -8600,6 +9312,12 @@ mod tests {
     async fn committed_update_rolls_back_tree_and_metadata_after_readiness_failure() {
         let (_temporary, mut actor, user_id) = runtime_actor_fixture("hytale", "running").await;
         let job = update_job(&actor, &user_id).await;
+        sqlx::query("UPDATE instances SET settings = ?, config_version = 4 WHERE id = ?")
+            .bind(serde_json::json!({"version": "1.0.0"}).to_string())
+            .bind(&actor.instance_id)
+            .execute(&actor.inner.pool)
+            .await
+            .unwrap();
         let instance = actor.instance().await.unwrap();
         actor
             .begin_or_load_update_transaction(&job, &instance, true)
@@ -8619,12 +9337,17 @@ mod tests {
             .await
             .unwrap();
         actor
-            .mark_install_committed(Some("2.0.0"), Some("200"))
+            .mark_install_committed(
+                Some("2.0.0"),
+                Some("200"),
+                Some(&serde_json::json!({"version": "2.0.0"})),
+            )
             .await
             .unwrap();
         let transaction: UpdateTransaction = sqlx::query_as(
             "SELECT instance_id, job_id, previous_installation_state, previous_installed_version, \
-             previous_installed_build, previous_desired_state, restart_after, phase \
+             previous_installed_build, previous_settings, previous_config_version, \
+             previous_desired_state, restart_after, phase \
              FROM instance_update_transactions WHERE instance_id = ?",
         )
         .bind(&actor.instance_id)
@@ -8644,6 +9367,17 @@ mod tests {
         let recovered = actor.instance().await.unwrap();
         assert_eq!(recovered.installed_version.as_deref(), Some("1.0.0"));
         assert_eq!(recovered.installed_build.as_deref(), Some("100"));
+        let (settings, config_version): (String, i64) =
+            sqlx::query_as("SELECT settings, config_version FROM instances WHERE id = ?")
+                .bind(&actor.instance_id)
+                .fetch_one(&actor.inner.pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&settings).unwrap(),
+            serde_json::json!({"version": "1.0.0"})
+        );
+        assert_eq!(config_version, 4);
         let phase: String = sqlx::query_scalar(
             "SELECT phase FROM instance_update_transactions WHERE instance_id = ?",
         )
@@ -8678,7 +9412,7 @@ mod tests {
             .await
             .unwrap();
         actor
-            .mark_install_committed(Some("2.0.0"), Some("200"))
+            .mark_install_committed(Some("2.0.0"), Some("200"), None)
             .await
             .unwrap();
 
@@ -8723,7 +9457,7 @@ mod tests {
             .unwrap()
             .unwrap();
         actor
-            .mark_install_committed(Some("2.0.0"), Some("200"))
+            .mark_install_committed(Some("2.0.0"), Some("200"), None)
             .await
             .unwrap();
         assert!(
@@ -8774,7 +9508,7 @@ mod tests {
             .await
             .unwrap();
         actor
-            .mark_install_committed(Some("2.0.0"), Some("200"))
+            .mark_install_committed(Some("2.0.0"), Some("200"), None)
             .await
             .unwrap();
         sqlx::query("UPDATE instances SET desired_state = 'stopped' WHERE id = ?")
@@ -8915,7 +9649,7 @@ mod tests {
             .await
             .unwrap();
         actor
-            .mark_install_committed(Some("2.0.0"), Some("200"))
+            .mark_install_committed(Some("2.0.0"), Some("200"), None)
             .await
             .unwrap();
         actor.register_install_cancellation(&job.id).await;
@@ -8992,7 +9726,7 @@ mod tests {
             .await
             .unwrap();
         actor
-            .mark_install_committed(Some("2.0.0"), Some("200"))
+            .mark_install_committed(Some("2.0.0"), Some("200"), None)
             .await
             .unwrap();
         jobs::cancel(&actor.inner.pool, &job.id, "manager_restarted")
@@ -9009,7 +9743,7 @@ mod tests {
             b"version-n"
         );
         let recovered: RuntimeInstance = sqlx::query_as(
-            "SELECT id, profile_id, profile_revision, settings, installation_state, \
+            "SELECT id, profile_id, profile_revision, settings, config_version, installation_state, \
              installed_version, installed_build, desired_state, runtime_state, auto_start, \
              watchdog_enabled FROM instances WHERE id = ?",
         )
@@ -9730,6 +10464,7 @@ mod tests {
             profile_id: "palworld".into(),
             profile_revision: 1,
             settings: "{}".into(),
+            config_version: 1,
             installation_state: "installed".into(),
             installed_version: None,
             installed_build: None,
@@ -9792,6 +10527,7 @@ mod tests {
             profile_id: "steam-fixture".into(),
             profile_revision: 1,
             settings: "{}".into(),
+            config_version: 1,
             installation_state: "installed".into(),
             installed_version: None,
             installed_build: None,

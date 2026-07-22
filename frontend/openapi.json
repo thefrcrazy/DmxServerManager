@@ -1390,6 +1390,56 @@
         ],
         "type": "object"
       },
+      "GameUpdateStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "available_build": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "available_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "installed_build": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "installed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "enum": [
+              "not_installed",
+              "up_to_date",
+              "update_available",
+              "check_failed"
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "installed_version",
+          "installed_build",
+          "available_version",
+          "available_build",
+          "checked_at"
+        ],
+        "type": "object"
+      },
       "HealthResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3890,7 +3940,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.1.1"
+    "version": "1.1.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8759,6 +8809,45 @@
               }
             },
             "description": "Encrypted secret stored; value is never returned."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/servers/{id}/update-status": {
+      "get": {
+        "operationId": "getServerUpdateStatus",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameUpdateStatus"
+                }
+              }
+            },
+            "description": "Provider-backed update availability for the installed game."
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

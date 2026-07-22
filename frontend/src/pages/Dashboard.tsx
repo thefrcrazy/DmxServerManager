@@ -87,7 +87,7 @@ export default function Dashboard() {
                                 return <Link key={server.id} to={`/servers/${server.id}`} className="health-row">
                                     <span className={`health-row__dot health-row__dot--${server.runtime_state}`} aria-hidden="true" />
                                     <span className="health-row__identity"><strong>{server.name}</strong><small>{visual.label}</small></span>
-                                    <span className="health-row__version">{server.installed_version ?? "—"}</span>
+                                    <span className="health-row__version">{server.installed_version ?? server.installed_build ?? "—"}</span>
                                     <span className={`badge badge--${server.runtime_state === "running" ? "success" : server.runtime_state === "crashed" ? "danger" : "neutral"}`}>{t(`servers.runtime_states.${server.runtime_state}`)}</span>
                                 </Link>;
                             })}

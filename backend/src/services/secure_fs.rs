@@ -190,8 +190,8 @@ where
     E: std::fmt::Display,
 {
     let relative = RelativePath::parse(relative, false)?;
-    let (temporary, destination, prepared_file) = prepare_write(root, &relative).await?;
-    let mut cleanup = TemporaryWriteCleanup(Some(temporary.clone()));
+    let (temporary, destination, prepared_file, mut cleanup) =
+        prepare_write(root, &relative).await?;
     // Declared after `cleanup` so cancellation drops the open handle before the synchronous
     // best-effort removal in `TemporaryWriteCleanup` (required on Windows).
     let mut file = prepared_file;
@@ -267,8 +267,8 @@ pub(crate) async fn write_declared_bytes(
         .await
         .map_err(|error| AppError::Internal(error.to_string()))??;
 
-    let (temporary, destination, prepared_file) = prepare_write(root, &relative).await?;
-    let mut cleanup = TemporaryWriteCleanup(Some(temporary.clone()));
+    let (temporary, destination, prepared_file, mut cleanup) =
+        prepare_write(root, &relative).await?;
     let mut file = prepared_file;
     if let Err(error) = tokio::io::AsyncWriteExt::write_all(&mut file, &contents).await {
         drop(file);
@@ -473,10 +473,10 @@ fn list_directory_blocking(
 async fn prepare_write(
     root: &Path,
     relative: &RelativePath,
-) -> Result<(PathBuf, PathBuf, tokio::fs::File), AppError> {
+) -> Result<(PathBuf, PathBuf, tokio::fs::File, TemporaryWriteCleanup), AppError> {
     let root = root.to_path_buf();
     let relative = relative.clone();
-    let (temporary, destination, file) = tokio::task::spawn_blocking(move || {
+    let (temporary, destination, file, cleanup) = tokio::task::spawn_blocking(move || {
         let destination = resolve_for_create(&root, &relative)?;
         if let Ok(metadata) = fs::symlink_metadata(&destination) {
             if !metadata.is_file() || is_link_like(&metadata) {
@@ -504,11 +504,17 @@ async fn prepare_write(
             options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
         }
         let file = options.open(&temporary)?;
-        Ok((temporary, destination, file))
+        let cleanup = TemporaryWriteCleanup(Some(temporary.clone()));
+        Ok((temporary, destination, file, cleanup))
     })
     .await
     .map_err(|error| AppError::Internal(error.to_string()))??;
-    Ok((temporary, destination, tokio::fs::File::from_std(file)))
+    Ok((
+        temporary,
+        destination,
+        tokio::fs::File::from_std(file),
+        cleanup,
+    ))
 }
 
 async fn replace_regular_file(temporary: &Path, destination: &Path) -> Result<(), AppError> {

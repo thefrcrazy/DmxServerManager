@@ -133,6 +133,7 @@ test("la mise à jour manuelle affiche la version installée et crée un job", a
     });
     const api = new ApiMock({
         profiles: GAME_PROFILES.map((profile) => profile.id === updateProfile.id ? updateProfile : profile),
+        updateAvailable: true,
     });
     await api.install(page);
 
@@ -145,6 +146,27 @@ test("la mise à jour manuelle affiche la version installée et crée un job", a
 
     await expect(page).toHaveURL(/\/servers\/22222222-2222-4222-8222-222222222222\?tab=console&job=44444444-4444-4444-8444-444444444444/);
     expect(api.findRequest("POST", "/servers/22222222-2222-4222-8222-222222222222/actions/install")).toBeDefined();
+});
+
+test("le bouton de mise à jour reste absent quand le jeu est à jour", async ({ page }) => {
+    const minecraft = GAME_PROFILES.find((profile) => profile.id === "minecraft-java-vanilla")!;
+    const profile = GameProfileSchema.parse({
+        ...minecraft,
+        capabilities: ["settings", "install", "lifecycle", "console", "files", "backups", "metrics"],
+    });
+    const api = new ApiMock({
+        profiles: GAME_PROFILES.map((candidate) => candidate.id === profile.id ? profile : candidate),
+        updateAvailable: false,
+    });
+    await api.install(page);
+
+    await page.goto("/servers/22222222-2222-4222-8222-222222222222");
+
+    await expect.poll(() => api.findRequest(
+        "GET",
+        "/servers/22222222-2222-4222-8222-222222222222/update-status",
+    )).toBeDefined();
+    await expect(page.getByRole("button", { name: "Mettre à jour le jeu" })).toHaveCount(0);
 });
 
 test("un refresh restaure l’interaction Bedrock persistée puis reprend le même job avec SHA-256", async ({ page }) => {

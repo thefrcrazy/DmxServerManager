@@ -474,6 +474,7 @@ export interface ApiMockOptions {
     jobs?: Job[];
     catalogPackages?: CatalogPackage[];
     activeTheme?: ActiveTheme;
+    updateAvailable?: boolean;
 }
 
 function requestBody(request: Request): unknown {
@@ -515,11 +516,13 @@ export class ApiMock {
     needsSetup: boolean;
     authenticated: boolean;
     readonly hytaleDeviceAuthorization: boolean;
+    readonly updateAvailable: boolean;
 
     constructor(options: ApiMockOptions = {}) {
         this.authenticated = options.authenticated ?? true;
         this.needsSetup = options.needsSetup ?? false;
         this.hytaleDeviceAuthorization = options.hytaleDeviceAuthorization ?? false;
+        this.updateAvailable = options.updateAvailable ?? false;
         this.user = UserInfoSchema.parse(options.user ?? OWNER);
         this.profiles = (options.profiles ?? GAME_PROFILES).map((profile) => GameProfileSchema.parse(profile));
         for (const profile of this.profiles) {
@@ -604,7 +607,7 @@ export class ApiMock {
             return this.json(route, 200, { needs_setup: this.needsSetup });
         }
         if (path === "/health" && request.method() === "GET") {
-            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.1.1" });
+            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.1.2" });
         }
         if (path === "/auth/setup" && request.method() === "POST") {
             if (!this.needsSetup) return this.problem(route, 409, "Setup already completed");
@@ -1472,6 +1475,28 @@ export class ApiMock {
                 connection_type: instance.profile_id === "valheim" ? "steam" : "direct",
                 help_key: instance.profile_id === "valheim" ? "connection.help.steam" : "connection.help.minecraft_java",
                 endpoints,
+            });
+        }
+
+        const updateStatusMatch = path.match(/^\/servers\/([0-9a-f-]+)\/update-status$/i);
+        if (updateStatusMatch && request.method() === "GET") {
+            const instance = this.instances.find((candidate) => candidate.id === updateStatusMatch[1]);
+            if (!instance) return this.problem(route, 404, "Instance introuvable");
+            const availableVersion = this.updateAvailable && instance.installed_version
+                ? `${instance.installed_version}.next`
+                : instance.installed_version;
+            const availableBuild = this.updateAvailable && !instance.installed_version && instance.installed_build
+                ? `${instance.installed_build}1`
+                : instance.installed_build;
+            return this.json(route, 200, {
+                state: instance.installation_state !== "installed"
+                    ? "not_installed"
+                    : this.updateAvailable ? "update_available" : "up_to_date",
+                installed_version: instance.installed_version,
+                installed_build: instance.installed_build,
+                available_version: availableVersion,
+                available_build: availableBuild,
+                checked_at: NOW,
             });
         }
 

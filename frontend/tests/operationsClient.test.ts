@@ -113,6 +113,30 @@ describe("clients opérationnels", () => {
         if (response.success) expect(response.data.items).toHaveLength(2);
     });
 
+    test("n’affiche une mise à jour de jeu qu’après confirmation du fournisseur", async () => {
+        let input = "";
+        globalThis.fetch = async (requestInput) => {
+            input = String(requestInput);
+            return Response.json({
+                state: "update_available",
+                installed_version: "0.5.6",
+                installed_build: null,
+                available_version: "0.5.7",
+                available_build: null,
+                checked_at: "2026-07-22T15:00:00Z",
+            });
+        };
+
+        const response = await new ServerClient().getUpdateStatus(SERVER_ID);
+
+        expect(response.success).toBe(true);
+        expect(input).toBe(`/api/v1/servers/${SERVER_ID}/update-status`);
+        if (response.success) {
+            expect(response.data.state).toBe("update_available");
+            expect(response.data.available_version).toBe("0.5.7");
+        }
+    });
+
     test("met une configuration native en file avec son hash de concurrence", async () => {
         let input = "";
         let captured: RequestInit | undefined;

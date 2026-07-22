@@ -350,6 +350,13 @@ pub struct ProfileVersionCatalog {
     pub loader_versions: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct NativeUpdateTarget {
+    pub settings: serde_json::Value,
+    pub version: String,
+    pub build: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct CatalogMinecraftManifest {
     versions: Vec<CatalogMinecraftVersion>,
@@ -412,6 +419,16 @@ pub async fn profile_version_catalog(
     requested_game_version: Option<&str>,
     loader: Option<&str>,
 ) -> Result<ProfileVersionCatalog, InstallerError> {
+    let context = InstallContext::official()?;
+    profile_version_catalog_with_context(profile_id, requested_game_version, loader, &context).await
+}
+
+async fn profile_version_catalog_with_context(
+    profile_id: &str,
+    requested_game_version: Option<&str>,
+    loader: Option<&str>,
+    context: &InstallContext,
+) -> Result<ProfileVersionCatalog, InstallerError> {
     let requested_profile_id = profile_id;
     let logical_profile_id = if profile_id == "minecraft-java" {
         let loader = loader.unwrap_or("vanilla");
@@ -426,12 +443,11 @@ pub async fn profile_version_catalog(
             "profiles.catalog_unavailable",
         ));
     }
-    let context = InstallContext::official()?;
     let game_versions = match profile_id {
-        "minecraft-bedrock" => vec![bedrock::current_official_version(&context).await?],
+        "minecraft-bedrock" => vec![bedrock::current_official_version(context).await?],
         "minecraft-java-fabric" => stable_game_versions(
             read_json::<Vec<CatalogGameVersion>>(
-                &context,
+                context,
                 &context
                     .sources
                     .fabric_meta_base
@@ -444,7 +460,7 @@ pub async fn profile_version_catalog(
         ),
         "minecraft-java-quilt" => stable_game_versions(
             read_json::<Vec<CatalogGameVersion>>(
-                &context,
+                context,
                 &context
                     .sources
                     .quilt_meta_base
@@ -455,7 +471,7 @@ pub async fn profile_version_catalog(
         ),
         "minecraft-java-paper" => {
             let project: PaperProjectCatalog = read_json(
-                &context,
+                context,
                 &context
                     .sources
                     .paper_api_base
@@ -474,7 +490,7 @@ pub async fn profile_version_catalog(
                 .into_values()
                 .flatten()
                 .collect::<BTreeSet<_>>();
-            mojang_release_versions(&context)
+            mojang_release_versions(context)
                 .await?
                 .into_iter()
                 .filter(|version| supported.contains(version))
@@ -482,7 +498,7 @@ pub async fn profile_version_catalog(
         }
         "minecraft-java-purpur" => {
             let project: PurpurProjectCatalog = read_json(
-                &context,
+                context,
                 &context
                     .sources
                     .purpur_api_base
@@ -499,15 +515,15 @@ pub async fn profile_version_catalog(
                 ));
             }
             let supported = project.versions.into_iter().collect::<BTreeSet<_>>();
-            mojang_release_versions(&context)
+            mojang_release_versions(context)
                 .await?
                 .into_iter()
                 .filter(|version| supported.contains(version))
                 .collect()
         }
         "minecraft-java-forge" => {
-            let loaders = forge_catalog_versions(&context).await?;
-            mojang_release_versions(&context)
+            let loaders = forge_catalog_versions(context).await?;
+            mojang_release_versions(context)
                 .await?
                 .into_iter()
                 .filter(|game| {
@@ -518,8 +534,8 @@ pub async fn profile_version_catalog(
                 .collect()
         }
         "minecraft-java-neoforge" => {
-            let loaders = neoforge_catalog_versions(&context).await?;
-            mojang_release_versions(&context)
+            let loaders = neoforge_catalog_versions(context).await?;
+            mojang_release_versions(context)
                 .await?
                 .into_iter()
                 .filter(|game| {
@@ -530,7 +546,7 @@ pub async fn profile_version_catalog(
                 .collect()
         }
         "minecraft-java-vanilla" | "minecraft-java-spigot" => {
-            mojang_release_versions(&context).await?
+            mojang_release_versions(context).await?
         }
         _ => {
             return Err(InstallerError::new(
@@ -551,7 +567,7 @@ pub async fn profile_version_catalog(
                 .fabric_meta_base
                 .join(&format!("versions/loader/{game}"))
                 .map_err(|error| InstallerError::internal("fabric_catalog_url_failed", error))?;
-            read_json::<Vec<CatalogLoaderVersion>>(&context, &url)
+            read_json::<Vec<CatalogLoaderVersion>>(context, &url)
                 .await?
                 .into_iter()
                 .map(|entry| entry.loader.version)
@@ -563,19 +579,19 @@ pub async fn profile_version_catalog(
                 .quilt_meta_base
                 .join(&format!("versions/loader/{game}"))
                 .map_err(|error| InstallerError::internal("quilt_catalog_url_failed", error))?;
-            read_json::<Vec<CatalogLoaderVersion>>(&context, &url)
+            read_json::<Vec<CatalogLoaderVersion>>(context, &url)
                 .await?
                 .into_iter()
                 .map(|entry| entry.loader.version)
                 .collect()
         }
-        ("minecraft-java-forge", Some(game)) => forge_catalog_versions(&context)
+        ("minecraft-java-forge", Some(game)) => forge_catalog_versions(context)
             .await?
             .into_iter()
             .rev()
             .filter(|loader| loader.starts_with(&format!("{game}-")))
             .collect(),
-        ("minecraft-java-neoforge", Some(game)) => neoforge_catalog_versions(&context)
+        ("minecraft-java-neoforge", Some(game)) => neoforge_catalog_versions(context)
             .await?
             .into_iter()
             .rev()
@@ -587,7 +603,7 @@ pub async fn profile_version_catalog(
                 .purpur_api_base
                 .join(&format!("purpur/{game}"))
                 .map_err(|error| InstallerError::internal("purpur_catalog_url_failed", error))?;
-            let version: PurpurVersionCatalog = read_json(&context, &url).await?;
+            let version: PurpurVersionCatalog = read_json(context, &url).await?;
             if version.project != "purpur" || version.version != game {
                 return Err(InstallerError::new(
                     "purpur_catalog_invalid",
@@ -603,6 +619,84 @@ pub async fn profile_version_catalog(
         game_versions,
         selected_game_version,
         loader_versions: unique_safe_versions(loader_versions),
+    })
+}
+
+pub async fn native_update_target(
+    profile_id: &str,
+    settings: &serde_json::Value,
+    context: &InstallContext,
+) -> Result<NativeUpdateTarget, InstallerError> {
+    let loader = if profile_id == "minecraft-java" {
+        settings.get("loader").and_then(serde_json::Value::as_str)
+    } else {
+        None
+    };
+    let logical_profile_id = minecraft_variant_profile_id(profile_id, settings)?;
+    if logical_profile_id == "hytale" || !native_install_supported(profile_id) {
+        return Err(InstallerError::new(
+            "update_check_unsupported",
+            "servers.update_check_unavailable",
+        ));
+    }
+    let catalog = profile_version_catalog_with_context(profile_id, None, loader, context).await?;
+    let version = catalog.game_versions.first().cloned().ok_or_else(|| {
+        InstallerError::new(
+            "profile_catalog_unavailable",
+            "profiles.catalog_unavailable",
+        )
+    })?;
+    let build = match logical_profile_id.as_str() {
+        "minecraft-java-paper" => {
+            Some(minecraft::latest_stable_paper_build(context, &version).await?)
+        }
+        "minecraft-java-spigot" => Some(context.sources.buildtools.version.clone()),
+        "minecraft-java-fabric"
+        | "minecraft-java-forge"
+        | "minecraft-java-neoforge"
+        | "minecraft-java-purpur"
+        | "minecraft-java-quilt" => catalog.loader_versions.first().cloned(),
+        _ => None,
+    };
+    if matches!(
+        logical_profile_id.as_str(),
+        "minecraft-java-fabric"
+            | "minecraft-java-forge"
+            | "minecraft-java-neoforge"
+            | "minecraft-java-purpur"
+            | "minecraft-java-quilt"
+    ) && build.is_none()
+    {
+        return Err(InstallerError::new(
+            "profile_catalog_unavailable",
+            "profiles.catalog_unavailable",
+        ));
+    }
+    let mut resolved = settings.clone();
+    let object = resolved
+        .as_object_mut()
+        .ok_or_else(|| InstallerError::new("settings_invalid", "servers.settings_invalid"))?;
+    object.insert(
+        "version".to_string(),
+        serde_json::Value::String(version.clone()),
+    );
+    if matches!(
+        logical_profile_id.as_str(),
+        "minecraft-java-fabric"
+            | "minecraft-java-forge"
+            | "minecraft-java-neoforge"
+            | "minecraft-java-purpur"
+            | "minecraft-java-quilt"
+    ) {
+        object.insert(
+            "loader_version".to_string(),
+            serde_json::Value::String(build.clone().expect("checked above")),
+        );
+    }
+    Ok(NativeUpdateTarget {
+        settings: resolved,
+        version,
+        build,
     })
 }
 
@@ -1880,6 +1974,41 @@ mod tests {
                 .unwrap()
                 .contains(&PathBuf::from("game/Server/universe"))
         );
+    }
+
+    #[tokio::test]
+    async fn native_update_target_uses_the_latest_provider_version_and_preserves_settings() {
+        let base = Url::parse("http://127.0.0.1:18080/").unwrap();
+        let sources = InstallerSources::fixture(&base);
+        let mut responses = BTreeMap::new();
+        responses.insert(
+            base.join("minecraft/manifest.json").unwrap().to_string(),
+            serde_json::to_vec(&serde_json::json!({
+                "versions": [
+                    {"id": "1.22.0", "type": "release"},
+                    {"id": "1.21.11", "type": "release"},
+                    {"id": "26w01a", "type": "snapshot"}
+                ]
+            }))
+            .unwrap(),
+        );
+        let context = InstallContext::with_fixture_responses(sources, responses).unwrap();
+        let settings = serde_json::json!({
+            "version": "1.21.11",
+            "eula_accepted": true,
+            "max_memory_mb": 8192,
+            "unknown_preserved": "yes"
+        });
+
+        let target = native_update_target("minecraft-java-vanilla", &settings, &context)
+            .await
+            .unwrap();
+
+        assert_eq!(target.version, "1.22.0");
+        assert_eq!(target.build, None);
+        assert_eq!(target.settings["version"], "1.22.0");
+        assert_eq!(target.settings["max_memory_mb"], 8192);
+        assert_eq!(target.settings["unknown_preserved"], "yes");
     }
 
     #[tokio::test]

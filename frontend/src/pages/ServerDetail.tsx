@@ -11,7 +11,7 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useToast } from "@/contexts/ToastContext";
 import { usePermission, useServerEvents } from "@/hooks";
 import { SecretStatusSchema } from "@/schemas/api";
-import type { ConnectionInfo, GameProfile, Instance } from "@/schemas/api";
+import type { ConnectionInfo, GameProfile, GameUpdateStatus, Instance } from "@/schemas/api";
 import { BedrockArchiveAuthorizationSchema, HytaleDeviceAuthorizationSchema } from "@/schemas/operations";
 import type { BedrockArchiveAuthorization, HytaleDeviceAuthorization, PlayerSnapshot } from "@/schemas/operations";
 import { apiService } from "@/services";
@@ -54,6 +54,7 @@ export default function ServerDetail() {
     const [connection, setConnection] = useState<ConnectionInfo | null>(null);
     const [connectionError, setConnectionError] = useState<string | null>(null);
     const [connectionRevealed, setConnectionRevealed] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState<GameUpdateStatus | null>(null);
 
     const loadInstance = useCallback(async () => {
         if (!id) return;
@@ -93,10 +94,24 @@ export default function ServerDetail() {
         setConnectionError(null);
     }, [id]);
 
+    const loadUpdateStatus = useCallback(async () => {
+        if (!id) return;
+        const response = await apiService.servers.getUpdateStatus(id);
+        setUpdateStatus(response.success ? response.data : null);
+    }, [id]);
+
     useEffect(() => {
         void loadInstance().finally(() => setLoading(false));
         void loadConnection();
     }, [loadConnection, loadInstance]);
+
+    useEffect(() => {
+        if (instance?.installation_state !== "installed") {
+            setUpdateStatus(null);
+            return;
+        }
+        void loadUpdateStatus();
+    }, [instance?.installation_state, instance?.installed_build, instance?.installed_version, loadUpdateStatus]);
 
     useEffect(() => {
         if (!instance) return;
@@ -418,7 +433,7 @@ export default function ServerDetail() {
             <div className="server-header-stats">
                 <StatPill icon={<ServerIcon size={18} />} label={t("server_detail.runtime_state")} value={t(`servers.runtime_states.${instance.runtime_state}`)} variant={running ? "success" : instance.runtime_state === "crashed" ? "danger" : "muted"} />
                 <StatPill icon={<Users size={18} />} label={t("server_detail.players.online")} value={playerSnapshot?.online_count ?? "—"} variant={playerSnapshot?.online_count ? "success" : "muted"} />
-                <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={instance.installed_version ?? "—"} variant="default" />
+                <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={instance.installed_version ?? instance.installed_build ?? "—"} variant="default" />
                 <div className="stat-pill connection-pill">
                     <div className="stat-pill__icon"><Globe2 size={18} /></div>
                     <div className="stat-pill__content">
@@ -434,7 +449,7 @@ export default function ServerDetail() {
             <div className="server-actions server-detail-actions">
                 {hasPermission("job.read") && <Button as="link" to={`/activity?tab=operations&instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
                 {!installed && canInstall && hasPermission("server.update_game") && <Button onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.install")}</Button>}
-                {installed && canInstall && !running && instance.desired_state === "stopped" && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
+                {installed && updateStatus?.state === "update_available" && canInstall && !running && instance.desired_state === "stopped" && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
                 {installed && canStartStop && !running && instance.desired_state === "stopped" && hasPermission("server.start") && <Button variant="success" onClick={() => void runAction("start")} disabled={busy} icon={<Play size={17} />}>{t("servers.start")}</Button>}
                 {canCancelDesiredRun && hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={17} />}>{t("server_detail.cancel_watchdog")}</Button>}
                 {running && canStartStop && <>

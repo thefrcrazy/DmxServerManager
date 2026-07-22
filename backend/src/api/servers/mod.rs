@@ -24,6 +24,7 @@ use crate::{
     services::{
         backups,
         instance_storage::{self, StorageMode},
+        runtime::GameUpdateStatus,
         secrets::{
             allowed_secret_names, required_secret_names, validate_profile_secret,
             validate_profile_secret_value,
@@ -124,6 +125,7 @@ pub fn routes() -> Router<AppState> {
         .route("/servers", get(list).post(create))
         .route("/servers/{id}", get(get_one).patch(update).delete(remove))
         .route("/servers/{id}/connection", get(get_connection))
+        .route("/servers/{id}/update-status", get(get_update_status))
         .route("/servers/{id}/profile-revision", put(set_profile_revision))
         .route("/servers/{id}/secrets", get(list_secrets))
         .route(
@@ -132,6 +134,16 @@ pub fn routes() -> Router<AppState> {
         )
         .merge(actions::routes())
         .merge(imports::routes())
+}
+
+async fn get_update_status(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<GameUpdateStatus>, AppError> {
+    validate_instance_id(&id)?;
+    authorize_instance(&state, &auth, &id, "server.read").await?;
+    state.runtime.game_update_status(&id).await.map(Json)
 }
 
 async fn list(

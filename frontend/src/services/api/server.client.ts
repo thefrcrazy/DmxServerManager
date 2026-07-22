@@ -4,6 +4,8 @@ import {
     InstanceSchema,
     ConnectionInfo,
     ConnectionInfoSchema,
+    GameUpdateStatus,
+    GameUpdateStatusSchema,
     Job,
     JobSchema,
     SecretStatusListSchema,
@@ -56,6 +58,13 @@ export class ServerClient extends BaseClient {
 
     async getConnection(id: string): Promise<ClientResponse<ConnectionInfo>> {
         return this.request(`/servers/${encodeURIComponent(id)}/connection`, ConnectionInfoSchema);
+    }
+
+    async getUpdateStatus(id: string): Promise<ClientResponse<GameUpdateStatus>> {
+        return this.request(
+            `/servers/${encodeURIComponent(id)}/update-status`,
+            GameUpdateStatusSchema,
+        );
     }
 
     async createServer(data: CreateServerInput): Promise<ClientResponse<Instance>> {

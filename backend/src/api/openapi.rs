@@ -676,6 +676,13 @@ fn server_paths() -> Value {
                 "responses": {"200": {"description": "Connection methods derived from the global advertised host and effective profile ports.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConnectionInfo"}}}}}
             }
         },
+        "/servers/{id}/update-status": {
+            "get": {
+                "operationId": "getServerUpdateStatus", "tags": ["servers"],
+                "parameters": [{"$ref": "#/components/parameters/ServerId"}],
+                "responses": {"200": {"description": "Provider-backed update availability for the installed game.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GameUpdateStatus"}}}}}
+            }
+        },
         "/servers/{id}/secrets": {
             "get": {
                 "operationId": "listSecretStatus", "tags": ["servers"],
@@ -1754,6 +1761,18 @@ fn server_schemas() -> Value {
                 "endpoints": {"type": "array", "items": {"$ref": "#/components/schemas/ConnectionEndpoint"}}
             }
         },
+        "GameUpdateStatus": {
+            "type": "object", "additionalProperties": false,
+            "required": ["state", "installed_version", "installed_build", "available_version", "available_build", "checked_at"],
+            "properties": {
+                "state": {"enum": ["not_installed", "up_to_date", "update_available", "check_failed"]},
+                "installed_version": {"type": ["string", "null"]},
+                "installed_build": {"type": ["string", "null"]},
+                "available_version": {"type": ["string", "null"]},
+                "available_build": {"type": ["string", "null"]},
+                "checked_at": {"type": "string", "format": "date-time"}
+            }
+        },
         "Instance": {
             "type": "object", "additionalProperties": false,
             "required": ["id", "name", "profile_id", "profile_revision", "settings", "config_version", "installation_state", "installed_version", "installed_build", "desired_state", "runtime_state", "managed", "auto_start", "watchdog_enabled", "created_at", "updated_at"],
@@ -2246,6 +2265,7 @@ mod tests {
         "GET /servers/{id}/config-files",
         "GET /servers/{id}/config-files/text",
         "GET /servers/{id}/connection",
+        "GET /servers/{id}/update-status",
         "GET /servers/{id}/logs",
         "GET /servers/{id}/metrics",
         "GET /servers/{id}/mods",

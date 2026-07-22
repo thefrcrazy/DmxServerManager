@@ -324,6 +324,10 @@ pub async fn install_downloaded_archive(
 ) -> Result<super::InstallResult, InstallerError> {
     let layout = extract_hytale_game_archive(archive, staging, context).await?;
     preserve_server_data(&instance_root.join("game"), staging).await?;
+    // The current marker describes the previous release. It is copied with the
+    // mutable server data for runtime-update candidates, but a downloader
+    // installation writes a fresh marker after this function returns.
+    remove_path_if_exists(&staging.join(".dmx-install.json")).await?;
     let archive_artifact = inspect_artifact("hytale-game-archive", archive).await?;
     Ok(super::InstallResult {
         plan: launch_plan(settings, layout.has_aot_cache)?,
@@ -1184,6 +1188,9 @@ mod tests {
         tokio::fs::write(current.join("mods/example.jar"), b"mod")
             .await
             .unwrap();
+        tokio::fs::write(root.join("game/.dmx-install.json"), b"old-release-marker")
+            .await
+            .unwrap();
 
         let archive = directory.path().join("game.zip");
         let file = std::fs::File::create(&archive).unwrap();
@@ -1216,6 +1223,12 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(result.installed_version, "2026.06.15-abcd");
+        assert!(
+            !tokio::fs::try_exists(staging.join(".dmx-install.json"))
+                .await
+                .unwrap(),
+            "the previous release marker must not block the new marker write"
+        );
         assert!(
             !result
                 .plan

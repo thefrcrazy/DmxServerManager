@@ -1168,6 +1168,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/servers/{id}/update-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getServerUpdateStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -1580,6 +1596,16 @@ export interface components {
             ui_schema: {
                 [key: string]: unknown;
             };
+        };
+        GameUpdateStatus: {
+            available_build: string | null;
+            available_version: string | null;
+            /** Format: date-time */
+            checked_at: string;
+            installed_build: string | null;
+            installed_version: string | null;
+            /** @enum {unknown} */
+            state: "not_installed" | "up_to_date" | "update_available" | "check_failed";
         };
         HealthResponse: {
             /** @constant */
@@ -4905,6 +4931,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SecretStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getServerUpdateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ServerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider-backed update availability for the installed game. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameUpdateStatus"];
                 };
             };
             401: components["responses"]["Unauthorized"];

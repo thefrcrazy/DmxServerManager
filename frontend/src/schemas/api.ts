@@ -138,6 +138,18 @@ export const ProfileVersionCatalogSchema = z.object({
 
 export type ProfileVersionCatalog = z.infer<typeof ProfileVersionCatalogSchema>;
 
+const UpdateVersionSchema = z.string().min(1).max(128);
+export const GameUpdateStatusSchema = z.object({
+    state: z.enum(["not_installed", "up_to_date", "update_available", "check_failed"]),
+    installed_version: UpdateVersionSchema.nullable(),
+    installed_build: UpdateVersionSchema.nullable(),
+    available_version: UpdateVersionSchema.nullable(),
+    available_build: UpdateVersionSchema.nullable(),
+    checked_at: z.string(),
+}).strict();
+
+export type GameUpdateStatus = z.infer<typeof GameUpdateStatusSchema>;
+
 export const InstallationStateSchema = z.enum([
     "not_installed",
     "installing",

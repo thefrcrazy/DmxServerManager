@@ -72,6 +72,26 @@ struct PaperChecksums {
     sha256: String,
 }
 
+pub(super) async fn latest_stable_paper_build(
+    context: &InstallContext,
+    version: &str,
+) -> Result<String, InstallerError> {
+    let builds_url = paper_builds_url(&context.sources.paper_api_base, version)?;
+    let builds: Vec<PaperBuild> = read_json(context, &builds_url).await?;
+    builds
+        .into_iter()
+        .filter(|build| build.channel == "STABLE")
+        .map(|build| build.id)
+        .max()
+        .map(|build| build.to_string())
+        .ok_or_else(|| {
+            InstallerError::new(
+                "paper_stable_build_unavailable",
+                "servers.paper_stable_build_unavailable",
+            )
+        })
+}
+
 struct ResolvedMinecraft {
     metadata: VersionMetadata,
 }
