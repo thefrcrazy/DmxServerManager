@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { AlertCircle, LogIn } from "lucide-react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { PASSWORD_CHANGED_FLASH_KEY, useAuth } from "@/contexts/AuthContext";
+import { PASSWORD_CHANGED_EVENT, PASSWORD_CHANGED_FLASH_KEY, useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Login() {
@@ -18,8 +18,12 @@ export default function Login() {
         || sessionStorage.getItem(PASSWORD_CHANGED_FLASH_KEY) === "1"
     ));
 
+    const [passwordChangedVisible, setPasswordChangedVisible] = useState(passwordChanged);
+
     useEffect(() => {
-        sessionStorage.removeItem(PASSWORD_CHANGED_FLASH_KEY);
+        const revealPasswordChanged = () => setPasswordChangedVisible(true);
+        window.addEventListener(PASSWORD_CHANGED_EVENT, revealPasswordChanged);
+        return () => window.removeEventListener(PASSWORD_CHANGED_EVENT, revealPasswordChanged);
     }, []);
 
     const handleSubmit = async (event: FormEvent) => {
@@ -28,6 +32,7 @@ export default function Login() {
         setIsLoading(true);
         try {
             await login(username, password);
+            sessionStorage.removeItem(PASSWORD_CHANGED_FLASH_KEY);
             navigate("/dashboard", { replace: true });
         } catch (loginError) {
             setError(loginError instanceof Error ? loginError.message : t("auth.login_failed"));
@@ -46,7 +51,7 @@ export default function Login() {
                     <h1 id="login-title">DmxServerManager</h1>
                     <p className="text-muted">{t("auth.login_subtitle")}</p>
                 </div>
-                {passwordChanged && (
+                {passwordChangedVisible && (
                     <div className="alert alert--success" role="status">
                         {t("password_change.success")}
                     </div>
@@ -66,7 +71,7 @@ export default function Login() {
                         {t("auth.login")}
                     </button>
                 </form>
-                <footer className="login-footer"><p>DmxServerManager v1.1.0</p></footer>
+                <footer className="login-footer"><p>DmxServerManager v1.1.1</p></footer>
             </section>
         </main>
     );

@@ -15,7 +15,7 @@ test("le vrai Axum, SQLite et la SPA appliquent setup, session, CSRF et RBAC", a
         status: "ok",
         service: "dmx-server-manager",
     });
-    expect(healthBody.version).toBe("1.1.0");
+    expect(healthBody.version).toBe("1.1.1");
 
     const anonymousPrivate = await page.request.get("/api/v1/users");
     expect(anonymousPrivate.status()).toBe(401);

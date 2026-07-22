@@ -24,6 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const PASSWORD_CHANGED_FLASH_KEY = "dmx_server_manager_password_changed";
+export const PASSWORD_CHANGED_EVENT = "dmx-password-changed";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const response = await apiService.auth.changePassword(currentPassword, newPassword);
         if (!response.success) throw response.error;
         sessionStorage.setItem(PASSWORD_CHANGED_FLASH_KEY, "1");
+        window.dispatchEvent(new Event(PASSWORD_CHANGED_EVENT));
         setUser(null);
     }, []);
 
