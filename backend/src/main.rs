@@ -137,6 +137,10 @@ impl Panel {
             secrets.clone(),
         );
         let releases = ReleaseMonitor::new(settings.clone())?;
+        let system_metrics = crate::services::metrics::SystemMetricsService::start(
+            settings.data_dir.clone(),
+            events.clone(),
+        );
         let state = AppState {
             pool,
             settings: settings.clone(),
@@ -145,6 +149,7 @@ impl Panel {
             secrets,
             runtime: runtime.clone(),
             releases: releases.clone(),
+            system_metrics,
         };
         runtime.reconcile_boot().await?;
         let app = build_app(state.clone())?;

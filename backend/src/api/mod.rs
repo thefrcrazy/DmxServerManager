@@ -234,6 +234,7 @@ mod tests {
             secrets.clone(),
         );
         let releases = ReleaseMonitor::new(settings.clone()).unwrap();
+        let system_metrics = crate::services::metrics::SystemMetricsService::default();
         AppState {
             pool,
             settings,
@@ -242,6 +243,7 @@ mod tests {
             secrets,
             runtime,
             releases,
+            system_metrics,
         }
     }
 

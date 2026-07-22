@@ -602,6 +602,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/metrics/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Latest persisted sample for every instance visible to the current user. */
+        get: operations["getCurrentServerMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/metrics/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Current host CPU, memory, data-volume disk usage and aggregate network throughput. Interface names and addresses are never exposed. */
+        get: operations["getSystemMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mods/providers": {
         parameters: {
             query?: never;
@@ -1548,6 +1582,20 @@ export interface components {
             name: string;
             url: components["schemas"]["DiscordWebhookUrl"];
         };
+        CurrentServerMetric: {
+            cpu_usage: number;
+            disk_bytes: number;
+            memory_bytes: number;
+            player_count: number | null;
+            /** Format: date-time */
+            recorded_at: string;
+            /** Format: uuid */
+            server_id: string;
+            uptime_seconds: number;
+        };
+        CurrentServerMetrics: {
+            items: components["schemas"]["CurrentServerMetric"][];
+        };
         /** Format: uri */
         DiscordWebhookUrl: string;
         DockerReleaseTarget: {
@@ -2058,6 +2106,17 @@ export interface components {
         };
         /** @enum {unknown} */
         SupportedPlatform: "linux-x64" | "windows-x64";
+        SystemMetricsSnapshot: {
+            cpu_usage: number;
+            disk_total_bytes: number;
+            disk_used_bytes: number;
+            memory_total_bytes: number;
+            memory_used_bytes: number;
+            network_receive_bytes_per_second: number;
+            network_transmit_bytes_per_second: number;
+            /** Format: date-time */
+            recorded_at: string;
+        };
         TextReadResponse: {
             /** @description UTF-8 text, limited to 524288 encoded bytes. */
             content: string;
@@ -3536,6 +3595,52 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getCurrentServerMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized latest per-instance metrics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentServerMetrics"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getSystemMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current host resource metrics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemMetricsSnapshot"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             default: components["responses"]["Problem"];
         };
     };

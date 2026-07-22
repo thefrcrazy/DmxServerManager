@@ -81,7 +81,7 @@ export default function ServerMetrics({ instanceId, isRunning, refreshSignal = 0
                 <div><h2 id="metrics-heading">{t("server_detail.metrics.title")}</h2><p>{t("server_detail.metrics.retention")}</p></div>
                 <label className="metric-period">
                     <span>{t("server_detail.metrics.period")}</span>
-                    <select value={period} onChange={(event) => {
+                    <select className="select" value={period} onChange={(event) => {
                         const parsed = MetricPeriodSchema.safeParse(event.target.value);
                         if (parsed.success) setPeriod(parsed.data);
                         else toast.error(t("server_detail.metrics.invalid_period"));

@@ -182,18 +182,18 @@ export default function ServerMods({ instanceId, isInstalled, isStopped, refresh
                 <div className="mod-provider__fields">
                     <label className="form-group">
                         <span>{t("server_detail.mods.provider")}</span>
-                        <select value={provider} onChange={(event) => setProvider(event.target.value as ModProvider)} disabled={installingProvider}>
+                        <select className="select" value={provider} onChange={(event) => setProvider(event.target.value as ModProvider)} disabled={installingProvider}>
                             <option value="modrinth">Modrinth</option>
                             <option value="curseforge">CurseForge</option>
                         </select>
                     </label>
                     <label className="form-group">
                         <span>{t("server_detail.mods.project_id")}</span>
-                        <input value={providerProjectId} onChange={(event) => setProviderProjectId(event.target.value)} autoComplete="off" maxLength={64} required disabled={installingProvider} />
+                        <input className="input" value={providerProjectId} onChange={(event) => setProviderProjectId(event.target.value)} autoComplete="off" maxLength={64} required disabled={installingProvider} />
                     </label>
                     <label className="form-group">
                         <span>{t("server_detail.mods.version_id")}</span>
-                        <input value={providerVersionId} onChange={(event) => setProviderVersionId(event.target.value)} autoComplete="off" maxLength={64} required disabled={installingProvider} />
+                        <input className="input" value={providerVersionId} onChange={(event) => setProviderVersionId(event.target.value)} autoComplete="off" maxLength={64} required disabled={installingProvider} />
                     </label>
                     <Button type="submit" icon={<CloudDownload size={16} aria-hidden="true" />} isLoading={installingProvider} disabled={!canMutate || uploading}>
                         {t("server_detail.mods.install_provider")}

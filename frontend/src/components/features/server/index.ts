@@ -12,5 +12,6 @@ export { default as ServerMetrics } from "./ServerMetrics";
 export { default as ServerMods } from "./ServerMods";
 export { default as ServerPlayers } from "./ServerPlayers";
 export { default as ServerSchedules } from "./ServerSchedules";
+export { default as ServerResourceUsage } from "./ServerResourceUsage";
 export { default as HytaleDeviceAuthorizationNotice } from "./HytaleDeviceAuthorization";
 export { default as BedrockArchiveUploadNotice } from "./BedrockArchiveUpload";

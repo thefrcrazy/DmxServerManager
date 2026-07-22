@@ -1,18 +1,21 @@
 import { AlertTriangle, Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ConnectionInfo, Instance } from "@/schemas/api";
+import type { CurrentServerMetric } from "@/schemas/operations";
 import type { ServerAction } from "@/services/api/server.client";
 import { Button, Card, Tooltip } from "@/components/ui";
 import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePermission } from "@/hooks";
 import MaskedConnection from "./MaskedConnection";
+import ServerResourceUsage from "./ServerResourceUsage";
 
 interface ServerCardProps {
     server: Instance;
     capabilities: ReadonlySet<string>;
     playerCount?: number;
     connection?: ConnectionInfo;
+    metric?: CurrentServerMetric;
     onAction: (id: string, action: ServerAction) => void;
 }
 
@@ -21,7 +24,7 @@ function stateLabel(server: Instance, t: (key: string) => string): string {
     return t(`servers.runtime_states.${server.runtime_state}`);
 }
 
-export default function ServerCard({ server, capabilities, playerCount, connection, onAction }: ServerCardProps) {
+export default function ServerCard({ server, capabilities, playerCount, connection, metric, onAction }: ServerCardProps) {
     const { t } = useLanguage();
     const { hasPermission } = usePermission();
     const navigate = useNavigate();
@@ -87,6 +90,8 @@ export default function ServerCard({ server, capabilities, playerCount, connecti
                     <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version ?? server.installed_build ?? "—"}</span></div>
                     <div className="server-card__stat-row server-card__stat-row--connection"><span>{t("servers.connection")}</span><MaskedConnection connection={connection} compact /></div>
                 </div>
+
+                <ServerResourceUsage metric={metric} running={running} />
 
                 <div className="server-card__actions">
                     {needsInstall && canInstall ? (

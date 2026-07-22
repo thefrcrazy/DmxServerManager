@@ -1222,6 +1222,67 @@
         ],
         "type": "object"
       },
+      "CurrentServerMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_usage": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "disk_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "player_count": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "server_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "uptime_seconds": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "server_id",
+          "cpu_usage",
+          "memory_bytes",
+          "disk_bytes",
+          "uptime_seconds",
+          "player_count",
+          "recorded_at"
+        ],
+        "type": "object"
+      },
+      "CurrentServerMetrics": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CurrentServerMetric"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "DiscordWebhookUrl": {
         "format": "uri",
         "maxLength": 2048,
@@ -3370,6 +3431,54 @@
           "windows-x64"
         ]
       },
+      "SystemMetricsSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_usage": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "disk_total_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disk_used_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_total_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_used_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "network_receive_bytes_per_second": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "network_transmit_bytes_per_second": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cpu_usage",
+          "memory_used_bytes",
+          "memory_total_bytes",
+          "disk_used_bytes",
+          "disk_total_bytes",
+          "network_receive_bytes_per_second",
+          "network_transmit_bytes_per_second",
+          "recorded_at"
+        ],
+        "type": "object"
+      },
       "TextReadResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3940,7 +4049,7 @@
   "info": {
     "description": "Single-host game server management API. Secret values are write-only.",
     "title": "DmxServerManager API",
-    "version": "1.1.5"
+    "version": "1.1.6"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -6447,6 +6556,76 @@
         ],
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/metrics/current": {
+      "get": {
+        "description": "Latest persisted sample for every instance visible to the current user.",
+        "operationId": "getCurrentServerMetrics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentServerMetrics"
+                }
+              }
+            },
+            "description": "Authorized latest per-instance metrics."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/metrics/system": {
+      "get": {
+        "description": "Current host CPU, memory, data-volume disk usage and aggregate network throughput. Interface names and addresses are never exposed.",
+        "operationId": "getSystemMetrics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemMetricsSnapshot"
+                }
+              }
+            },
+            "description": "Current host resource metrics."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "metrics"
         ]
       }
     },

@@ -2,15 +2,18 @@ use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
-    time::Duration,
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tokio::sync::watch;
+use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use tokio::sync::{RwLock, watch};
 
 use crate::core::{DbPool, error::AppError, events::EventHub};
 
-const SAMPLE_INTERVAL: Duration = Duration::from_secs(60);
+const LIVE_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
+const PERSIST_INTERVAL: Duration = Duration::from_secs(60);
+const SYSTEM_SAMPLE_INTERVAL: Duration = Duration::from_secs(2);
 const RETENTION_DAYS: i64 = 7;
 const MAX_POINTS_PER_INSTANCE: i64 = 10_080;
 const MAX_DISK_SCAN_ENTRIES: usize = 200_000;
@@ -31,6 +34,155 @@ struct MetricsSnapshot {
     player_count: i64,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SystemMetricsSnapshot {
+    pub cpu_usage: f64,
+    pub memory_used_bytes: u64,
+    pub memory_total_bytes: u64,
+    pub disk_used_bytes: u64,
+    pub disk_total_bytes: u64,
+    pub network_receive_bytes_per_second: u64,
+    pub network_transmit_bytes_per_second: u64,
+    pub recorded_at: String,
+}
+
+impl Default for SystemMetricsSnapshot {
+    fn default() -> Self {
+        Self {
+            cpu_usage: 0.0,
+            memory_used_bytes: 0,
+            memory_total_bytes: 0,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            network_receive_bytes_per_second: 0,
+            network_transmit_bytes_per_second: 0,
+            recorded_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct SystemMetricsService {
+    latest: Arc<RwLock<SystemMetricsSnapshot>>,
+}
+
+impl Default for SystemMetricsService {
+    fn default() -> Self {
+        Self {
+            latest: Arc::new(RwLock::new(SystemMetricsSnapshot::default())),
+        }
+    }
+}
+
+impl SystemMetricsService {
+    pub fn start(data_dir: PathBuf, events: EventHub) -> Self {
+        let service = Self::default();
+        let latest = service.latest.clone();
+        tokio::spawn(async move {
+            let mut sampler = HostSampler::new(data_dir);
+            let mut interval = tokio::time::interval(SYSTEM_SAMPLE_INTERVAL);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                let sampled = tokio::task::spawn_blocking(move || {
+                    let snapshot = sampler.sample();
+                    (sampler, snapshot)
+                })
+                .await;
+                let Ok((next_sampler, snapshot)) = sampled else {
+                    tracing::warn!("system metrics collector worker failed");
+                    break;
+                };
+                sampler = next_sampler;
+                events.publish(
+                    "system.metrics",
+                    None,
+                    serde_json::to_value(&snapshot).unwrap_or_default(),
+                );
+                *latest.write().await = snapshot;
+            }
+        });
+        service
+    }
+
+    pub async fn current(&self) -> SystemMetricsSnapshot {
+        self.latest.read().await.clone()
+    }
+}
+
+struct HostSampler {
+    system: System,
+    networks: Networks,
+    disks: Disks,
+    data_dir: PathBuf,
+    last_sample: Option<Instant>,
+}
+
+impl HostSampler {
+    fn new(data_dir: PathBuf) -> Self {
+        Self {
+            system: System::new_all(),
+            networks: Networks::new_with_refreshed_list(),
+            disks: Disks::new_with_refreshed_list(),
+            data_dir,
+            last_sample: None,
+        }
+    }
+
+    fn sample(&mut self) -> SystemMetricsSnapshot {
+        self.system.refresh_cpu_usage();
+        self.system.refresh_memory();
+        self.networks.refresh(true);
+        self.disks.refresh(true);
+
+        let elapsed = self
+            .last_sample
+            .replace(Instant::now())
+            .map_or(0.0, |previous| previous.elapsed().as_secs_f64());
+        let (received, transmitted) =
+            self.networks
+                .iter()
+                .fold((0_u64, 0_u64), |(received, transmitted), (_, network)| {
+                    (
+                        received.saturating_add(network.received()),
+                        transmitted.saturating_add(network.transmitted()),
+                    )
+                });
+        let (disk_used_bytes, disk_total_bytes) = disk_usage_for_path(&self.disks, &self.data_dir);
+
+        SystemMetricsSnapshot {
+            cpu_usage: f64::from(self.system.global_cpu_usage()),
+            memory_used_bytes: self.system.used_memory(),
+            memory_total_bytes: self.system.total_memory(),
+            disk_used_bytes,
+            disk_total_bytes,
+            network_receive_bytes_per_second: bytes_per_second(received, elapsed),
+            network_transmit_bytes_per_second: bytes_per_second(transmitted, elapsed),
+            recorded_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+fn bytes_per_second(bytes: u64, elapsed_seconds: f64) -> u64 {
+    if elapsed_seconds <= f64::EPSILON {
+        return 0;
+    }
+    (bytes as f64 / elapsed_seconds)
+        .round()
+        .clamp(0.0, u64::MAX as f64) as u64
+}
+
+fn disk_usage_for_path(disks: &Disks, path: &Path) -> (u64, u64) {
+    disks
+        .iter()
+        .filter(|disk| path.starts_with(disk.mount_point()))
+        .max_by_key(|disk| disk.mount_point().components().count())
+        .map_or((0, 0), |disk| {
+            let total = disk.total_space();
+            (total.saturating_sub(disk.available_space()), total)
+        })
+}
+
 /// Starts one bounded collector for a supervised process tree. Dropping the
 /// returned sender stops the task; no process handle is retained or reattached.
 pub fn spawn_collector(
@@ -42,10 +194,12 @@ pub fn spawn_collector(
 ) -> watch::Sender<bool> {
     let (stop_tx, mut stop_rx) = watch::channel(false);
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(SAMPLE_INTERVAL);
+        let mut interval = tokio::time::interval(LIVE_SAMPLE_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut system = System::new();
         let mut disk_bytes = 0_u64;
+        let mut next_disk_scan = Instant::now();
+        let mut next_persist = Instant::now();
         loop {
             tokio::select! {
                 biased;
@@ -55,13 +209,14 @@ pub fn spawn_collector(
                     }
                 }
                 _ = interval.tick() => {
+                    let now = Instant::now();
+                    let should_scan_disk = now >= next_disk_scan;
                     let scan_root = instance_root.clone();
                     let refreshed = tokio::task::spawn_blocking(move || {
                         let process = refresh_process_tree(system, root_pid);
-                        let disk = directory_size_no_follow(
-                            &scan_root,
-                            MAX_DISK_SCAN_ENTRIES,
-                        );
+                        let disk = should_scan_disk.then(|| directory_size_no_follow(
+                            &scan_root, MAX_DISK_SCAN_ENTRIES,
+                        ));
                         (process.0, process.1, disk)
                     }).await;
                     let Ok((next_system, process, disk)) = refreshed else {
@@ -72,9 +227,12 @@ pub fn spawn_collector(
                     let Some(process) = process else {
                         break;
                     };
-                    match disk {
-                        Ok(value) => disk_bytes = value,
-                        Err(error) => tracing::warn!(instance_id, %error, "instance disk metric unavailable"),
+                    if let Some(disk) = disk {
+                        next_disk_scan = now + PERSIST_INTERVAL;
+                        match disk {
+                            Ok(value) => disk_bytes = value,
+                            Err(error) => tracing::warn!(instance_id, %error, "instance disk metric unavailable"),
+                        }
                     }
                     let player_count: i64 = match sqlx::query_scalar(
                         "SELECT COUNT(*) FROM server_players WHERE instance_id = ? AND online = 1",
@@ -96,15 +254,17 @@ pub fn spawn_collector(
                         uptime_seconds: process.uptime_seconds,
                         player_count,
                     };
-                    if let Err(error) = persist(&pool, &instance_id, &snapshot).await {
-                        tracing::warn!(instance_id, %error, "failed to persist server metrics");
-                        continue;
-                    }
                     events.publish(
                         "server.metrics",
                         Some(instance_id.clone()),
                         serde_json::to_value(&snapshot).unwrap_or_default(),
                     );
+                    if now >= next_persist {
+                        next_persist = now + PERSIST_INTERVAL;
+                        if let Err(error) = persist(&pool, &instance_id, &snapshot).await {
+                            tracing::warn!(instance_id, %error, "failed to persist server metrics");
+                        }
+                    }
                 }
             }
         }
@@ -289,5 +449,11 @@ mod tests {
         let (_, snapshot) = refresh_process_tree(System::new(), std::process::id());
         let snapshot = snapshot.expect("current process must be visible");
         assert!(snapshot.memory_bytes > 0);
+    }
+
+    #[test]
+    fn transfer_rate_handles_initial_and_elapsed_samples() {
+        assert_eq!(bytes_per_second(10_000, 0.0), 0);
+        assert_eq!(bytes_per_second(10_000, 2.0), 5_000);
     }
 }

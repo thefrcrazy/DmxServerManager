@@ -94,6 +94,23 @@ export const MetricsHistorySchema = z.object({
     period: MetricPeriodSchema,
     points: z.array(MetricPointSchema).max(10_000),
 }).strict();
+export const CurrentServerMetricSchema = MetricPointSchema.omit({ id: true }).extend({
+    server_id: z.string().uuid(),
+}).strict();
+export const CurrentServerMetricsSchema = z.object({
+    items: z.array(CurrentServerMetricSchema),
+}).strict();
+export const LiveServerMetricSchema = MetricPointSchema.omit({ id: true, recorded_at: true }).strict();
+export const SystemMetricsSnapshotSchema = z.object({
+    cpu_usage: z.number().nonnegative(),
+    memory_used_bytes: z.number().int().nonnegative(),
+    memory_total_bytes: z.number().int().nonnegative(),
+    disk_used_bytes: z.number().int().nonnegative(),
+    disk_total_bytes: z.number().int().nonnegative(),
+    network_receive_bytes_per_second: z.number().int().nonnegative(),
+    network_transmit_bytes_per_second: z.number().int().nonnegative(),
+    recorded_at: z.string().min(1),
+}).strict();
 
 export const ConfigFileFormatSchema = z.enum(["json", "properties", "ini", "toml", "yaml", "xml", "lua", "text"]);
 export const ConfigFileCategorySchema = z.enum(["configuration", "access"]);
@@ -363,6 +380,9 @@ export type Backup = z.infer<typeof BackupSchema>;
 export type MetricPeriod = z.infer<typeof MetricPeriodSchema>;
 export type MetricPoint = z.infer<typeof MetricPointSchema>;
 export type MetricsHistory = z.infer<typeof MetricsHistorySchema>;
+export type CurrentServerMetric = z.infer<typeof CurrentServerMetricSchema>;
+export type CurrentServerMetrics = z.infer<typeof CurrentServerMetricsSchema>;
+export type SystemMetricsSnapshot = z.infer<typeof SystemMetricsSnapshotSchema>;
 export type ConfigFileCategory = z.infer<typeof ConfigFileCategorySchema>;
 export type ConfigFileSummary = z.infer<typeof ConfigFileSummarySchema>;
 export type ConfigFileDocument = z.infer<typeof ConfigFileDocumentSchema>;

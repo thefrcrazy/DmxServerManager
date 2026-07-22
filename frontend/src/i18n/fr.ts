@@ -246,6 +246,18 @@ export const fr = {
         no_recent_activity: "Aucune opération récente.",
         no_filter_match: "Aucun serveur ne correspond à vos filtres."
     },
+    metrics: {
+        system_resources: "Ressources système",
+        host_scope: "Mesures globales de la machine qui exécute DMX",
+        instance_resources: "Ressources de l’instance",
+        resources: "Ressources",
+        ram: "RAM",
+        disk: "Disque",
+        network: "Réseau",
+        network_host_hint: "Trafic global de l’hôte",
+        live: "Temps réel",
+        reconnecting: "Reconnexion"
+    },
     servers: {
         title: "Mes Serveurs",
         create_new: "Nouveau serveur",

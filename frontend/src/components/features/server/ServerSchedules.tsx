@@ -164,7 +164,7 @@ export default function ServerSchedules({ instanceId, capabilities, refreshSigna
         : t("common.never");
 
     return (
-        <section className="operations-section server-schedules" aria-labelledby="server-schedules-heading">
+        <section className="operations-section server-schedules card" aria-labelledby="server-schedules-heading">
             <div className="server-backups__header">
                 <div><h2 id="server-schedules-heading">{t("schedules.title")}</h2><p>{t("schedules.description")}</p></div>
                 {!creating && !editing && availableActions.length > 0 && <Button type="button" onClick={() => setCreating(true)} icon={<Plus size={17} />}>{t("schedules.create")}</Button>}

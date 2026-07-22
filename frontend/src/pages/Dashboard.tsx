@@ -1,11 +1,12 @@
 import { AlertTriangle, Activity, CircleCheck, Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { EmptyState, LoadingScreen } from "@/components/shared";
+import { EmptyState, LoadingScreen, SystemMetricsStrip } from "@/components/shared";
+import { ServerResourceUsage } from "@/components/features/server";
 import { StatPill } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useGlobalEvents, usePermission, useServers } from "@/hooks";
+import { useGlobalEvents, useLiveMetrics, usePermission, useServers } from "@/hooks";
 import type { Job } from "@/schemas/api";
 import type { ActivitySummary } from "@/schemas/operations";
 import { apiService } from "@/services";
@@ -29,6 +30,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const canReadJobs = hasPermission("job.read");
+    const { systemMetrics, serverMetrics, isConnected: metricsConnected } = useLiveMetrics();
 
     useEffect(() => setPageTitle(t("sidebar.dashboard"), t("dashboard.operational_subtitle")), [setPageTitle, t]);
 
@@ -72,6 +74,8 @@ export default function Dashboard() {
                 <StatPill icon={<CircleCheck size={17} />} label={t("dashboard.operations_running")} value={summary.active_jobs} variant="default" />
             </section>
 
+            <SystemMetricsStrip metrics={systemMetrics} connected={metricsConnected} />
+
             <div className="dashboard-operations-grid">
                 <section className="card dashboard-panel">
                     <header className="dashboard-panel__header">
@@ -87,6 +91,7 @@ export default function Dashboard() {
                                 return <Link key={server.id} to={`/servers/${server.id}`} className="health-row">
                                     <span className={`health-row__dot health-row__dot--${server.runtime_state}`} aria-hidden="true" />
                                     <span className="health-row__identity"><strong>{server.name}</strong><small>{visual.label}</small></span>
+                                    <ServerResourceUsage metric={serverMetrics[server.id]} running={server.runtime_state === "running"} compact />
                                     <span className="health-row__version">{server.installed_version ?? server.installed_build ?? "—"}</span>
                                     <span className={`badge badge--${server.runtime_state === "running" ? "success" : server.runtime_state === "crashed" ? "danger" : "neutral"}`}>{t(`servers.runtime_states.${server.runtime_state}`)}</span>
                                 </Link>;

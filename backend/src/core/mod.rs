@@ -6,6 +6,7 @@ pub mod events;
 pub use config::Settings;
 pub use database::DbPool;
 
+use crate::services::metrics::SystemMetricsService;
 use crate::services::profiles::ProfileRegistry;
 use crate::services::releases::ReleaseMonitor;
 use crate::services::runtime::RuntimeManager;
@@ -22,4 +23,5 @@ pub struct AppState {
     pub secrets: SecretStore,
     pub runtime: RuntimeManager,
     pub releases: ReleaseMonitor,
+    pub system_metrics: SystemMetricsService,
 }

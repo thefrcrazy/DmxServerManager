@@ -1091,6 +1091,20 @@ fn operations_paths() -> Value {
                 "responses": {"200": {"description": "Chronological bounded metrics history.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MetricsHistory"}}}}}
             }
         },
+        "/metrics/current": {
+            "get": {
+                "operationId": "getCurrentServerMetrics", "tags": ["metrics"],
+                "description": "Latest persisted sample for every instance visible to the current user.",
+                "responses": {"200": {"description": "Authorized latest per-instance metrics.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CurrentServerMetrics"}}}}}
+            }
+        },
+        "/metrics/system": {
+            "get": {
+                "operationId": "getSystemMetrics", "tags": ["metrics"],
+                "description": "Current host CPU, memory, data-volume disk usage and aggregate network throughput. Interface names and addresses are never exposed.",
+                "responses": {"200": {"description": "Current host resource metrics.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SystemMetricsSnapshot"}}}}}
+            }
+        },
         "/schedules": {
             "get": {
                 "operationId": "listSchedules", "tags": ["schedules"],
@@ -2071,6 +2085,37 @@ fn operations_schemas() -> Value {
                 "points": {"type": "array", "maxItems": 10000, "items": {"$ref": "#/components/schemas/MetricPoint"}}
             }
         },
+        "CurrentServerMetric": {
+            "type": "object", "additionalProperties": false,
+            "required": ["server_id", "cpu_usage", "memory_bytes", "disk_bytes", "uptime_seconds", "player_count", "recorded_at"],
+            "properties": {
+                "server_id": {"type": "string", "format": "uuid"},
+                "cpu_usage": {"type": "number", "minimum": 0},
+                "memory_bytes": {"type": "integer", "minimum": 0},
+                "disk_bytes": {"type": "integer", "minimum": 0},
+                "uptime_seconds": {"type": "integer", "minimum": 0},
+                "player_count": {"type": ["integer", "null"], "minimum": 0},
+                "recorded_at": {"type": "string", "format": "date-time"}
+            }
+        },
+        "CurrentServerMetrics": {
+            "type": "object", "additionalProperties": false, "required": ["items"],
+            "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/CurrentServerMetric"}}}
+        },
+        "SystemMetricsSnapshot": {
+            "type": "object", "additionalProperties": false,
+            "required": ["cpu_usage", "memory_used_bytes", "memory_total_bytes", "disk_used_bytes", "disk_total_bytes", "network_receive_bytes_per_second", "network_transmit_bytes_per_second", "recorded_at"],
+            "properties": {
+                "cpu_usage": {"type": "number", "minimum": 0},
+                "memory_used_bytes": {"type": "integer", "minimum": 0},
+                "memory_total_bytes": {"type": "integer", "minimum": 0},
+                "disk_used_bytes": {"type": "integer", "minimum": 0},
+                "disk_total_bytes": {"type": "integer", "minimum": 0},
+                "network_receive_bytes_per_second": {"type": "integer", "minimum": 0},
+                "network_transmit_bytes_per_second": {"type": "integer", "minimum": 0},
+                "recorded_at": {"type": "string", "format": "date-time"}
+            }
+        },
         "ScheduleTrigger": {
             "oneOf": [
                 {"type": "object", "additionalProperties": false, "required": ["kind", "expression", "timezone"], "properties": {
@@ -2253,6 +2298,8 @@ mod tests {
         "GET /jobs",
         "GET /jobs/{id}",
         "GET /mods/providers",
+        "GET /metrics/current",
+        "GET /metrics/system",
         "GET /openapi.json",
         "GET /panel/network",
         "GET /permissions",

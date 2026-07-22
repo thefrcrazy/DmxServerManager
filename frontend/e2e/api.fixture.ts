@@ -607,7 +607,7 @@ export class ApiMock {
             return this.json(route, 200, { needs_setup: this.needsSetup });
         }
         if (path === "/health" && request.method() === "GET") {
-            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.1.5" });
+            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.1.6" });
         }
         if (path === "/auth/setup" && request.method() === "POST") {
             if (!this.needsSetup) return this.problem(route, 409, "Setup already completed");
@@ -1324,6 +1324,32 @@ export class ApiMock {
                 server_id: metricsMatch[1],
                 period: url.searchParams.get("period") ?? "1d",
                 points: this.metrics,
+            });
+        }
+        if (path === "/metrics/current" && request.method() === "GET") {
+            const latest = this.metrics.at(-1);
+            return this.json(route, 200, {
+                items: latest ? this.instances.map((instance) => ({
+                    server_id: instance.id,
+                    cpu_usage: latest.cpu_usage,
+                    memory_bytes: latest.memory_bytes,
+                    disk_bytes: latest.disk_bytes,
+                    uptime_seconds: latest.uptime_seconds,
+                    player_count: latest.player_count,
+                    recorded_at: latest.recorded_at,
+                })) : [],
+            });
+        }
+        if (path === "/metrics/system" && request.method() === "GET") {
+            return this.json(route, 200, {
+                cpu_usage: 22.4,
+                memory_used_bytes: 8_589_934_592,
+                memory_total_bytes: 17_179_869_184,
+                disk_used_bytes: 128_849_018_880,
+                disk_total_bytes: 536_870_912_000,
+                network_receive_bytes_per_second: 1_048_576,
+                network_transmit_bytes_per_second: 262_144,
+                recorded_at: NOW,
             });
         }
 

@@ -96,6 +96,12 @@ test("le dashboard affiche la santé opérationnelle et ouvre la gestion détail
     await expect(page.locator(".health-list .health-row")).toHaveCount(2);
     await expect(page.locator(".stat-pill").filter({ hasText: "en ligne" }).getByText("1", { exact: true })).toBeVisible();
     await expect(page.locator(".stat-pill").filter({ hasText: "À traiter" }).getByText("0", { exact: true })).toBeVisible();
+    const systemMetrics = page.getByRole("region", { name: "Ressources système" });
+    await expect(systemMetrics).toContainText("22.4 %");
+    await expect(systemMetrics).toContainText("8 GB / 16 GB");
+    await expect(systemMetrics).toContainText("120 GB / 500 GB");
+    await expect(systemMetrics).toContainText("↓ 1 MB/s · ↑ 256 KB/s");
+    await expect(page.locator(".health-row").first().getByLabel("Ressources de l’instance")).toBeVisible();
 
     const restrictedRow = page.locator(".health-row").filter({ hasText: "Minecraft sans driver runtime" });
     await expect(restrictedRow.locator("button")).toHaveCount(0);
@@ -162,6 +168,8 @@ test("la vue liste ou grille des serveurs est conservée par utilisateur", async
     await api.install(page);
     await page.goto("/servers");
     await expect(page.locator(".server-grid")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Ressources système" })).toBeVisible();
+    await expect(page.locator(".server-card .server-resource-usage")).toHaveCount(2);
 
     await page.getByRole("button", { name: "Affichage en liste" }).click();
     await expect(page.getByRole("table")).toBeVisible();

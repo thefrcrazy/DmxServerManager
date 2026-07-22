@@ -1551,6 +1551,7 @@ mod tests {
             secrets.clone(),
         );
         let releases = ReleaseMonitor::new(settings.clone()).unwrap();
+        let system_metrics = crate::services::metrics::SystemMetricsService::default();
         let state = AppState {
             pool,
             settings,
@@ -1559,6 +1560,7 @@ mod tests {
             secrets,
             runtime,
             releases,
+            system_metrics,
         };
         let user_id = uuid::Uuid::new_v4().to_string();
         let session = "import-owner-session".to_string();

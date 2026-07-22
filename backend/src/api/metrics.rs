@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 use crate::{
-    api::auth::{AuthUser, authorize_instance},
+    api::auth::{AuthUser, authorize_instance, instance_grant_scope},
     core::{AppState, error::AppError},
+    services::metrics::SystemMetricsSnapshot,
 };
 
 const MAX_POINTS: i64 = 10_000;
@@ -39,8 +40,67 @@ struct MetricsHistory {
     points: Vec<MetricPoint>,
 }
 
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct CurrentServerMetric {
+    pub server_id: String,
+    pub cpu_usage: f64,
+    pub memory_bytes: i64,
+    pub disk_bytes: i64,
+    pub uptime_seconds: i64,
+    pub player_count: Option<i64>,
+    pub recorded_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CurrentServerMetrics {
+    pub items: Vec<CurrentServerMetric>,
+}
+
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/servers/{id}/metrics", get(history))
+    Router::new()
+        .route("/servers/{id}/metrics", get(history))
+        .route("/metrics/current", get(current))
+        .route("/metrics/system", get(system))
+}
+
+async fn system(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<SystemMetricsSnapshot>, AppError> {
+    auth.require("server.read")?;
+    Ok(Json(state.system_metrics.current().await))
+}
+
+async fn current(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<CurrentServerMetrics>, AppError> {
+    auth.require("server.read")?;
+    let scope = instance_grant_scope(&state, &auth).await?;
+    let rows: Vec<CurrentServerMetric> = sqlx::query_as(
+        r#"
+        SELECT metric.server_id, metric.cpu_usage, metric.memory_bytes,
+               metric.disk_bytes, metric.uptime_seconds, metric.player_count,
+               metric.recorded_at
+        FROM instances AS instance
+        JOIN server_metrics AS metric ON metric.id = (
+            SELECT candidate.id
+            FROM server_metrics AS candidate
+            WHERE candidate.server_id = instance.id
+            ORDER BY candidate.recorded_at DESC, candidate.id DESC
+            LIMIT 1
+        )
+        ORDER BY metric.server_id
+        "#,
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(CurrentServerMetrics {
+        items: rows
+            .into_iter()
+            .filter(|metric| scope.allows(&auth, &metric.server_id, "server.read"))
+            .collect(),
+    }))
 }
 
 async fn history(

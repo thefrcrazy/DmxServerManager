@@ -4,9 +4,8 @@ import { Plus, Server as ServerIcon } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePageTitle } from "../contexts/PageTitleContext";
 import { ServerList, ServerFilters } from "@/components/features/server";
-import { useFilteredServers } from "../hooks";
-import { usePermission } from "../hooks";
-import { LoadingScreen, EmptyState } from "@/components/shared";
+import { useFilteredServers, useLiveMetrics, usePermission } from "../hooks";
+import { LoadingScreen, EmptyState, SystemMetricsStrip } from "@/components/shared";
 import { ServerAction } from "@/services/api/server.client";
 
 export default function Servers() {
@@ -14,6 +13,7 @@ export default function Servers() {
     const { setPageTitle } = usePageTitle();
     const { hasPermission } = usePermission();
     const canCreate = hasPermission("server.create");
+    const { systemMetrics, serverMetrics, isConnected: metricsConnected } = useLiveMetrics();
 
     const {
         servers,
@@ -44,6 +44,7 @@ export default function Servers() {
 
     return (
         <div className="servers-page">
+            <SystemMetricsStrip metrics={systemMetrics} connected={metricsConnected} />
             <ServerFilters
                 search={search}
                 onSearchChange={setSearch}
@@ -80,6 +81,7 @@ export default function Servers() {
                     profiles={profiles}
                     viewMode={viewMode}
                     onAction={onAction}
+                    metrics={serverMetrics}
                 />
             )}
         </div>

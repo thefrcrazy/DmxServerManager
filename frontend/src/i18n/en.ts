@@ -248,6 +248,18 @@ export const en: TranslationType = {
         no_recent_activity: "No recent operation.",
         no_filter_match: "No servers match your filters."
     },
+    metrics: {
+        system_resources: "System resources",
+        host_scope: "Global metrics for the machine running DMX",
+        instance_resources: "Instance resources",
+        resources: "Resources",
+        ram: "RAM",
+        disk: "Disk",
+        network: "Network",
+        network_host_hint: "Host-wide traffic",
+        live: "Live",
+        reconnecting: "Reconnecting"
+    },
     servers: {
         title: "My Servers",
         create_new: "New Server",

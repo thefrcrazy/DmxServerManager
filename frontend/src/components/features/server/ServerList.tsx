@@ -2,6 +2,7 @@ import { Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ConnectionInfo, GameProfile, Instance } from "@/schemas/api";
+import type { CurrentServerMetric } from "@/schemas/operations";
 import type { ServerAction } from "@/services/api/server.client";
 import { Table, Tooltip } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -11,12 +12,14 @@ import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles
 import ServerCard from "./ServerCard";
 import { apiService } from "@/services";
 import MaskedConnection from "./MaskedConnection";
+import ServerResourceUsage from "./ServerResourceUsage";
 
 interface ServerListProps {
     servers: Instance[];
     profiles: GameProfile[];
     viewMode: "grid" | "list";
     onAction: (id: string, action: ServerAction) => Promise<boolean | void>;
+    metrics: Record<string, CurrentServerMetric>;
 }
 
 function actionPermission(action: ServerAction): string {
@@ -25,7 +28,7 @@ function actionPermission(action: ServerAction): string {
     return `server.${action}`;
 }
 
-export default function ServerList({ servers, profiles, viewMode, onAction }: ServerListProps) {
+export default function ServerList({ servers, profiles, viewMode, onAction, metrics }: ServerListProps) {
     const { t } = useLanguage();
     const toast = useToast();
     const { hasPermission } = usePermission();
@@ -72,6 +75,7 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                     capabilities={new Set(profilesById.get(server.profile_id)?.capabilities ?? [])}
                     playerCount={playerCounts[server.id]}
                     connection={connections[server.id]}
+                    metric={metrics[server.id]}
                     onAction={(id, action) => void run(id, action)}
                 />)}
             </div>
@@ -81,7 +85,7 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
     return (
         <Table className="server-list-table">
             <thead><tr>
-                <th>{t("servers.server_header")}</th><th>{t("servers.status")}</th><th>{t("servers.players")}</th><th>{t("servers.installed_version")}</th><th>{t("servers.connection")}</th><th><span className="sr-only">{t("servers.actions")}</span></th>
+                <th>{t("servers.server_header")}</th><th>{t("servers.status")}</th><th>{t("servers.players")}</th><th>{t("metrics.resources")}</th><th>{t("servers.installed_version")}</th><th>{t("servers.connection")}</th><th><span className="sr-only">{t("servers.actions")}</span></th>
             </tr></thead>
             <tbody>{servers.map((server) => {
                 const running = server.runtime_state === "running";
@@ -115,6 +119,7 @@ export default function ServerList({ servers, profiles, viewMode, onAction }: Se
                             <span className={`badge badge--${running ? "success" : server.runtime_state === "crashed" ? "danger" : needsInstall ? "warning" : "info"}`}>{needsInstall ? t(`servers.installation_states.${server.installation_state}`) : t(`servers.runtime_states.${server.runtime_state}`)}</span>
                         </td>
                         <td className="server-list-table__players">{playerCounts[server.id] ?? "—"}</td>
+                        <td><ServerResourceUsage metric={metrics[server.id]} running={running} compact /></td>
                         <td><code className="server-list-table__version">{server.installed_version ?? server.installed_build ?? "—"}</code></td>
                         <td><MaskedConnection connection={connections[server.id]} compact /></td>
                         <td><div className="server-actions">

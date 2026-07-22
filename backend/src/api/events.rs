@@ -217,9 +217,11 @@ fn visible(
         grant_scope.allows(auth, selected, required_instance_permission(event))
     } else if let Some(instance_id) = &event.instance_id {
         grant_scope.allows(auth, instance_id, required_instance_permission(event))
+    } else if event.event_type == "system.metrics" {
+        auth.has_permission("server.read")
     } else {
-        // Catalogue, release and webhook events are Owner-only. Dedicated
-        // per-user global features are handled above.
+        // Catalogue, release and webhook events are Owner-only. Host metrics
+        // are handled above and expose only aggregate resource counters.
         auth.role == "owner"
     }
 }
@@ -350,5 +352,15 @@ mod tests {
             &scope,
             &operator,
         ));
+    }
+
+    #[test]
+    fn aggregate_system_metrics_are_visible_to_server_readers_only() {
+        let scope = InstanceGrantScope::for_test(false, []);
+        let viewer = AuthUser::for_test("viewer", "viewer", ["server.read"]);
+        let restricted = AuthUser::for_test("restricted", "viewer", ["job.read"]);
+        let metric = event("system.metrics", None, None);
+        assert!(visible(&metric, None, &scope, &viewer));
+        assert!(!visible(&metric, None, &scope, &restricted));
     }
 }
