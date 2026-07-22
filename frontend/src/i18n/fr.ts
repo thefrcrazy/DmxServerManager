@@ -765,6 +765,17 @@ export const fr = {
             desired_state: "État demandé",
             build: "Build installé"
         },
+        configuration_actions: {
+            title: "Configuration de l’instance",
+            saved: "Tous les réglages DMX sont enregistrés.",
+            unsaved: "Des modifications locales attendent d’être enregistrées."
+        },
+        danger_zone: {
+            title: "Zone de danger",
+            description: "La suppression retire définitivement l’instance et ses données gérées par DMX.",
+            stop_required: "Arrêtez complètement l’instance et son watchdog avant de pouvoir la supprimer.",
+            delete: "Supprimer l’instance"
+        },
         crash_notice: {
             title: "Le processus du serveur s’est arrêté avec une erreur.",
             watchdog_pending: "Les logs et fichiers restent accessibles en lecture. Arrêtez l’état désiré pour annuler les relances du watchdog avant de modifier la configuration ou les fichiers.",
@@ -1087,10 +1098,23 @@ export const fr = {
             inspect: "Consulter",
             loading_editor: "Chargement de l’éditeur…",
             advanced_editor: "Éditeur avancé",
+            advanced_editor_action: "Ouvrir l’éditeur avancé",
             editor: "Éditeur",
             editor_aria: "Contenu de {{file}}",
             safe_list: "Formulaire de liste d’accès",
             safe_list_hint: "Une entrée par ligne. Les commentaires et les clés inconnues sont conservés.",
+            safe_form_title: "Réglages principaux",
+            safe_form_hint: "Formulaire simplifié. Les clés inconnues et les commentaires restent intacts.",
+            safe_form_empty: "Aucun réglage simple n’a pu être extrait. Utilisez l’éditeur avancé.",
+            safe_form_invalid: "Le fichier ne peut pas être converti en formulaire sans risque. Utilisez l’éditeur avancé.",
+            safe_form_more: "{{count}} autres réglages restent disponibles dans l’éditeur avancé.",
+            configured_value: "Configuré",
+            not_configured_value: "Non configuré",
+            keep_configured_value: "Laisser vide pour conserver la valeur actuelle",
+            enabled_value: "Activé",
+            disabled_value: "Désactivé",
+            invalid_number: "Saisissez une valeur numérique valide.",
+            queue_form: "Mettre les réglages en file",
             list_entries: "Entrées",
             invalid_list: "La liste contient trop d’entrées, une ligne trop longue ou un caractère de contrôle interdit.",
             queue_list: "Mettre cette liste en file",

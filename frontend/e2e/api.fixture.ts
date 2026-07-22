@@ -1347,15 +1347,36 @@ export class ApiMock {
 
         const configFilesMatch = path.match(/^\/servers\/([0-9a-f-]+)\/config-files$/i);
         if (configFilesMatch && request.method() === "GET") {
-            const queuedRequest = this.findRequest("PUT", `/servers/${configFilesMatch[1]}/config-files/text`);
-            const queuedContent = typeof queuedRequest?.body === "object"
-                && queuedRequest.body !== null
-                && "content" in queuedRequest.body
-                && typeof queuedRequest.body.content === "string"
-                ? queuedRequest.body.content
-                : null;
+            const queuedContent = (nativePath: string): string | null => {
+                const queuedRequest = [...this.requests].reverse().find((item) => item.method === "PUT"
+                    && item.path === `/servers/${configFilesMatch[1]}/config-files/text`
+                    && new URLSearchParams(item.search).get("path") === nativePath);
+                return typeof queuedRequest?.body === "object"
+                    && queuedRequest.body !== null
+                    && "content" in queuedRequest.body
+                    && typeof queuedRequest.body.content === "string"
+                    ? queuedRequest.body.content
+                    : null;
+            };
+            const accessQueued = queuedContent("data/adminlist.txt");
+            const configurationQueued = queuedContent("game/Server/config.json");
             return this.json(route, 200, {
                 items: [{
+                    path: "game/Server/config.json",
+                    category: "configuration",
+                    format: "json",
+                    exists: true,
+                    size_bytes: 196,
+                    modified_at: NOW,
+                    sha256: "c".repeat(64),
+                    queued_change: configurationQueued === null ? null : {
+                        id: "14141414-1414-4414-8414-141414141414",
+                        status: "pending",
+                        content_sha256: "d".repeat(64),
+                        error_code: null,
+                        queued_at: NOW,
+                    },
+                }, {
                     path: "data/adminlist.txt",
                     category: "access",
                     format: "text",
@@ -1363,7 +1384,7 @@ export class ApiMock {
                     size_bytes: 18,
                     modified_at: NOW,
                     sha256: "a".repeat(64),
-                    queued_change: queuedContent === null ? null : {
+                    queued_change: accessQueued === null ? null : {
                         id: "13131313-1313-4313-8313-131313131313",
                         status: "pending",
                         content_sha256: "b".repeat(64),
@@ -1371,46 +1392,52 @@ export class ApiMock {
                         queued_at: NOW,
                     },
                 }],
-                pending_count: queuedContent === null ? 0 : 1,
+                pending_count: Number(accessQueued !== null) + Number(configurationQueued !== null),
             });
         }
         const configTextMatch = path.match(/^\/servers\/([0-9a-f-]+)\/config-files\/text$/i);
         if (configTextMatch && request.method() === "GET") {
+            const nativePath = url.searchParams.get("path");
+            const configuration = nativePath === "game/Server/config.json";
             return this.json(route, 200, {
                 file: {
-                    path: url.searchParams.get("path"),
-                    category: "access",
-                    format: "text",
+                    path: nativePath,
+                    category: configuration ? "configuration" : "access",
+                    format: configuration ? "json" : "text",
                     exists: true,
-                    size_bytes: 18,
+                    size_bytes: configuration ? 196 : 18,
                     modified_at: NOW,
-                    sha256: "a".repeat(64),
+                    sha256: (configuration ? "c" : "a").repeat(64),
                     queued_change: null,
                 },
-                content: "76561198000000000",
+                content: configuration
+                    ? "{\n  \"Version\": 4,\n  \"ServerName\": \"Hytale Server\",\n  \"MOTD\": \"Bienvenue\",\n  \"Password\": \"\",\n  \"MaxPlayers\": 100,\n  \"Defaults\": { \"World\": \"default\", \"GameMode\": \"Adventure\" },\n  \"Modules\": {}\n}\n"
+                    : "76561198000000000",
                 queued_content: null,
             });
         }
         if (configTextMatch && request.method() === "PUT") {
             const body = record.body as { content?: unknown };
+            const nativePath = url.searchParams.get("path");
+            const configuration = nativePath === "game/Server/config.json";
             return this.json(route, 200, {
                 file: {
-                    path: url.searchParams.get("path"),
-                    category: "access",
-                    format: "text",
+                    path: nativePath,
+                    category: configuration ? "configuration" : "access",
+                    format: configuration ? "json" : "text",
                     exists: true,
                     size_bytes: typeof body.content === "string" ? body.content.length : 0,
                     modified_at: NOW,
-                    sha256: "a".repeat(64),
+                    sha256: (configuration ? "c" : "a").repeat(64),
                     queued_change: {
-                        id: "13131313-1313-4313-8313-131313131313",
+                        id: configuration ? "14141414-1414-4414-8414-141414141414" : "13131313-1313-4313-8313-131313131313",
                         status: "pending",
-                        content_sha256: "b".repeat(64),
+                        content_sha256: (configuration ? "d" : "b").repeat(64),
                         error_code: null,
                         queued_at: NOW,
                     },
                 },
-                content: "76561198000000000",
+                content: configuration ? "{}" : "76561198000000000",
                 queued_content: typeof body.content === "string" ? body.content : "",
             });
         }

@@ -292,7 +292,7 @@ test("l’onglet Joueurs affiche la présence et met les droits natifs en file",
     await page.getByLabel("Entrées — adminlist.txt").fill("76561198000000000\n76561198000000001");
     await page.getByRole("button", { name: "Mettre cette liste en file" }).click();
     await expect(page.getByText("Modification chiffrée et mise en file.")).toBeVisible();
-    await page.getByRole("button", { name: "Modifier" }).click();
+    await page.getByRole("button", { name: "Ouvrir l’éditeur avancé" }).click();
     const editorDialog = page.getByRole("dialog", { name: "adminlist.txt" });
     await expect(editorDialog.locator(".monaco-editor")).toBeVisible();
 

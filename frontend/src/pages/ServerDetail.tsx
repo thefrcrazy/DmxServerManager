@@ -383,6 +383,11 @@ export default function ServerDetail() {
     const fullyStopped = instance.runtime_state === "stopped"
         && instance.desired_state === "stopped"
         && !installationInProgress;
+    const configurationDirty = name.trim() !== instance.name
+        || autoStart !== instance.auto_start
+        || watchdog !== instance.watchdog_enabled
+        || JSON.stringify(settings) !== JSON.stringify(instance.settings)
+        || Object.values(secretDrafts).some((value) => value.length > 0);
     const bedrockArchive = events.pendingBedrockArchive ?? fallbackBedrockArchive;
     const deviceAuthorization = events.pendingDeviceAuthorization ?? fallbackDeviceAuthorization;
     const canUploadBedrockArchive = user?.role === "owner" && hasPermission("server.files.write");
@@ -426,7 +431,7 @@ export default function ServerDetail() {
 
             {!connection?.configured && hasPermission("panel.network.manage") && <div className="connection-notice"><Globe2 size={18} /><span>{t("server_detail.connection.configure_hint")}</span><Button as="link" to="/administration?tab=network" variant="ghost" size="sm">{t("server_detail.connection.configure")}</Button></div>}
 
-            <div className="server-actions" style={{ marginBottom: "1rem", justifyContent: "flex-end" }}>
+            <div className="server-actions server-detail-actions">
                 {hasPermission("job.read") && <Button as="link" to={`/activity?tab=operations&instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
                 {!installed && canInstall && hasPermission("server.update_game") && <Button onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.install")}</Button>}
                 {installed && canInstall && !running && instance.desired_state === "stopped" && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
@@ -568,10 +573,10 @@ export default function ServerDetail() {
                                 </div>
                             </section>
                         )}
-                        <div className="form-footer">
-                            {hasPermission("server.delete") && <Button variant="danger" onClick={() => void deleteInstance()} disabled={instance.runtime_state !== "stopped" || instance.desired_state !== "stopped"} icon={<Trash2 size={17} />}>{t("common.delete")}</Button>}
-                            <Button onClick={() => void saveConfiguration()} isLoading={saving} disabled={!hasPermission("server.update")} icon={<Save size={17} />}>{t("common.save")}</Button>
-                        </div>
+                        {hasPermission("server.update") && <div className={`configuration-save-panel ${configurationDirty ? "is-dirty" : ""}`} aria-live="polite">
+                            <div className="configuration-save-panel__status"><span><Save size={17} aria-hidden="true" /></span><div><strong>{t("server_detail.configuration_actions.title")}</strong><small>{t(configurationDirty ? "server_detail.configuration_actions.unsaved" : "server_detail.configuration_actions.saved")}</small></div></div>
+                            <Button onClick={() => void saveConfiguration()} isLoading={saving} disabled={!configurationDirty || name.trim().length === 0} icon={<Save size={17} />}>{t("common.save")}</Button>
+                        </div>}
                         {hasPermission("server.files.read") && (
                             <ServerConfigFiles
                                 instanceId={instance.id}
@@ -583,6 +588,10 @@ export default function ServerDetail() {
                             />
                         )}
                         {(user?.role === "owner" || user?.role === "admin") && <details className="server-diagnostics"><summary>{t("server_detail.diagnostics.title")}</summary><dl><div><dt>{t("server_detail.diagnostics.profile")}</dt><dd><code>{instance.profile_id} · #{instance.profile_revision}</code></dd></div><div><dt>{t("server_detail.diagnostics.configuration")}</dt><dd><code>{instance.config_version}</code></dd></div><div><dt>{t("server_detail.diagnostics.desired_state")}</dt><dd><code>{instance.desired_state}</code></dd></div>{instance.installed_build && <div><dt>{t("server_detail.diagnostics.build")}</dt><dd><code>{instance.installed_build}</code></dd></div>}</dl></details>}
+                        {hasPermission("server.delete") && <section className="instance-danger-zone" aria-labelledby="instance-danger-zone-title">
+                            <div><h3 id="instance-danger-zone-title"><TriangleAlert size={17} aria-hidden="true" />{t("server_detail.danger_zone.title")}</h3><p>{t(fullyStopped ? "server_detail.danger_zone.description" : "server_detail.danger_zone.stop_required")}</p></div>
+                            <Button variant="danger" onClick={() => void deleteInstance()} disabled={!fullyStopped} icon={<Trash2 size={17} />}>{t("server_detail.danger_zone.delete")}</Button>
+                        </section>}
                     </div>
                 )}
             </div>

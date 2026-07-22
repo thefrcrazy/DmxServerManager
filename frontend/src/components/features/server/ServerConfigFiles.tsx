@@ -1,11 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { Clock3, FileCode2, LoaderCircle, Pencil, RefreshCw, ShieldAlert } from "lucide-react";
+import { Clock3, Code2, FileCode2, LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { ConfigFileCategory, ConfigFileSummary } from "@/schemas/operations";
 import { apiService } from "@/services";
 import { formatBytes, formatDate } from "@/utils/formatters";
+import { supportsNativeConfigForm } from "@/utils/nativeConfigForm";
 import NativeAccessListForm from "./NativeAccessListForm";
+import NativeConfigForm from "./NativeConfigForm";
 
 const NativeConfigEditorModal = lazy(() => import("./NativeConfigEditorModal"));
 
@@ -40,6 +42,7 @@ export default function ServerConfigFiles({
 }: ServerConfigFilesProps) {
     const { t, language } = useLanguage();
     const [files, setFiles] = useState<ConfigFileSummary[]>([]);
+    const [openFiles, setOpenFiles] = useState<Set<string>>(() => new Set());
     const [editorFile, setEditorFile] = useState<ConfigFileSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -98,7 +101,16 @@ export default function ServerConfigFiles({
                     const filename = file.path.split("/").at(-1) ?? file.path;
                     const queued = file.queued_change;
                     const advancedOnly = file.format === "yaml" || file.format === "lua";
-                    return <details className="native-config-details" key={file.path}>
+                    const safeForm = category === "configuration" && canReadRaw && supportsNativeConfigForm(file.format);
+                    const isOpen = openFiles.has(file.path);
+                    return <details className="native-config-details" key={file.path} onToggle={(event) => {
+                        const open = event.currentTarget.open;
+                        setOpenFiles((current) => {
+                            const next = new Set(current);
+                            if (open) next.add(file.path); else next.delete(file.path);
+                            return next;
+                        });
+                    }}>
                         <summary>
                             <span className="native-config-details__identity"><FileCode2 size={17} aria-hidden="true" /><span><strong>{filename}</strong><small>{t(`server_detail.native_config.roles.${roleKey(file)}`)}</small></span></span>
                             <span className="native-config-details__summary-meta">
@@ -115,9 +127,10 @@ export default function ServerConfigFiles({
                                 <div><dt>{t("server_detail.native_config.modified")}</dt><dd>{file.modified_at ? formatDate(file.modified_at, locale) : t("server_detail.native_config.never_modified")}</dd></div>
                             </dl>
                             {queued && <p className={`native-config-details__status native-config-details__status--${queued.status}`}>{t(`server_detail.native_config.status_detail.${queued.status}`)}</p>}
-                            {category === "access" && file.format === "text" && canReadRaw && <NativeAccessListForm instanceId={instanceId} file={file} canWrite={canWriteRaw} onChanged={() => void loadList()} />}
+                            {isOpen && safeForm && <NativeConfigForm instanceId={instanceId} file={file} canWrite={canWriteRaw} onChanged={() => void loadList()} />}
+                            {isOpen && category === "access" && file.format === "text" && canReadRaw && <NativeAccessListForm instanceId={instanceId} file={file} canWrite={canWriteRaw} onChanged={() => void loadList()} />}
                             <div className="native-config-details__actions">
-                                {!canReadRaw ? <span className="native-config-details__permission"><ShieldAlert size={16} />{t("server_detail.native_config.raw_read_required")}</span> : <Button type="button" size="sm" variant="secondary" icon={<Pencil size={15} />} onClick={() => setEditorFile(file)}>{t(canWriteRaw ? "server_detail.native_config.modify" : "server_detail.native_config.inspect")}</Button>}
+                                {!canReadRaw ? <span className="native-config-details__permission"><ShieldAlert size={16} />{t("server_detail.native_config.raw_read_required")}</span> : <Button type="button" size="sm" variant="ghost" icon={<Code2 size={15} />} onClick={() => setEditorFile(file)}>{t(canWriteRaw ? "server_detail.native_config.advanced_editor_action" : "server_detail.native_config.inspect")}</Button>}
                             </div>
                         </div>
                     </details>;

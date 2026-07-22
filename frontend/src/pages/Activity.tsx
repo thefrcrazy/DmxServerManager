@@ -10,7 +10,7 @@ import {
     ShieldCheck,
     X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice } from "@/components/features/server";
 import { Button } from "@/components/ui";
@@ -61,9 +61,12 @@ export default function ActivityPage() {
     const [nextAuditId, setNextAuditId] = useState<number | null>(null);
     const [instances, setInstances] = useState<Instance[]>([]);
     const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+    const [drawerVisible, setDrawerVisible] = useState(false);
+    const drawerCloseTimer = useRef<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [cancelling, setCancelling] = useState(false);
+    const selectedJobId = selectedJob?.id;
     const stateFilter = searchParams.get("state") as Job["state"] | null;
     const instanceFilter = searchParams.get("instance") ?? undefined;
 
@@ -112,10 +115,12 @@ export default function ActivityPage() {
     const crashed = useMemo(() => instances.filter((instance) => instance.runtime_state === "crashed"), [instances]);
 
     const switchTab = (tab: ActivityTab) => {
+        if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
         const next = new URLSearchParams(searchParams);
         next.set("tab", tab);
         next.delete("focus");
         setSearchParams(next, { replace: true });
+        setDrawerVisible(false);
         setSelectedJob(null);
     };
 
@@ -127,18 +132,49 @@ export default function ActivityPage() {
     };
 
     const selectJob = (job: Job) => {
+        if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
+        setDrawerVisible(false);
         setSelectedJob(job);
         const next = new URLSearchParams(searchParams);
         next.set("focus", job.id);
         setSearchParams(next, { replace: true });
     };
 
-    const closeDetails = () => {
-        setSelectedJob(null);
+    const closeDetails = useCallback(() => {
+        setDrawerVisible(false);
         const next = new URLSearchParams(searchParams);
         next.delete("focus");
         setSearchParams(next, { replace: true });
-    };
+        if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        drawerCloseTimer.current = window.setTimeout(() => {
+            setSelectedJob(null);
+            drawerCloseTimer.current = null;
+        }, reducedMotion ? 0 : 280);
+    }, [searchParams, setSearchParams]);
+
+    useEffect(() => {
+        if (!selectedJobId) return;
+        if (drawerCloseTimer.current !== null) {
+            window.clearTimeout(drawerCloseTimer.current);
+            drawerCloseTimer.current = null;
+        }
+        const frame = window.requestAnimationFrame(() => setDrawerVisible(true));
+        return () => window.cancelAnimationFrame(frame);
+    }, [selectedJobId]);
+
+    useEffect(() => {
+        if (!selectedJob) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") closeDetails();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [closeDetails, selectedJob]);
+
+    useEffect(() => () => {
+        if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
+    }, []);
 
     const cancelJob = async (job: Job) => {
         if (!await confirm(t("jobs.cancel_confirm"), { title: t("jobs.cancel"), confirmLabel: t("jobs.cancel"), isDestructive: true })) return;
@@ -218,7 +254,7 @@ export default function ActivityPage() {
                 </div>
             )}
 
-            {selectedJob && <div className="activity-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && closeDetails()}><aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="activity-detail-title">
+            {selectedJob && <div className={`activity-drawer-backdrop ${drawerVisible ? "is-open" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && closeDetails()}><aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="activity-detail-title">
                 <header><div><span className={`badge badge--${badgeVariant(selectedJob.state)}`}>{t(`jobs.states.${selectedJob.state}`)}</span><h2 id="activity-detail-title">{t(`jobs.kinds.${selectedJob.kind}`)}</h2></div><Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={closeDetails}><X size={19} /></Button></header>
                 <dl><div><dt>{t("jobs.instance_filter")}</dt><dd>{selectedJob.instance_id ? instanceNames.get(selectedJob.instance_id) ?? selectedJob.instance_id : t("common.system")}</dd></div><div><dt>{t("jobs.created")}</dt><dd>{new Date(selectedJob.created_at).toLocaleString(locale)}</dd></div><div><dt>{t("jobs.progress")}</dt><dd>{selectedJob.progress}%</dd></div><div><dt>ID</dt><dd><code>{selectedJob.id}</code></dd></div></dl>
                 {ACTIVE_STATES.has(selectedJob.state) && <progress max={100} value={selectedJob.progress} />}

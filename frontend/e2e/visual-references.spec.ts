@@ -83,7 +83,7 @@ test.describe("références visuelles v1.1.0", () => {
         await page.setViewportSize({ width: 1301, height: 790 });
         await page.goto(`/servers/${INSTANCES[0]!.id}?tab=players`);
         await page.getByText("adminlist.txt", { exact: true }).click();
-        await page.getByRole("button", { name: "Modifier" }).click();
+        await page.getByRole("button", { name: "Ouvrir l’éditeur avancé" }).click();
         await expect(page.getByRole("dialog", { name: "adminlist.txt" }).locator(".monaco-editor")).toBeVisible();
         await page.screenshot({
             path: resolve(outputDirectory, "07-native-editor-desktop.png"),

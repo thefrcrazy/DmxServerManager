@@ -1,21 +1,21 @@
 .dashboard-page {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-5);
+    gap: var(--spacing-6);
 }
 
 .dashboard-header-stats {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--spacing-3);
+    gap: var(--spacing-4);
 }
 
 .stat-pill {
     min-width: 0;
-    padding: var(--spacing-4);
+    padding: var(--spacing-5);
     display: flex;
     align-items: center;
-    gap: var(--spacing-3);
+    gap: var(--spacing-4);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-bg-secondary);
@@ -48,7 +48,7 @@
 .dashboard-operations-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-    gap: var(--spacing-4);
+    gap: var(--spacing-5);
 }
 
 .dashboard-panel {
@@ -56,8 +56,8 @@
     overflow: hidden;
 
     &__header {
-        min-height: 64px;
-        padding: var(--spacing-4);
+        min-height: 72px;
+        padding: var(--spacing-4) var(--spacing-5);
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -69,6 +69,21 @@
     }
 
     &__empty { padding: var(--spacing-6); color: var(--color-text-muted); text-align: center; }
+
+    > .empty-state {
+        min-height: 13rem;
+        padding: var(--spacing-8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        color: var(--color-text-muted);
+        text-align: center;
+
+        .empty-state__icon { margin-bottom: var(--spacing-3); color: var(--color-text-muted); }
+        .empty-state__title { color: var(--color-text-primary); font-size: var(--font-size-lg); }
+        .empty-state__description { max-width: 26rem; margin-top: var(--spacing-2); font-size: var(--font-size-sm); line-height: 1.5; }
+    }
 }
 
 .health-list,
@@ -76,8 +91,8 @@
 
 .health-row,
 .activity-preview-row {
-    min-height: 56px;
-    padding: var(--spacing-3) var(--spacing-4);
+    min-height: 64px;
+    padding: var(--spacing-3) var(--spacing-5);
     display: grid;
     align-items: center;
     gap: var(--spacing-3);

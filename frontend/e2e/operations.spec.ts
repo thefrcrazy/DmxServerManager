@@ -41,7 +41,10 @@ test("Activité sépare les incidents, les opérations et le journal réservé",
     await expect(page.getByText("Le processus a quitté.")).toHaveCount(0);
     await page.getByRole("button", { name: /Redémarrage/ }).click();
     await expect(page.getByText("Le processus a quitté.")).toBeVisible();
+    await expect(page.locator(".activity-drawer-backdrop")).toHaveClass(/is-open/);
     await page.getByRole("button", { name: "Fermer" }).click();
+    await expect(page.locator(".activity-drawer-backdrop")).not.toHaveClass(/is-open/);
+    await expect(page.locator(".activity-drawer-backdrop")).toHaveCount(0);
 
     await page.getByRole("tab", { name: "Opérations" }).click();
     await expect(page).toHaveURL(/tab=operations/);
@@ -50,6 +53,31 @@ test("Activité sépare les incidents, les opérations et le journal réservé",
     await page.getByRole("tab", { name: "Journal" }).click();
     await expect(page.getByText("server.updated", { exact: true })).toBeVisible();
     expect(api.findRequest("GET", "/audit")).toBeDefined();
+});
+
+test("la configuration native expose un formulaire sûr puis conserve le contenu inconnu", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    const serverId = INSTANCES[0]!.id;
+    await page.goto(`/servers/${serverId}?tab=configuration`);
+
+    await page.getByText("config.json", { exact: true }).click();
+    await expect(page.getByRole("region", { name: "Réglages principaux" })).toBeVisible();
+    await expect(page.getByText("Hytale Server", { exact: true })).toBeVisible();
+    await expect(page.getByText("Non configuré", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Modifier", exact: true }).click();
+    await page.getByLabel("ServerName", { exact: true }).fill("Hytale de Max");
+    await page.getByLabel("MaxPlayers", { exact: true }).fill("48");
+    await page.getByRole("button", { name: "Mettre les réglages en file" }).click();
+
+    const request = api.findRequest("PUT", `/servers/${serverId}/config-files/text`);
+    expect(new URLSearchParams(request?.search).get("path")).toBe("game/Server/config.json");
+    expect(request?.body).toMatchObject({ expected_sha256: "c".repeat(64) });
+    const queued = JSON.parse((request?.body as { content: string }).content);
+    expect(queued.ServerName).toBe("Hytale de Max");
+    expect(queued.MaxPlayers).toBe(48);
+    expect(queued.Modules).toEqual({});
 });
 
 test("le Journal reste masqué pour un rôle non administrateur même si une permission obsolète subsiste", async ({ page }) => {

@@ -14,7 +14,7 @@
 
     &__th {
         text-align: left;
-        padding: 0.625rem 0.75rem;
+        padding: var(--spacing-3) var(--spacing-4);
         color: var(--color-text-muted);
         font-weight: 500;
         font-size: 0.8125rem;
@@ -38,7 +38,7 @@
     }
 
     &__cell {
-        padding: 0.625rem 0.75rem;
+        padding: var(--spacing-3) var(--spacing-4);
 
         &--mono {
             font-family: var(--font-family-mono);

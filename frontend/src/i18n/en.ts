@@ -797,6 +797,17 @@ export const en: TranslationType = {
             desired_state: "Requested state",
             build: "Installed build"
         },
+        configuration_actions: {
+            title: "Instance configuration",
+            saved: "All DMX settings are saved.",
+            unsaved: "Local changes are waiting to be saved."
+        },
+        danger_zone: {
+            title: "Danger zone",
+            description: "Deleting permanently removes the instance and its DMX-managed data.",
+            stop_required: "Fully stop the instance and its watchdog before deleting it.",
+            delete: "Delete instance"
+        },
         crash_notice: {
             title: "The server process exited with an error.",
             watchdog_pending: "Logs and files remain readable. Stop the desired state to cancel watchdog restarts before changing configuration or files.",
@@ -1118,10 +1129,23 @@ export const en: TranslationType = {
             inspect: "Inspect",
             loading_editor: "Loading editor…",
             advanced_editor: "Advanced editor",
+            advanced_editor_action: "Open advanced editor",
             editor: "Editor",
             editor_aria: "Contents of {{file}}",
             safe_list: "Access-list form",
             safe_list_hint: "One entry per line. Comments and unknown keys are preserved.",
+            safe_form_title: "Primary settings",
+            safe_form_hint: "Simplified form. Unknown keys and comments remain intact.",
+            safe_form_empty: "No simple setting could be extracted. Use the advanced editor.",
+            safe_form_invalid: "This file cannot be converted into a safe form. Use the advanced editor.",
+            safe_form_more: "{{count}} additional settings remain available in the advanced editor.",
+            configured_value: "Configured",
+            not_configured_value: "Not configured",
+            keep_configured_value: "Leave empty to preserve the current value",
+            enabled_value: "Enabled",
+            disabled_value: "Disabled",
+            invalid_number: "Enter a valid numeric value.",
+            queue_form: "Queue settings",
             list_entries: "Entries",
             invalid_list: "The list contains too many entries, an overlong line, or a forbidden control character.",
             queue_list: "Queue this list",
