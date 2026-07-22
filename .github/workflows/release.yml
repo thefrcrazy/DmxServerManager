@@ -16,15 +16,68 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
-  quality-gate:
-    name: Full quality gate
+  verify-main-ci:
+    name: Verify successful main CI
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
-    uses: ./.github/workflows/ci.yml
+      actions: read
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require this exact commit to be green on main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tags must point to a commit already reachable from main." >&2
+            exit 1
+          fi
+
+          for attempt in $(seq 1 120); do
+            runs=$(gh api \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=${GITHUB_SHA}&per_page=100")
+            run=$(jq -c --arg sha "$GITHUB_SHA" '
+              .workflow_runs
+              | map(select(
+                  .head_sha == $sha
+                  and .head_branch == "main"
+                  and .event == "push"
+                ))
+              | sort_by(.created_at)
+              | last // empty
+            ' <<<"$runs")
+            if [[ -n "$run" ]]; then
+              status=$(jq -r '.status' <<<"$run")
+              conclusion=$(jq -r '.conclusion // ""' <<<"$run")
+              run_url=$(jq -r '.html_url' <<<"$run")
+              if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
+                echo "Verified successful main CI: $run_url"
+                exit 0
+              fi
+              if [[ "$status" == "completed" ]]; then
+                echo "Main CI concluded $conclusion for tagged commit $GITHUB_SHA: $run_url" >&2
+                exit 1
+              fi
+            fi
+            echo "Waiting for main CI on $GITHUB_SHA (attempt $attempt/120)."
+            sleep 15
+          done
+          echo "Main CI did not complete successfully within 30 minutes for $GITHUB_SHA." >&2
+          exit 1
 
   create-draft:
     name: Create immutable draft release
-    needs: quality-gate
+    needs: verify-main-ci
     runs-on: ubuntu-24.04
     environment: release
     permissions:
