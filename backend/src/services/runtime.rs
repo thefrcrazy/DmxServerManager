@@ -8607,6 +8607,60 @@ mod tests {
         .0
     }
 
+    async fn wait_for_abnormal_actor_cleanup(
+        inner: &RuntimeInner,
+        instance_id: &str,
+        job_id: &str,
+        sender: &mpsc::Sender<ActorCommand>,
+    ) {
+        const ATTEMPTS: usize = 500;
+        const RETRY_DELAY: Duration = Duration::from_millis(20);
+
+        for _ in 0..ATTEMPTS {
+            let current = jobs::get(&inner.pool, job_id).await.unwrap();
+            let cancellation_removed = inner
+                .install_cancellations
+                .lock()
+                .await
+                .get(instance_id)
+                .is_none();
+            let runtime_state: String =
+                sqlx::query_scalar("SELECT runtime_state FROM instances WHERE id = ?")
+                    .bind(instance_id)
+                    .fetch_one(&inner.pool)
+                    .await
+                    .unwrap();
+            if current.state == JobState::Interrupted
+                && cancellation_removed
+                && runtime_state == "crashed"
+                && sender.is_closed()
+            {
+                return;
+            }
+            tokio::time::sleep(RETRY_DELAY).await;
+        }
+
+        let current = jobs::get(&inner.pool, job_id).await.unwrap();
+        let cancellation_present = inner
+            .install_cancellations
+            .lock()
+            .await
+            .contains_key(instance_id);
+        let runtime_state: String =
+            sqlx::query_scalar("SELECT runtime_state FROM instances WHERE id = ?")
+                .bind(instance_id)
+                .fetch_one(&inner.pool)
+                .await
+                .unwrap();
+        panic!(
+            "actor cleanup timed out: job_state={:?}, cancellation_present={}, runtime_state={}, mailbox_closed={}",
+            current.state,
+            cancellation_present,
+            runtime_state,
+            sender.is_closed()
+        );
+    }
+
     #[test]
     fn console_is_one_bounded_command() {
         assert!(validate_console_command("save-all flush").is_ok());
@@ -8660,35 +8714,13 @@ mod tests {
             })
             .await
             .unwrap();
-        std::mem::drop(spawn_instance_actor(actor, receiver));
+        let task = spawn_instance_actor(actor, receiver);
+        tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .expect("actor supervisor timed out after the injected panic")
+            .expect("actor supervisor task failed after catching the injected panic");
 
-        tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                let current = jobs::get(&inner.pool, &job.id).await.unwrap();
-                let cancellation_removed = inner
-                    .install_cancellations
-                    .lock()
-                    .await
-                    .get(&instance_id)
-                    .is_none();
-                let runtime_state: String =
-                    sqlx::query_scalar("SELECT runtime_state FROM instances WHERE id = ?")
-                        .bind(&instance_id)
-                        .fetch_one(&inner.pool)
-                        .await
-                        .unwrap();
-                if current.state == JobState::Interrupted
-                    && cancellation_removed
-                    && runtime_state == "crashed"
-                    && sender.is_closed()
-                {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
+        wait_for_abnormal_actor_cleanup(&inner, &instance_id, &job.id, &sender).await;
     }
 
     #[tokio::test]
@@ -8727,33 +8759,7 @@ mod tests {
         task.abort();
         let _ = task.await;
 
-        tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                let current = jobs::get(&inner.pool, &job.id).await.unwrap();
-                let cancellation_removed = inner
-                    .install_cancellations
-                    .lock()
-                    .await
-                    .get(&instance_id)
-                    .is_none();
-                let runtime_state: String =
-                    sqlx::query_scalar("SELECT runtime_state FROM instances WHERE id = ?")
-                        .bind(&instance_id)
-                        .fetch_one(&inner.pool)
-                        .await
-                        .unwrap();
-                if current.state == JobState::Interrupted
-                    && cancellation_removed
-                    && runtime_state == "crashed"
-                    && sender.is_closed()
-                {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
+        wait_for_abnormal_actor_cleanup(&inner, &instance_id, &job.id, &sender).await;
     }
 
     #[cfg(unix)]

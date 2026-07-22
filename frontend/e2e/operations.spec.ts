@@ -43,7 +43,7 @@ test("Activité sépare les incidents, les opérations et le journal réservé",
     await expect(page.getByText("Le processus a quitté.")).toBeVisible();
     await expect(page.locator(".activity-drawer-backdrop")).toHaveClass(/is-open/);
     await page.getByRole("button", { name: "Fermer" }).click();
-    await expect(page.locator(".activity-drawer-backdrop")).not.toHaveClass(/is-open/);
+    await expect(page.locator(".activity-drawer-backdrop")).toBeHidden();
     await expect(page.locator(".activity-drawer-backdrop")).toHaveCount(0);
 
     await page.getByRole("tab", { name: "Opérations" }).click();
