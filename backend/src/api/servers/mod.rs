@@ -824,11 +824,7 @@ async fn delete_secret(
     authorize_instance(&state, &auth, &id, "server.update").await?;
     let instance = fetch_instance(&state, &id).await?;
     validate_profile_secret(&instance.profile_id, &name)?;
-    sqlx::query("DELETE FROM instance_secrets WHERE instance_id = ? AND name = ?")
-        .bind(&id)
-        .bind(&name)
-        .execute(&state.pool)
-        .await?;
+    state.secrets.remove(&state.pool, &id, &name).await?;
     database::audit(
         &state.pool,
         Some(&auth.id),

@@ -504,6 +504,22 @@ impl RuntimeManager {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
             let output = run_contained_capture(&mut command, GAME_UPDATE_PROCESS_TIMEOUT).await?;
+            match installers::hytale::read_plaintext_credentials(&plan.credential_file).await {
+                Ok(refreshed) => {
+                    self.inner
+                        .secrets
+                        .set(
+                            &self.inner.pool,
+                            instance_id,
+                            installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
+                            &refreshed,
+                        )
+                        .await
+                        .map_err(OperationFailure::internal)?;
+                }
+                Err(error) if error.code == "hytale_credentials_missing" => {}
+                Err(error) => return Err(installer_failure(error)),
+            }
             installers::hytale::parse_printed_version(&output).ok_or_else(|| {
                 OperationFailure::new(
                     "hytale_version_invalid",
@@ -1926,6 +1942,7 @@ impl InstanceActor {
                     redactions: redactions.clone(),
                     observer: None,
                     player_observer: None,
+                    hytale_version_observer: None,
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ))
@@ -1942,6 +1959,7 @@ impl InstanceActor {
                     redactions,
                     observer: None,
                     player_observer: None,
+                    hytale_version_observer: None,
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ))
@@ -2764,6 +2782,19 @@ impl InstanceActor {
                 .map_err(OperationFailure::internal)?;
         }
 
+        // Hytale rotates refresh tokens. Serialize downloader uses for one
+        // instance so an update check cannot invalidate an installation's
+        // freshly issued token (or the inverse).
+        let downloader_lock = {
+            let mut locks = self.inner.game_update_locks.lock().await;
+            Arc::clone(
+                locks
+                    .entry(self.instance_id.clone())
+                    .or_insert_with(|| Arc::new(Mutex::new(()))),
+            )
+        };
+        let _downloader_guard = downloader_lock.lock().await;
+
         let plan = installers::hytale::prepare_hytale_downloader(&session, &context)
             .await
             .map_err(installer_failure)?;
@@ -2808,15 +2839,19 @@ impl InstanceActor {
             .await?;
 
         let mut cancellation_rx = self.install_cancellation_receiver(job_id).await?;
+        let mut may_reset_stored_credentials = restored_credentials;
         let mut result: Result<installers::InstallResult, OperationFailure> = async {
             let version_output = self
-                .run_hytale_downloader(
+                .run_hytale_downloader_recovering_stored_credentials(
                     job_id,
                     &plan,
                     HytaleDownloaderPhase::VersionCheck,
-                    redactions.clone(),
-                    &root,
-                    &mut cancellation_rx,
+                    HytaleDownloaderRecovery {
+                        redactions: redactions.clone(),
+                        root: &root,
+                        cancellation: &mut cancellation_rx,
+                        may_reset_stored_credentials: &mut may_reset_stored_credentials,
+                    },
                 )
                 .await?;
             let installed_version = installers::hytale::parse_printed_version(&version_output)
@@ -2861,13 +2896,16 @@ impl InstanceActor {
                 "[DMX] Starting the official Hytale server download. Authentication instructions will appear here and as an action card if required.",
             )
             .await?;
-            self.run_hytale_downloader(
+            self.run_hytale_downloader_recovering_stored_credentials(
                 job_id,
                 &plan,
                 HytaleDownloaderPhase::ServerDownload,
-                redactions,
-                &root,
-                &mut cancellation_rx,
+                HytaleDownloaderRecovery {
+                    redactions,
+                    root: &root,
+                    cancellation: &mut cancellation_rx,
+                    may_reset_stored_credentials: &mut may_reset_stored_credentials,
+                },
             )
             .await?;
             let refreshed = installers::hytale::read_plaintext_credentials(&plan.credential_file)
@@ -2991,6 +3029,56 @@ impl InstanceActor {
             .await
     }
 
+    async fn run_hytale_downloader_recovering_stored_credentials(
+        &self,
+        job_id: &str,
+        plan: &installers::hytale::HytaleDownloaderPlan,
+        phase: HytaleDownloaderPhase,
+        recovery: HytaleDownloaderRecovery<'_>,
+    ) -> Result<String, OperationFailure> {
+        let HytaleDownloaderRecovery {
+            redactions,
+            root,
+            cancellation,
+            may_reset_stored_credentials,
+        } = recovery;
+        let result = self
+            .run_hytale_downloader(job_id, plan, phase, redactions.clone(), root, cancellation)
+            .await;
+        let Err(error) = result else {
+            return result;
+        };
+        if error.code != "hytale_oauth_session_invalid" || !*may_reset_stored_credentials {
+            return Err(error);
+        }
+
+        *may_reset_stored_credentials = false;
+        self.write_install_log(
+            root,
+            "[DMX] Stored Hytale downloader authorization is no longer accepted. DMX is removing it before starting a new device authorization.",
+        )
+        .await?;
+        installers::hytale::remove_plaintext_credentials(&plan.credential_file)
+            .await
+            .map_err(installer_failure)?;
+        self.inner
+            .secrets
+            .remove(
+                &self.inner.pool,
+                &self.instance_id,
+                installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
+            )
+            .await
+            .map_err(OperationFailure::internal)?;
+        self.write_install_log(
+            root,
+            "[DMX] Starting a fresh Hytale OAuth device authorization (automatic recovery attempt 1/1).",
+        )
+        .await?;
+        self.run_hytale_downloader(job_id, plan, phase, redactions, root, cancellation)
+            .await
+    }
+
     async fn run_hytale_downloader(
         &self,
         job_id: &str,
@@ -3098,6 +3186,7 @@ impl InstanceActor {
                     redactions: redactions.clone(),
                     observer: Some(line_tx.clone()),
                     player_observer: None,
+                    hytale_version_observer: None,
                     public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
                 },
             ))
@@ -3114,6 +3203,7 @@ impl InstanceActor {
                     redactions,
                     observer: Some(line_tx.clone()),
                     player_observer: None,
+                    hytale_version_observer: None,
                     public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
                 },
             ))
@@ -3252,6 +3342,7 @@ impl InstanceActor {
                 || "terminated by signal".to_string(),
                 |code| code.to_string(),
             );
+            let oauth_session_invalid = hytale_oauth_session_invalid(&authorization_tail);
             if let Some(diagnostic) = hytale_downloader_failure_diagnostic(&authorization_tail) {
                 self.write_hytale_diagnostic(&combined_log, diagnostic)
                     .await;
@@ -3262,7 +3353,11 @@ impl InstanceActor {
             )
             .await;
             return Err(OperationFailure::with_internal(
-                "hytale_downloader_failed",
+                if oauth_session_invalid {
+                    "hytale_oauth_session_invalid"
+                } else {
+                    "hytale_downloader_failed"
+                },
                 "servers.hytale_downloader_failed",
                 format!("Hytale downloader exit: {exit}"),
             ));
@@ -3715,6 +3810,9 @@ impl InstanceActor {
             self.instance_id.clone(),
             instance.profile_id.clone(),
         );
+        let hytale_version_tx = (instance.profile_id == "hytale").then(|| {
+            spawn_hytale_runtime_version_observer(Arc::clone(&self.inner), self.instance_id.clone())
+        });
         if let Some(stdout) = stdout {
             tokio::spawn(pump_output_observed(
                 stdout,
@@ -3727,6 +3825,7 @@ impl InstanceActor {
                     redactions: launch.redactions.clone(),
                     observer: Some(output_tx.clone()),
                     player_observer: Some(player_log_tx.clone()),
+                    hytale_version_observer: hytale_version_tx.clone(),
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ));
@@ -3743,12 +3842,14 @@ impl InstanceActor {
                     redactions: launch.redactions,
                     observer: Some(output_tx.clone()),
                     player_observer: Some(player_log_tx.clone()),
+                    hytale_version_observer: hytale_version_tx.clone(),
                     public_log_policy: PublicLogPolicy::Normal,
                 },
             ));
         }
         drop(output_tx);
         drop(player_log_tx);
+        drop(hytale_version_tx);
 
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
@@ -7561,6 +7662,118 @@ async fn read_log_tail(
     Ok(messages)
 }
 
+#[derive(Default)]
+struct HytaleRuntimeVersionDetector {
+    pending_version: Option<(String, u8)>,
+}
+
+impl HytaleRuntimeVersionDetector {
+    fn observe(&mut self, line: &str) -> Option<String> {
+        if let Some(version) = regex_version_capture(&HYTALE_LIVE_CONFIG_VERSION_PATTERN, line)
+            .or_else(|| regex_version_capture(&HYTALE_LATEST_VERSION_PATTERN, line))
+        {
+            self.pending_version = None;
+            return Some(version);
+        }
+        if let Some(version) = regex_version_capture(&HYTALE_FOUND_VERSION_PATTERN, line) {
+            self.pending_version = Some((version, 6));
+            return None;
+        }
+        if HYTALE_ALREADY_LATEST_PATTERN.is_match(line) {
+            return self.pending_version.take().map(|(version, _)| version);
+        }
+        if let Some((_, remaining)) = self.pending_version.as_mut() {
+            *remaining = remaining.saturating_sub(1);
+            if *remaining == 0 {
+                self.pending_version = None;
+            }
+        }
+        None
+    }
+}
+
+fn regex_version_capture(pattern: &Regex, line: &str) -> Option<String> {
+    pattern
+        .captures(line)
+        .and_then(|captures| captures.get(1))
+        .map(|capture| capture.as_str().to_string())
+}
+
+static HYTALE_LIVE_CONFIG_VERSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bliveconfig updated:.*:v=([0-9][0-9a-z._+-]{0,63})(?:,|\s|$)")
+        .expect("constant Hytale LiveConfig version regex is valid")
+});
+static HYTALE_LATEST_VERSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\balready running the latest version\s*:\s*([0-9][0-9a-z._+-]{0,63})(?:\s|$)")
+        .expect("constant Hytale latest version regex is valid")
+});
+static HYTALE_FOUND_VERSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bfound version\s*:\s*([0-9][0-9a-z._+-]{0,63})(?:\s|$)")
+        .expect("constant Hytale found version regex is valid")
+});
+static HYTALE_ALREADY_LATEST_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\balready running the latest version(?:\.|\s*$)")
+        .expect("constant Hytale already-latest regex is valid")
+});
+
+fn spawn_hytale_runtime_version_observer(
+    inner: Arc<RuntimeInner>,
+    instance_id: String,
+) -> mpsc::Sender<String> {
+    let (sender, mut receiver) = mpsc::channel::<String>(64);
+    tokio::spawn(async move {
+        let mut detector = HytaleRuntimeVersionDetector::default();
+        while let Some(line) = receiver.recv().await {
+            let Some(version) = detector.observe(&line) else {
+                continue;
+            };
+            let now = chrono::Utc::now().to_rfc3339();
+            let update = sqlx::query(
+                "UPDATE instances SET installed_version = ?, installed_build = NULL, updated_at = ? \
+                 WHERE id = ? AND profile_id = 'hytale' AND installation_state = 'installed' \
+                 AND (installed_version IS NULL OR installed_version <> ?)",
+            )
+            .bind(&version)
+            .bind(&now)
+            .bind(&instance_id)
+            .bind(&version)
+            .execute(&inner.pool)
+            .await;
+            match update {
+                Ok(result) if result.rows_affected() > 0 => {
+                    inner.game_update_checks.lock().await.remove(&instance_id);
+                    inner.events.publish(
+                        "server.updated",
+                        Some(instance_id.clone()),
+                        serde_json::json!({
+                            "source": "hytale_runtime",
+                            "installed_version": version,
+                        }),
+                    );
+                    if let Err(error) = database::audit(
+                        &inner.pool,
+                        None,
+                        "server.version_detected",
+                        "instance",
+                        Some(&instance_id),
+                        "success",
+                        serde_json::json!({"version": version}),
+                    )
+                    .await
+                    {
+                        tracing::warn!(%instance_id, %error, "could not audit detected Hytale runtime version");
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(%instance_id, %error, "could not persist detected Hytale runtime version");
+                }
+            }
+        }
+    });
+    sender
+}
+
 struct OutputPumpConfig {
     log_path: PathBuf,
     combined_log: Option<Arc<Mutex<RotatingLog>>>,
@@ -7570,6 +7783,7 @@ struct OutputPumpConfig {
     redactions: Vec<String>,
     observer: Option<mpsc::Sender<String>>,
     player_observer: Option<mpsc::Sender<String>>,
+    hytale_version_observer: Option<mpsc::Sender<String>>,
     public_log_policy: PublicLogPolicy,
 }
 
@@ -7594,6 +7808,7 @@ where
         redactions: &config.redactions,
         observer: config.observer.as_ref(),
         player_observer: config.player_observer.as_ref(),
+        hytale_version_observer: config.hytale_version_observer.as_ref(),
         combined_log: config.combined_log.as_ref(),
     };
     let mut public_log_sanitizer = PublicLogSanitizer::new(config.public_log_policy);
@@ -7659,6 +7874,7 @@ struct LogLineContext<'a> {
     redactions: &'a [String],
     observer: Option<&'a mpsc::Sender<String>>,
     player_observer: Option<&'a mpsc::Sender<String>>,
+    hytale_version_observer: Option<&'a mpsc::Sender<String>>,
     combined_log: Option<&'a Arc<Mutex<RotatingLog>>>,
 }
 
@@ -7732,6 +7948,9 @@ async fn emit_log_line(
         let _ = observer.try_send(line.clone());
     }
     if let Some(observer) = context.player_observer {
+        let _ = observer.try_send(line.clone());
+    }
+    if let Some(observer) = context.hytale_version_observer {
         let _ = observer.try_send(line.clone());
     }
     line = public_log_sanitizer.sanitize(&line);
@@ -7884,6 +8103,13 @@ enum HytaleDownloaderPhase {
     ServerDownload,
 }
 
+struct HytaleDownloaderRecovery<'a> {
+    redactions: Vec<String>,
+    root: &'a Path,
+    cancellation: &'a mut watch::Receiver<bool>,
+    may_reset_stored_credentials: &'a mut bool,
+}
+
 impl HytaleDownloaderPhase {
     fn arguments(self, plan: &installers::hytale::HytaleDownloaderPlan) -> Vec<OsString> {
         match self {
@@ -7956,9 +8182,7 @@ fn hytale_downloader_failure_diagnostic(output: &str) -> Option<&'static str> {
             "[DMX] Diagnostic classification=oauth-access-denied: the Hytale authorization request was denied in the browser.",
         );
     }
-    if normalized.contains("invalid_grant")
-        || normalized.contains("user_code session could not be found")
-    {
+    if hytale_oauth_session_invalid(&normalized) {
         return Some(
             "[DMX] Diagnostic classification=oauth-session-invalid: the Hytale authorization code and downloader session no longer match.",
         );
@@ -7973,6 +8197,12 @@ fn hytale_downloader_failure_diagnostic(output: &str) -> Option<&'static str> {
         );
     }
     None
+}
+
+fn hytale_oauth_session_invalid(output: &str) -> bool {
+    let normalized = output.to_ascii_lowercase();
+    normalized.contains("invalid_grant")
+        || (normalized.contains("user_code") && normalized.contains("session could not be found"))
 }
 
 #[derive(Clone, Copy)]
@@ -10208,6 +10438,7 @@ mod tests {
                 redactions: vec!["top-secret".into()],
                 observer: None,
                 player_observer: None,
+                hytale_version_observer: None,
                 public_log_policy: PublicLogPolicy::Normal,
             },
         ));
@@ -10246,6 +10477,7 @@ mod tests {
                 redactions: Vec::new(),
                 observer: Some(line_tx),
                 player_observer: None,
+                hytale_version_observer: None,
                 public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
             },
         ));
@@ -10330,7 +10562,39 @@ mod tests {
         )
         .unwrap();
         assert!(timeout.contains("classification=oauth-device-timeout"));
+        let invalid = hytale_downloader_failure_diagnostic(
+            "oauth2: invalid_grant refresh token is invalid, expired, or revoked",
+        )
+        .unwrap();
+        assert!(invalid.contains("classification=oauth-session-invalid"));
+        assert!(hytale_oauth_session_invalid(
+            "The 'user_code' session could not be found"
+        ));
         assert!(hytale_downloader_failure_diagnostic("unknown provider failure").is_none());
+    }
+
+    #[test]
+    fn hytale_runtime_version_detector_requires_an_authoritative_confirmation() {
+        let mut detector = HytaleRuntimeVersionDetector::default();
+        assert_eq!(
+            detector.observe(
+                "[LiveConfigModule] LiveConfig updated: version=9addd45d:v=0.5.7, 5 flag(s)"
+            ),
+            Some("0.5.7".to_string())
+        );
+        assert_eq!(
+            detector.observe("[UpdateService] Found version: 0.5.8"),
+            None
+        );
+        assert_eq!(
+            detector.observe("Already running the latest version."),
+            Some("0.5.8".to_string())
+        );
+        assert_eq!(
+            detector.observe("Already running the latest version: 0.5.9"),
+            Some("0.5.9".to_string())
+        );
+        assert_eq!(detector.observe("Found version: ../../escape"), None);
     }
 
     #[tokio::test]
@@ -10432,6 +10696,7 @@ mod tests {
                 redactions: Vec::new(),
                 observer: Some(line_tx),
                 player_observer: None,
+                hytale_version_observer: None,
                 public_log_policy: PublicLogPolicy::HytaleDeviceFlow,
             },
         ));

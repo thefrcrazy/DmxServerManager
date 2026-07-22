@@ -101,6 +101,21 @@ impl SecretStore {
         self.open(&associated_data, &nonce, &ciphertext).map(Some)
     }
 
+    pub async fn remove(
+        &self,
+        pool: &DbPool,
+        instance_id: &str,
+        name: &str,
+    ) -> Result<(), AppError> {
+        validate_secret_name(name)?;
+        sqlx::query("DELETE FROM instance_secrets WHERE instance_id = ? AND name = ?")
+            .bind(instance_id)
+            .bind(name)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
     pub(crate) fn seal(
         &self,
         associated_data: &str,
@@ -376,6 +391,55 @@ mod tests {
         let _store = SecretStore::load_or_create(&path).unwrap();
 
         assert_eq!(std::fs::read(path).unwrap().len(), 32);
+    }
+
+    #[tokio::test]
+    async fn stored_secrets_can_be_removed_without_exposing_their_value() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SecretStore::load_or_create(&directory.path().join("master.key")).unwrap();
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE instance_secrets (\
+             instance_id TEXT NOT NULL, name TEXT NOT NULL, nonce TEXT NOT NULL, \
+             ciphertext TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, \
+             PRIMARY KEY (instance_id, name))",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        store
+            .set(
+                &pool,
+                "instance-a",
+                "hytale_downloader_credentials",
+                "secret",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .get(&pool, "instance-a", "hytale_downloader_credentials")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("secret")
+        );
+        store
+            .remove(&pool, "instance-a", "hytale_downloader_credentials")
+            .await
+            .unwrap();
+        assert!(
+            store
+                .get(&pool, "instance-a", "hytale_downloader_credentials")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[cfg(unix)]
