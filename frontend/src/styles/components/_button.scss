@@ -4,6 +4,14 @@
 .btn {
     @include button-base;
 
+    // Plancher tactile WCAG 2.5.5 / Apple HIG. L'audit relevait jusqu'à 17 px de
+    // haut sur « Révoquer les autres » et 26 px sur les boutons icône.
+    @include touch {
+        min-height: 44px;
+        min-width: 44px;
+        padding-block: var(--spacing-2);
+    }
+
     // Primary Button (Accent)
     &--primary {
         background-color: var(--color-accent);
@@ -74,7 +82,14 @@
     // Sizes
     &--sm {
         padding: 0.125rem var(--spacing-2);
-        font-size: 0.6875rem;
+        font-size: var(--font-size-2xs);
+
+        // La variante compacte n'a pas de sens au doigt : elle retombe sur le
+        // gabarit standard plutôt que de produire une cible de 17 px.
+        @include touch {
+            padding: var(--spacing-2) var(--spacing-3);
+            font-size: 0.8125rem;
+        }
     }
 
     &--lg {
@@ -86,6 +101,11 @@
         padding: var(--spacing-1);
         aspect-ratio: 1;
         height: 34px;
+
+        @include touch {
+            height: 44px;
+            min-width: 44px;
+        }
     }
 
     // Full width

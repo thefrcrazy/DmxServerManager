@@ -241,7 +241,7 @@
     }
 }
 
-@media (max-width: 900px) {
+@include below(md) {
     .catalog-grid {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -253,7 +253,7 @@
     }
 }
 
-@media (max-width: 640px) {
+@include below(sm) {
     .catalog-upload,
     .catalog-job {
         grid-template-columns: minmax(0, 1fr);

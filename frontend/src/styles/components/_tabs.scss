@@ -27,12 +27,20 @@
     white-space: nowrap;
     margin-bottom: -2px; // Overlap border
 
+    @include touch {
+        min-height: 44px;
+    }
+
     &:hover {
         color: var(--color-text-primary);
     }
 
+    // L'intitulé actif reste en texte principal : l'accent est choisi librement
+    // par l'utilisateur et descendait à 3.33:1 sur fond sombre. Le soulignement
+    // et l'icône portent la couleur, l'état ne repose donc pas que sur elle.
     &--active {
-        color: var(--color-accent);
+        color: var(--color-text-primary);
+        font-weight: 600;
         border-bottom-color: var(--color-accent);
 
         svg {

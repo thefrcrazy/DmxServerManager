@@ -45,8 +45,17 @@
     gap: var(--spacing-4);
     margin-bottom: var(--spacing-6);
 
+    // La carte Connexion porte une valeur monospace, deux boutons et une ligne
+    // d'aide : à largeur égale des trois autres, tout y était tronqué dès 1366 px.
+    .connection-pill { grid-column: span 2; }
+
+    // Deux colonnes jusqu'en bas : quatre cartes empilées consommaient 425 px de
+    // hauteur, si bien qu'il ne restait que 74 px pour le terminal en 390 px.
     @include mobile {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacing-3);
+
+        .connection-pill { grid-column: 1 / -1; }
     }
 }
 
@@ -62,14 +71,14 @@
 
     .stat-pill__content {
         flex: 1;
-        overflow: hidden;
+        min-width: 0;
 
+        // L'aide était tronquée sans attribut `title` : le texte complet devenait
+        // définitivement inaccessible. Elle passe simplement à la ligne.
         small {
-            overflow: hidden;
             color: var(--color-text-muted);
-            font-size: 10px;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            font-size: var(--font-size-xs);
+            line-height: 1.4;
         }
     }
 
@@ -1444,10 +1453,17 @@
     border-radius: var(--radius-md);
 
     summary {
+        display: flex;
+        align-items: center;
+        min-height: 2rem;
         cursor: pointer;
         color: var(--color-text-muted);
         font-size: var(--font-size-xs);
         font-weight: 650;
+
+        @include touch {
+            min-height: 44px;
+        }
     }
 
     dl {
@@ -1459,7 +1475,7 @@
 
     dt {
         color: var(--color-text-muted);
-        font-size: 10px;
+        font-size: var(--font-size-2xs);
         text-transform: uppercase;
     }
 
@@ -1491,9 +1507,12 @@
         }
     }
 
+    // L'accent est choisi librement par l'utilisateur : en texte de 12 px il
+    // descendait à 3:1. Il reste réservé aux bordures, icônes et aplats, où le
+    // seuil applicable est celui des composants d'interface.
     &__eyebrow {
         margin-bottom: var(--spacing-1);
-        color: var(--color-accent);
+        color: var(--color-text-secondary);
         font-size: var(--font-size-xs);
         font-weight: 700;
         letter-spacing: 0.06em;
@@ -2323,7 +2342,7 @@
             }
 
             p {
-                font-size: 11px;
+                font-size: var(--font-size-2xs);
                 color: rgba(255, 255, 255, 0.6);
                 margin: 0;
             }
@@ -2527,7 +2546,7 @@
         dt {
             margin-bottom: var(--spacing-1);
             color: var(--color-text-muted);
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
             font-weight: 650;
             letter-spacing: 0.04em;
             text-transform: uppercase;
@@ -2541,7 +2560,7 @@
         }
 
         code {
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
         }
     }
 
@@ -2647,7 +2666,7 @@
             font-size: var(--font-size-xs);
         }
 
-        small { overflow: hidden; color: var(--color-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        small { overflow: hidden; color: var(--color-text-muted); font-size: var(--font-size-2xs); text-overflow: ellipsis; white-space: nowrap; }
         > strong { overflow: hidden; font-family: var(--font-family-mono); font-size: var(--font-size-xs); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
         > strong.is-secret { display: inline-flex; align-items: center; gap: var(--spacing-1); color: var(--color-success); font-family: var(--font-family-sans); }
     }
@@ -2668,7 +2687,7 @@
             font-weight: 600;
         }
 
-        small { overflow: hidden; color: var(--color-text-muted); font-size: 10px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+        small { overflow: hidden; color: var(--color-text-muted); font-size: var(--font-size-2xs); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
     }
 
     &__boolean {
@@ -2685,7 +2704,7 @@
         input { width: 17px; height: 17px; margin-top: 2px; flex: 0 0 auto; accent-color: var(--color-accent); }
         span { display: flex; min-width: 0; flex-direction: column; gap: var(--spacing-1); }
         strong { font-size: var(--font-size-xs); }
-        small { color: var(--color-text-muted); font-size: 10px; }
+        small { color: var(--color-text-muted); font-size: var(--font-size-2xs); }
     }
 
     &__actions {
@@ -2838,7 +2857,7 @@
 
         code {
             color: var(--color-text-muted);
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
         }
     }
 
@@ -2846,8 +2865,8 @@
         display: flex;
         align-items: center;
         gap: var(--spacing-2);
-        color: var(--color-accent);
-        font-size: 10px;
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-xs);
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -2940,7 +2959,7 @@
         small {
             max-width: 680px;
             color: var(--color-text-muted);
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
             line-height: 1.35;
         }
     }
@@ -3040,6 +3059,38 @@
         border-collapse: collapse;
     }
 
+    // Empilement plutôt que défilement latéral : le tableau faisait 453 px dans
+    // un cadre de 282 px, et le conteneur n'était pas atteignable au clavier.
+    @include mobile {
+        thead { display: none; }
+
+        tbody tr {
+            display: block;
+            padding: var(--spacing-3) var(--spacing-4);
+            border-bottom: 1px solid var(--color-border);
+
+            &:last-child { border-bottom: 0; }
+        }
+
+        td {
+            display: grid;
+            grid-template-columns: minmax(5rem, 7rem) minmax(0, 1fr);
+            align-items: baseline;
+            gap: var(--spacing-3);
+            padding: var(--spacing-1) 0;
+            border-bottom: 0;
+
+            &::before {
+                content: attr(data-label);
+                color: var(--color-text-muted);
+                font-size: var(--font-size-xs);
+                text-transform: uppercase;
+            }
+
+            code { max-width: 100%; }
+        }
+    }
+
     th,
     td {
         padding: var(--spacing-3) var(--spacing-4);
@@ -3065,7 +3116,7 @@
         small {
             margin-top: var(--spacing-1);
             color: var(--color-text-muted);
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
         }
 
         code {
@@ -3090,7 +3141,7 @@
     border-top: 0;
 }
 
-@media (max-width: 980px) {
+@include below(lg) {
     .native-config-details__body dl {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }

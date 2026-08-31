@@ -81,9 +81,15 @@ async function measure(page: Page): Promise<Measurements> {
                 .slice(0, 15),
             smallTargets: visible
                 .filter((element) => element.matches(interactiveSelector))
-                // Un contrôle dont un ancêtre proche porte déjà une zone tactile
-                // suffisante reste atteignable ; on ne mesure que l'élément lui-même.
-                .map((element) => ({ element, box: element.getBoundingClientRect() }))
+                // Une case à cocher ou un bouton radio hérite de la zone cliquable
+                // de son étiquette : c'est elle qu'il faut mesurer.
+                .map((element) => {
+                    const label = element.matches('input[type="checkbox"], input[type="radio"]')
+                        ? (element.closest("label")
+                            ?? (element.id ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`) : null))
+                        : null;
+                    return { element, box: (label ?? element).getBoundingClientRect() };
+                })
                 .filter(({ box }) => box.height < minimumTouchTarget || box.width < minimumTouchTarget)
                 .map(({ element, box }) => `${describe(element)} ${Math.round(box.width)}×${Math.round(box.height)}px`
                     + ` "${(element.textContent ?? "").trim().slice(0, 24) || element.getAttribute("aria-label") || ""}"`)

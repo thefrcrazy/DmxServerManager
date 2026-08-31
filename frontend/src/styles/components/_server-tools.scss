@@ -93,7 +93,7 @@
 
     th {
         color: var(--color-text-muted);
-        font-size: 0.6875rem;
+        font-size: var(--font-size-2xs);
         font-weight: 650;
         letter-spacing: 0.055em;
         text-transform: uppercase;
@@ -365,12 +365,12 @@
     &__icon { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: var(--radius-md); color: var(--color-accent); background: rgba(var(--color-accent-rgb), 0.1); }
     &__dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-3); }
     &__dates div { min-width: 0; }
-    &__dates dt { display: flex; align-items: center; gap: 0.3rem; color: var(--color-text-muted); font-size: 0.6875rem; }
+    &__dates dt { display: flex; align-items: center; gap: 0.3rem; color: var(--color-text-muted); font-size: var(--font-size-2xs); }
     &__dates dd { overflow: hidden; margin-top: 0.25rem; color: var(--color-text-secondary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
     &__actions { display: flex; gap: var(--spacing-2); }
 }
 
-@media (max-width: 1000px) {
+@include below(lg) {
     .metric-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .metric-charts { grid-template-columns: 1fr; }
     .mod-provider__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -380,7 +380,7 @@
     .text-editor { border-top: 1px solid var(--color-border); border-left: 0; }
 }
 
-@media (max-width: 640px) {
+@include below(sm) {
     .server-backups__header,
     .server-metrics__header,
     .server-mods__header,

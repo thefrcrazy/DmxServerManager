@@ -63,6 +63,10 @@
         background: transparent;
         cursor: pointer;
         font-weight: 600;
+
+        @include touch {
+            min-height: 44px;
+        }
     }
 
     button:hover,
@@ -78,7 +82,7 @@
     border-radius: var(--radius-full);
     color: var(--color-warning);
     background: rgba(245, 158, 11, 0.14);
-    font-size: 0.6875rem;
+    font-size: var(--font-size-2xs);
 }
 
 .attention-list { display: flex; flex-direction: column; gap: var(--spacing-3); }

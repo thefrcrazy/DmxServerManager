@@ -109,6 +109,9 @@ export default function Sidebar({ width, isMobileOpen, onWidthChange, onMobileCl
                         key={item.path}
                         to={item.path}
                         className={`sidebar__link ${location.pathname.startsWith(item.path) ? "active" : ""}`}
+                        // Le palier tablette masque visuellement les intitulés :
+                        // `title` restitue le libellé au survol.
+                        title={item.label}
                         onClick={onMobileClose}
                     >
                         <item.icon size={19} aria-hidden="true" />

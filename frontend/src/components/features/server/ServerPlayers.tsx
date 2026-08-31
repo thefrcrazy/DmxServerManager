@@ -68,10 +68,10 @@ export default function ServerPlayers({
                                     <tbody>
                                         {snapshot.players.map((player) => (
                                             <tr key={player.player_key}>
-                                                <td><strong>{player.display_name}</strong><small>{player.source.replaceAll("_", " ")}</small></td>
-                                                <td><span className={`badge badge--${player.online ? "success" : "muted"}`}>{t(player.online ? "server_detail.players.connected" : "server_detail.players.offline")}</span></td>
-                                                <td><code title={player.external_id ?? player.player_key}>{player.external_id ?? "—"}</code></td>
-                                                <td><time dateTime={player.last_seen_at}>{formatDate(player.last_seen_at, locale)}</time></td>
+                                                <td data-label={t("server_detail.players.player")}><strong>{player.display_name}</strong><small>{player.source.replaceAll("_", " ")}</small></td>
+                                                <td data-label={t("server_detail.players.status")}><span className={`badge badge--${player.online ? "success" : "muted"}`}>{t(player.online ? "server_detail.players.connected" : "server_detail.players.offline")}</span></td>
+                                                <td data-label={t("server_detail.players.identifier")}><code title={player.external_id ?? player.player_key}>{player.external_id ?? "—"}</code></td>
+                                                <td data-label={t("server_detail.players.last_seen")}><time dateTime={player.last_seen_at}>{formatDate(player.last_seen_at, locale)}</time></td>
                                             </tr>
                                         ))}
                                     </tbody>

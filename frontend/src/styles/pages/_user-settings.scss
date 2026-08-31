@@ -223,7 +223,7 @@
     span { color: var(--color-text-muted); font-size: var(--font-size-xs); }
 }
 
-@media (max-width: 800px) {
+@include below(md) {
     .account-preferences,
     .form-grid--3col { grid-template-columns: 1fr; }
     .account-section > header { align-items: flex-start; flex-wrap: wrap; }

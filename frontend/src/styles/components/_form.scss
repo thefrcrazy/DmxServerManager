@@ -189,6 +189,32 @@
     }
 }
 
+// Case à cocher simple, étiquette à droite. L'étiquette porte la zone cliquable.
+.form-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    min-height: 2.25rem;
+    cursor: pointer;
+
+    @include touch {
+        min-height: 44px;
+    }
+
+    input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        accent-color: var(--color-accent);
+        cursor: pointer;
+
+        @include touch {
+            width: 20px;
+            height: 20px;
+        }
+    }
+}
+
 // Checkbox Styles
 .checkbox-component {
     display: flex;
@@ -222,6 +248,11 @@
         cursor: pointer;
         margin-top: 0;
 
+        @include touch {
+            width: 20px;
+            height: 20px;
+        }
+
         &:disabled {
             cursor: not-allowed;
         }
@@ -245,7 +276,7 @@
     }
 
     &__description {
-        font-size: 0.7rem;
+        font-size: var(--font-size-2xs);
         color: var(--color-text-muted);
         line-height: 1.3;
     }
