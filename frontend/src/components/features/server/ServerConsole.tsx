@@ -167,10 +167,17 @@ export default function ServerConsole({
                 </div>
 
                 {/* Console Viewport */}
+                {/* Conteneur défilant : sans point de tabulation ni rôle, son
+                    contenu était inatteignable au clavier (axe scrollable-region-focusable). */}
                 <div
                     className="console-output"
                     ref={consoleContentRef}
                     onScroll={handleScroll}
+                    tabIndex={0}
+                    role="log"
+                    aria-label={isInstalling
+                        ? t("server_detail.console.installation_running")
+                        : t("server_detail.tabs.console")}
                 >
                     {logs.length === 0 ? (
                         <div className="console-output__empty">

@@ -108,7 +108,7 @@ export default function ServerMetrics({ instanceId, isRunning, refreshSignal = 0
                 </div>
                 <details className="metric-samples">
                     <summary>{t("server_detail.metrics.samples")}</summary>
-                    <div className="table-scroll"><table>
+                    <div className="table-scroll" tabIndex={0}><table>
                         <thead><tr><th>{t("server_detail.metrics.recorded_at")}</th><th>{t("server_detail.metrics.cpu")}</th><th>{t("server_detail.metrics.ram")}</th><th>{t("server_detail.metrics.disk")}</th><th>{t("server_detail.metrics.players")}</th></tr></thead>
                         <tbody>{recent.map((point) => <tr key={point.id}><td><time dateTime={point.recorded_at}>{new Date(point.recorded_at).toLocaleString(language === "fr" ? "fr-FR" : "en-US")}</time></td><td>{point.cpu_usage.toFixed(1)} %</td><td>{formatBytes(point.memory_bytes)}</td><td>{formatBytes(point.disk_bytes)}</td><td>{point.player_count ?? "—"}</td></tr>)}</tbody>
                     </table></div>

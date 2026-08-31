@@ -4,9 +4,9 @@ import { DiffEditor, Editor } from "@monaco-editor/react";
 import "@/lib/monaco";
 import { AlertTriangle, Columns2, FileCode2, RefreshCw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import { Button } from "@/components/ui";
 import { useDialog } from "@/contexts/DialogContext";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/contexts/ToastContext";
 import type { ConfigFileDocument, ConfigFileSummary } from "@/schemas/operations";
@@ -41,8 +41,6 @@ export default function NativeConfigEditorModal({
     const { t, language } = useLanguage();
     const toast = useToast();
     const { confirm } = useDialog();
-    const dialogRef = useRef<HTMLDivElement>(null);
-    const previousFocusRef = useRef<HTMLElement | null>(null);
     const dirtyRef = useRef(false);
     const baseShaRef = useRef<string | null>(file.sha256);
     const [fileDocument, setFileDocument] = useState<ConfigFileDocument | null>(null);
@@ -97,41 +95,18 @@ export default function NativeConfigEditorModal({
         onClose();
     }, [confirm, onClose, t]);
 
+    const { containerRef: dialogRef, onKeyDown: handleDialogKeyDown } = useFocusTrap<HTMLDivElement>({
+        onEscape: () => void requestClose(),
+    });
+
     useEffect(() => {
-        previousFocusRef.current = document.activeElement as HTMLElement | null;
-        requestAnimationFrame(() => dialogRef.current?.focus());
         const handleBeforeUnload = (event: BeforeUnloadEvent) => {
             if (!dirtyRef.current) return;
             event.preventDefault();
         };
         window.addEventListener("beforeunload", handleBeforeUnload);
-        return () => {
-            window.removeEventListener("beforeunload", handleBeforeUnload);
-            previousFocusRef.current?.focus();
-        };
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
     }, []);
-
-    const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-        if (event.key === "Escape") {
-            event.preventDefault();
-            void requestClose();
-            return;
-        }
-        if (event.key !== "Tab") return;
-        const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>(
-            "button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])",
-        )].filter((element) => !element.hasAttribute("aria-hidden"));
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable.at(-1)!;
-        if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-        }
-    };
 
     const jsonError = useMemo(() => {
         if (file.format !== "json") return null;

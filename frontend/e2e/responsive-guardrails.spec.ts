@@ -81,14 +81,28 @@ async function measure(page: Page): Promise<Measurements> {
                 .slice(0, 15),
             smallTargets: visible
                 .filter((element) => element.matches(interactiveSelector))
-                // Une case à cocher ou un bouton radio hérite de la zone cliquable
-                // de son étiquette : c'est elle qu'il faut mesurer.
+                // Deux motifs étendent la zone tactile au-delà de la boîte du
+                // contrôle : l'étiquette d'une case à cocher, et le lien étendu
+                // dont un ::after absolu couvre la carte entière. C'est cette
+                // surface réellement atteignable qu'il faut mesurer.
                 .map((element) => {
-                    const label = element.matches('input[type="checkbox"], input[type="radio"]')
-                        ? (element.closest("label")
-                            ?? (element.id ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`) : null))
-                        : null;
-                    return { element, box: (label ?? element).getBoundingClientRect() };
+                    if (element.matches('input[type="checkbox"], input[type="radio"]')) {
+                        const label = element.closest("label")
+                            ?? (element.id ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`) : null);
+                        if (label) return { element, box: label.getBoundingClientRect() };
+                    }
+                    const overlay = getComputedStyle(element, "::after");
+                    if (overlay.position === "absolute" && overlay.content !== "none"
+                        && [overlay.top, overlay.right, overlay.bottom, overlay.left].every((side) => side === "0px")) {
+                        const container = element.parentElement?.closest<HTMLElement>(
+                            ":is(div, section, article, li, td)",
+                        );
+                        const positioned = container && getComputedStyle(container).position !== "static"
+                            ? container
+                            : element.offsetParent as HTMLElement | null;
+                        if (positioned) return { element, box: positioned.getBoundingClientRect() };
+                    }
+                    return { element, box: element.getBoundingClientRect() };
                 })
                 .filter(({ box }) => box.height < minimumTouchTarget || box.width < minimumTouchTarget)
                 .map(({ element, box }) => `${describe(element)} ${Math.round(box.width)}×${Math.round(box.height)}px`

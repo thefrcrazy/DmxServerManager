@@ -22,6 +22,23 @@ html {
     scroll-behavior: smooth;
 }
 
+// WCAG 2.3.3. Le projet ne couvrait que deux sélecteurs du tiroir Activité,
+// pour 17 animations, 66 transitions et un défilement fluide global.
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
 body {
     font-family: var(--font-family-sans);
     font-size: var(--font-size-base);

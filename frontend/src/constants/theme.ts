@@ -1,3 +1,4 @@
+import { parseColor, readableTextOn } from "@/utils/contrast";
 import { ThemeTokensSchema, type ThemeTokens } from "../schemas/catalog";
 
 export const PRESET_COLORS = [
@@ -75,23 +76,10 @@ export const applyThemeTokens = (input: ThemeTokens, accentOverride?: string): b
 };
 
 export const applyAccentColor = (color: string): void => {
-    if (!/^#[0-9a-f]{6}$/i.test(color)) return;
+    const channels = parseColor(color);
+    if (!channels) return;
     const root = document.documentElement;
     root.style.setProperty("--color-accent", color);
-    const r = Number.parseInt(color.slice(1, 3), 16);
-    const g = Number.parseInt(color.slice(3, 5), 16);
-    const b = Number.parseInt(color.slice(5, 7), 16);
-    root.style.setProperty("--color-accent-rgb", `${r}, ${g}, ${b}`);
-
-    const weights = [0.2126, 0.7152, 0.0722];
-    const luminance = [r, g, b]
-        .map((channel) => channel / 255)
-        .map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
-        .reduce((total, channel, index) => total + channel * (weights[index] ?? 0), 0);
-    const contrastWithBlack = (luminance + 0.05) / 0.05;
-    const contrastWithWhite = 1.05 / (luminance + 0.05);
-    root.style.setProperty(
-        "--color-text-inverse",
-        contrastWithBlack >= contrastWithWhite ? "#000000" : "#ffffff",
-    );
+    root.style.setProperty("--color-accent-rgb", channels.join(", "));
+    root.style.setProperty("--color-text-inverse", readableTextOn(color));
 };

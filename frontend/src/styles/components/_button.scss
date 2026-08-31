@@ -47,13 +47,15 @@
         }
     }
 
-    // Danger Button
+    // Danger Button — la teinte pure du jeton `danger` ne tient pas 4.5:1 en
+    // texte sur son propre aplat. Le mélange vers la couleur de texte principale
+    // conserve la sémantique tout en restant conforme, y compris en thème clair.
     &--danger {
-        background-color: rgba(239, 68, 68, 0.1);
-        color: var(--color-danger);
+        background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
+        color: color-mix(in srgb, var(--color-danger) 55%, var(--color-text-primary));
 
         &:hover:not(:disabled) {
-            background-color: rgba(239, 68, 68, 0.2);
+            background-color: color-mix(in srgb, var(--color-danger) 22%, transparent);
         }
     }
 
@@ -71,11 +73,11 @@
 
     // Success Button
     &--success {
-        background-color: rgba(16, 185, 129, 0.1);
-        color: var(--color-success);
+        background-color: color-mix(in srgb, var(--color-success) 12%, transparent);
+        color: color-mix(in srgb, var(--color-success) 70%, var(--color-text-primary));
 
         &:hover:not(:disabled) {
-            background-color: rgba(16, 185, 129, 0.2);
+            background-color: color-mix(in srgb, var(--color-success) 22%, transparent);
         }
     }
 

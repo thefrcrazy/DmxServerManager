@@ -400,10 +400,34 @@
 }
 
 .server-card {
+    position: relative;
     min-height: 23rem;
     padding: 0;
     overflow: hidden;
     border-radius: var(--radius-xl);
+
+    // Lien étendu : le titre est le seul lien de la carte, sa zone cliquable
+    // couvre toute la surface. Les boutons d'action repassent au-dessus.
+    &__link {
+        color: inherit;
+        text-decoration: none;
+
+        &::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+        }
+
+        &:hover { color: inherit; }
+    }
+
+    &__actions,
+    .masked-connection {
+        position: relative;
+        z-index: 1;
+    }
+
+    &:focus-within { border-color: var(--color-border-hover); }
 
     > .card__body {
         display: flex;

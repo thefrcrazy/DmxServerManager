@@ -1102,15 +1102,10 @@
     }
 }
 
-.btn--danger {
-    background-color: var(--color-danger);
-    color: white;
-    border: none;
-
-    &:hover {
-        background-color: #dc2626;
-    }
-}
+// `.btn--danger` était redéfini ici au niveau racine : une feuille de page
+// pilotait un composant global, et le blanc sur #EF4444 tombait à 3.76:1 dans
+// toute l'application, dialogues de confirmation compris. La variante définie
+// par _button.scss (fond rouge à 10 %, texte rouge) reprend ses droits.
 
 // ==========================================
 // File Table Layout
@@ -2248,29 +2243,10 @@
         flex-direction: column;
     }
 
-    .btn--danger-outline {
-        background-color: rgba(239, 68, 68, 0.05);
-        border: 1px solid #EF4444;
-        color: #EF4444;
-        font-weight: 600;
-
-        &:hover {
-            background-color: rgba(239, 68, 68, 0.15);
-            border-color: #DC2626;
-            color: #DC2626;
-        }
-    }
-
+    // La zone de danger porte déjà son propre cadre et son avertissement : les
+    // boutons y restent en variante standard, sans surcharge ni !important.
     .btn--danger {
-        background-color: #DC2626 !important; // Solid Red
-        color: #FFFFFF !important; // White Text
-        border: 1px solid #B91C1C;
         font-weight: 600;
-
-        &:hover {
-            background-color: #B91C1C !important; // Darker Red
-            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
-        }
     }
 }
 

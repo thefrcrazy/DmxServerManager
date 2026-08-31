@@ -57,7 +57,7 @@ export default function ServerPlayers({
                         {snapshot.players.length === 0 ? (
                             <div className="operations-empty"><Users aria-hidden="true" /><p>{t(snapshot.detection === "unavailable" ? "server_detail.players.detection_unavailable" : "server_detail.players.empty")}</p></div>
                         ) : (
-                            <div className="table-scroll server-players__table">
+                            <div className="table-scroll server-players__table" tabIndex={0}>
                                 <table>
                                     <thead><tr>
                                         <th>{t("server_detail.players.player")}</th>

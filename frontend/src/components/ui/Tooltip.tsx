@@ -9,6 +9,8 @@ interface TooltipProps {
     disabled?: boolean;
 }
 
+const EDGE_MARGIN = 8;
+
 export default function Tooltip({
     children,
     content,
@@ -18,17 +20,19 @@ export default function Tooltip({
 }: TooltipProps) {
     const [isVisible, setIsVisible] = useState(false);
     const [coords, setCoords] = useState({ top: 0, left: 0 });
-    const triggerRef = useRef<HTMLDivElement>(null);
+    const wrapperRef = useRef<HTMLSpanElement>(null);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const updatePosition = useCallback(() => {
-        if (!triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
+        // Le conteneur est en `display: contents` pour ne pas perturber les
+        // contextes flex : c'est donc l'élément déclencheur qu'il faut mesurer.
+        const trigger = wrapperRef.current?.firstElementChild ?? wrapperRef.current;
+        if (!trigger) return;
+        const rect = trigger.getBoundingClientRect();
 
-        // Calculate position based on prop
         let top = 0;
         let left = 0;
-        const offset = 10; // spacing
+        const offset = 10;
 
         switch (position) {
             case "right":
@@ -49,50 +53,66 @@ export default function Tooltip({
                 break;
         }
 
-        setCoords({ top, left });
+        setCoords({
+            top: Math.min(Math.max(top, EDGE_MARGIN), window.innerHeight - EDGE_MARGIN),
+            left: Math.min(Math.max(left, EDGE_MARGIN), window.innerWidth - EDGE_MARGIN),
+        });
     }, [position]);
 
-    const handleMouseEnter = () => {
+    const show = useCallback(() => {
         if (disabled) return;
         updatePosition();
-        timeoutRef.current = setTimeout(() => {
-            setIsVisible(true);
-        }, delay);
-    };
+        timeoutRef.current = setTimeout(() => setIsVisible(true), delay);
+    }, [delay, disabled, updatePosition]);
 
-    const handleMouseLeave = () => {
-        if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-        }
+    const hide = useCallback(() => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
         setIsVisible(false);
-    };
+    }, []);
 
     useEffect(() => {
-        if (isVisible) {
-            window.addEventListener("scroll", updatePosition);
-            window.addEventListener("resize", updatePosition);
-        }
-        return () => {
-            window.removeEventListener("scroll", updatePosition);
-            window.removeEventListener("resize", updatePosition);
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
+        if (!isVisible) return;
+        // En phase de capture : le défilement de cette application a lieu dans
+        // `.page-container`, `.console-output` et `.table-scroll`, jamais sur
+        // `window`. Sans capture, l'infobulle restait ancrée à des coordonnées
+        // périmées et flottait au-dessus d'un contenu sans rapport.
+        const options = { capture: true, passive: true } as const;
+        const dismissOnEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") hide();
         };
-    }, [isVisible, updatePosition]);
+        window.addEventListener("scroll", updatePosition, options);
+        window.addEventListener("resize", updatePosition, options);
+        document.addEventListener("keydown", dismissOnEscape);
+        return () => {
+            window.removeEventListener("scroll", updatePosition, options);
+            window.removeEventListener("resize", updatePosition, options);
+            document.removeEventListener("keydown", dismissOnEscape);
+        };
+    }, [hide, isVisible, updatePosition]);
+
+    useEffect(() => () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    }, []);
 
     return (
         <>
-            <div
-                ref={triggerRef}
+            <span
+                ref={wrapperRef}
                 className="tooltip-wrapper"
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
+                onMouseEnter={show}
+                onMouseLeave={hide}
+                onFocus={show}
+                onBlur={hide}
             >
                 {children}
-            </div>
+            </span>
             {isVisible && !disabled && createPortal(
+                // `aria-hidden` est délibéré : chaque déclencheur porte déjà un
+                // `aria-label` identique au contenu de l'infobulle. L'exposer une
+                // seconde fois provoquerait une double annonce.
                 <div
+                    role="tooltip"
+                    aria-hidden="true"
                     className={`tooltip tooltip--${position}`}
                     style={{
                         top: coords.top,

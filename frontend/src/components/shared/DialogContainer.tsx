@@ -1,55 +1,68 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useDialog } from "@/contexts/DialogContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { AlertTriangle, Info, HelpCircle } from "lucide-react";
 
 export default function DialogContainer() {
     const { activeDialog, closeDialog } = useDialog();
+    const { t } = useLanguage();
     const [inputValue, setInputValue] = useState("");
-    const inputRef = useRef<HTMLInputElement>(null);
-    const dialogRef = useRef<HTMLDivElement>(null);
+    // Deux champs distincts : un dialogue `prompt` peut aussi porter une chaîne
+    // de vérification, et une référence unique aurait été écrasée par le second.
+    const promptRef = useRef<HTMLInputElement>(null);
+    const verificationRef = useRef<HTMLInputElement>(null);
+
+    const isDestructive = Boolean(activeDialog?.isDestructive);
+    const verificationString = activeDialog?.verificationString;
+    const isConfirmDisabled = verificationString ? inputValue !== verificationString : false;
+
+    const handleCancel = () => {
+        if (!activeDialog) return;
+        closeDialog(activeDialog.type === "prompt" ? null : false);
+    };
+
+    const { containerRef, onKeyDown } = useFocusTrap<HTMLDivElement>({
+        active: Boolean(activeDialog),
+        onEscape: activeDialog && activeDialog.type !== "alert" ? handleCancel : undefined,
+    });
 
     useEffect(() => {
-        if (activeDialog) {
-            setInputValue(activeDialog.defaultValue || "");
-            if (activeDialog.type === "prompt") {
-                setTimeout(() => inputRef.current?.focus(), 100);
-            } else {
-                requestAnimationFrame(() => dialogRef.current?.focus());
-            }
-        }
+        if (!activeDialog) return;
+        setInputValue(activeDialog.defaultValue || "");
+        // Le champ saisissable prend le focus s'il existe ; sinon le piège place
+        // le focus sur le conteneur lui-même.
+        const frame = requestAnimationFrame(() => {
+            (verificationRef.current ?? promptRef.current)?.focus();
+        });
+        return () => cancelAnimationFrame(frame);
     }, [activeDialog]);
 
     if (!activeDialog) return null;
 
     const handleConfirm = () => {
-        if (activeDialog.verificationString && inputValue !== activeDialog.verificationString) return;
-        
-        if (activeDialog.type === "prompt") {
-            closeDialog(inputValue);
-        } else {
-            closeDialog(true);
-        }
+        if (isConfirmDisabled) return;
+        closeDialog(activeDialog.type === "prompt" ? inputValue : true);
     };
 
-    const handleCancel = () => {
-        if (activeDialog.type === "prompt") {
-            closeDialog(null);
-        } else {
-            closeDialog(false);
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (event.key === "Enter" && !isConfirmDisabled) {
+            handleConfirm();
+            return;
         }
-    };
-
-    const isConfirmDisabled = activeDialog.verificationString ? inputValue !== activeDialog.verificationString : false;
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && !isConfirmDisabled) handleConfirm();
-        if (e.key === "Escape" && activeDialog.type !== "alert") handleCancel();
+        onKeyDown(event);
     };
 
     return (
-        <div className="dialog-overlay" onClick={activeDialog.type !== "alert" ? handleCancel : undefined}>
+        <div
+            className="dialog-overlay"
+            onMouseDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (activeDialog.type !== "alert") handleCancel();
+            }}
+        >
             <div
-                ref={dialogRef}
+                ref={containerRef}
                 className="dialog"
                 role="dialog"
                 aria-modal="true"
@@ -57,11 +70,10 @@ export default function DialogContainer() {
                 aria-describedby={`dialog-message-${activeDialog.id}`}
                 tabIndex={-1}
                 onKeyDown={handleKeyDown}
-                onClick={(e) => e.stopPropagation()}
             >
                 <div className="dialog__header">
                     <div className={`dialog__icon dialog__icon--${activeDialog.type}`}>
-                        {activeDialog.isDestructive ? (
+                        {isDestructive ? (
                             <AlertTriangle size={24} aria-hidden="true" />
                         ) : (
                             <>
@@ -78,27 +90,27 @@ export default function DialogContainer() {
                     <p id={`dialog-message-${activeDialog.id}`}>{activeDialog.message}</p>
                     {activeDialog.type === "prompt" && (
                         <input
-                            ref={inputRef}
+                            ref={promptRef}
                             type="text"
                             className="input"
+                            aria-label={activeDialog.title}
                             value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
+                            onChange={(event) => setInputValue(event.target.value)}
                         />
                     )}
-                    {activeDialog.verificationString && (
+                    {verificationString && (
                         <div className="verification-field mt-4">
                             <label htmlFor={`dialog-verification-${activeDialog.id}`} className="field-label mb-2">
-                                {activeDialog.verificationLabel || "Veuillez saisir le texte de confirmation"}
+                                {activeDialog.verificationLabel || t("common.confirmation_prompt")}
                             </label>
                             <input
-                                ref={inputRef}
+                                ref={verificationRef}
                                 id={`dialog-verification-${activeDialog.id}`}
                                 type="text"
                                 className="input"
-                                placeholder={activeDialog.verificationString}
+                                placeholder={verificationString}
                                 value={inputValue}
-                                onChange={(e) => setInputValue(e.target.value)}
-                                autoFocus
+                                onChange={(event) => setInputValue(event.target.value)}
                             />
                         </div>
                     )}
@@ -112,7 +124,7 @@ export default function DialogContainer() {
                     )}
                     <button
                         type="button"
-                        className={`btn ${activeDialog.isDestructive ? "btn--danger" : "btn--primary"}`}
+                        className={`btn ${isDestructive ? "btn--danger" : "btn--primary"}`}
                         onClick={handleConfirm}
                         disabled={isConfirmDisabled}
                     >

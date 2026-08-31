@@ -19,7 +19,11 @@ use sqlx::FromRow;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::{
-    core::{DbPool, Settings, error::AppError},
+    core::{
+        DbPool, Settings,
+        color::{TEXT_CONTRAST, UI_COMPONENT_CONTRAST, contrast_ratio_hex, parse_color},
+        error::AppError,
+    },
     domain::v1::{GameProfile, SteamProfile},
     services::{
         installers::{ArchiveLimits, extract_zip},
@@ -458,6 +462,26 @@ pub async fn open_asset(
         media_type: "image/png".into(),
         sha256: expected_sha256,
     })
+}
+
+/// Validates a per-account accent colour against the active theme background.
+///
+/// The accent drives borders, tab underlines, icons and focus rings, so it must
+/// clear the interface-component threshold — the same rule the catalog already
+/// applies to a theme's own accent token. Without it any hexadecimal value was
+/// accepted, including one indistinguishable from the panel background.
+pub async fn validate_accent_color(pool: &DbPool, value: &str) -> Result<(), AppError> {
+    let background = active_theme(pool)
+        .await
+        .map(|theme| theme.tokens.bg_primary)
+        .unwrap_or_else(|_| default_theme_tokens().bg_primary);
+    match contrast_ratio_hex(value, &background) {
+        None => Err(AppError::BadRequest("users.invalid_accent_color".into())),
+        Some(ratio) if ratio < UI_COMPONENT_CONTRAST => {
+            Err(AppError::BadRequest("users.accent_color_contrast".into()))
+        }
+        Some(_) => Ok(()),
+    }
 }
 
 pub async fn active_theme(pool: &DbPool) -> Result<ActiveTheme, AppError> {
@@ -1312,7 +1336,8 @@ fn validate_theme_tokens(tokens: &ThemeTokens) -> Result<(), AppError> {
             &tokens.bg_tertiary,
             &tokens.bg_elevated,
         ] {
-            if contrast_ratio(foreground, background) < 4.5 {
+            if contrast_ratio_hex(foreground, background).is_none_or(|ratio| ratio < TEXT_CONTRAST)
+            {
                 return Err(AppError::BadRequest(
                     "catalog.theme_contrast_invalid".into(),
                 ));
@@ -1327,7 +1352,9 @@ fn validate_theme_tokens(tokens: &ThemeTokens) -> Result<(), AppError> {
         &tokens.info,
         &tokens.border_hover,
     ] {
-        if contrast_ratio(foreground, &tokens.bg_primary) < 3.0 {
+        if contrast_ratio_hex(foreground, &tokens.bg_primary)
+            .is_none_or(|ratio| ratio < UI_COMPONENT_CONTRAST)
+        {
             return Err(AppError::BadRequest(
                 "catalog.theme_contrast_invalid".into(),
             ));
@@ -1420,34 +1447,6 @@ fn png_crc(kind: &[u8], data: &[u8]) -> u32 {
         }
     }
     !crc
-}
-
-fn parse_color(value: &str) -> Option<[u8; 3]> {
-    if value.len() != 7 || !value.starts_with('#') {
-        return None;
-    }
-    Some([
-        u8::from_str_radix(&value[1..3], 16).ok()?,
-        u8::from_str_radix(&value[3..5], 16).ok()?,
-        u8::from_str_radix(&value[5..7], 16).ok()?,
-    ])
-}
-
-fn contrast_ratio(left: &str, right: &str) -> f64 {
-    let luminance = |color: [u8; 3]| {
-        let channel = |value: u8| {
-            let value = f64::from(value) / 255.0;
-            if value <= 0.04045 {
-                value / 12.92
-            } else {
-                ((value + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
-    };
-    let left = luminance(parse_color(left).expect("validated color"));
-    let right = luminance(parse_color(right).expect("validated color"));
-    (left.max(right) + 0.05) / (left.min(right) + 0.05)
 }
 
 fn valid_label(value: &str, maximum: usize) -> bool {

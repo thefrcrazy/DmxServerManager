@@ -46,32 +46,6 @@
     &__status { display: flex; align-items: center; gap: var(--spacing-2); color: var(--color-text-muted); font-size: var(--font-size-xs); }
 }
 
-.activity-tabs {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-1);
-
-    button {
-        min-height: 40px;
-        padding: 0 var(--spacing-4);
-        display: inline-flex;
-        align-items: center;
-        gap: var(--spacing-2);
-        border: 0;
-        border-radius: var(--radius-md);
-        color: var(--color-text-muted);
-        background: transparent;
-        cursor: pointer;
-        font-weight: 600;
-
-        @include touch {
-            min-height: 44px;
-        }
-    }
-
-    button:hover,
-    button.active { color: var(--color-text-primary); background: var(--color-bg-elevated); }
-}
 
 .activity-count {
     min-width: 20px;
@@ -297,4 +271,10 @@
         > progress { order: 4; flex: 1 1 100%; }
         > time { order: 5; flex: 1 1 100%; }
     }
+}
+
+.activity-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-5);
 }

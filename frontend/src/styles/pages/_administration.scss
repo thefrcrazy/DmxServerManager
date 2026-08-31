@@ -29,58 +29,6 @@
     }
 }
 
-.administration-tabs {
-    display: flex;
-    gap: var(--spacing-2);
-    overflow-x: auto;
-    border-bottom: 1px solid var(--color-border);
-
-    // Sous 1024 px, les huit onglets font 776 px : quatre d'entre eux sortaient
-    // du cadre sans le moindre indice de défilement, rendant des sections
-    // entières inaccessibles. Ils passent en grille sur plusieurs lignes.
-    @include below(lg) {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-        gap: var(--spacing-1);
-        overflow-x: visible;
-        padding-bottom: var(--spacing-2);
-    }
-
-    &__tab {
-        appearance: none;
-        border: 0;
-        border-bottom: 2px solid transparent;
-        background: transparent;
-        color: var(--color-text-muted);
-        padding: 0.625rem 0.875rem;
-        cursor: pointer;
-        font-weight: 600;
-
-        @include touch {
-            min-height: 44px;
-        }
-
-        @include below(lg) {
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            text-align: center;
-        }
-
-        &:hover {
-            color: var(--color-text-primary);
-        }
-
-        &--active {
-            color: var(--color-text-primary);
-            border-bottom-color: var(--color-accent);
-
-            @include below(lg) {
-                border-color: var(--color-accent);
-                background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-            }
-        }
-    }
-}
 
 .administration-panel {
     display: flex;

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ColorPicker } from "@/components/ui";
 import {
     CheckCircle2,
     KeyRound,
@@ -366,14 +367,13 @@ export default function UserManagement({
 
                                 {!creating && (
                                     <div className="form-group">
-                                        <label htmlFor="managed-user-accent">{t("administration.users.accent")}</label>
-                                        <div className="administration-color-field">
-                                            <input
-                                                id="managed-user-accent"
-                                                type="color"
+                                        {/* Même composant que « Mon compte » : le champ couleur
+                                            natif offrait une autre apparence et une cible de 48×32. */}
+                                        <span id="managed-user-accent-label">{t("administration.users.accent")}</span>
+                                        <div className="administration-color-field" aria-labelledby="managed-user-accent-label">
+                                            <ColorPicker
                                                 value={accentColor}
-                                                onChange={(event) => setAccentColor(event.target.value)}
-                                                disabled={!canEditSelected}
+                                                onChange={(color) => canEditSelected && setAccentColor(color)}
                                             />
                                             <code>{accentColor}</code>
                                         </div>
