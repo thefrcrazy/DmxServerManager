@@ -13,6 +13,7 @@
     "test": "bun test tests",
     "test:e2e": "playwright test",
     "capture:visuals": "DMX_CAPTURE_VISUAL_REFERENCES=1 playwright test e2e/visual-references.spec.ts --workers=1",
+    "audit:ui": "DMX_UI_AUDIT=1 playwright test e2e/ui-audit.spec.ts --project=chromium --workers=1",
     "prepare:e2e:real": "bun run build && cargo build --locked --manifest-path ../backend/Cargo.toml",
     "test:e2e:real": "bun run prepare:e2e:real && playwright test --config playwright.real.config.ts",
     "test:e2e:headed": "playwright test --headed",

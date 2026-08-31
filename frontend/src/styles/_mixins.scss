@@ -2,6 +2,8 @@
 // DmxServerManager - Mixins
 // ===========================
 
+@use "sass:map";
+
 // Flex utilities
 @mixin flex-center {
     display: flex;
@@ -57,37 +59,6 @@
     }
 }
 
-// Input base
-@mixin input-base {
-    width: 100%;
-    padding: var(--spacing-2) var(--spacing-3);
-    font-size: 0.8125rem;
-    font-family: var(--font-family-mono);
-    color: var(--color-text-primary);
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    transition: all var(--transition-fast);
-
-    &::placeholder {
-        color: var(--color-text-muted);
-    }
-
-    &:hover:not(:disabled) {
-        border-color: var(--color-border-hover);
-    }
-
-    &:focus {
-        border-color: var(--color-accent);
-        box-shadow: 0 0 0 1px var(--color-accent);
-    }
-
-    &:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-}
-
 // Scrollbar styling
 @mixin custom-scrollbar {
     &::-webkit-scrollbar {
@@ -109,36 +80,59 @@
     }
 }
 
-// Responsive - Using static values since CSS variables can"t be used in media queries
-@mixin respond-to($breakpoint) {
-    @if $breakpoint ==sm {
-        @media (min-width: 640px) {
-            @content;
-        }
+// Responsive — the single source of truth for breakpoints.
+// Static values are required because CSS variables cannot be used in media
+// queries; these mirror the --breakpoint-* tokens declared in _variables.scss.
+// Every media query in the codebase must go through `below`, `from` or `between`.
+$breakpoints: (
+    sm: 640px, // grand téléphone
+    md: 768px, // tablette portrait
+    lg: 1024px, // tablette paysage et petit laptop
+    xl: 1280px, // laptop
+    xxl: 1536px, // grand écran
+);
+
+@function breakpoint($name) {
+    @if not map.has-key($breakpoints, $name) {
+        @error "Point de rupture inconnu : #{$name}. Valeurs admises : #{map.keys($breakpoints)}.";
     }
 
-    @else if $breakpoint ==md {
-        @media (min-width: 768px) {
-            @content;
-        }
-    }
+    @return map.get($breakpoints, $name);
+}
 
-    @else if $breakpoint ==lg {
-        @media (min-width: 1024px) {
-            @content;
-        }
-    }
-
-    @else if $breakpoint ==xl {
-        @media (min-width: 1280px) {
-            @content;
-        }
+// Strictement en dessous du palier.
+@mixin below($name) {
+    @media (max-width: #{breakpoint($name) - 0.02px}) {
+        @content;
     }
 }
 
-// Mobile specific
+// À partir du palier inclus.
+@mixin from($name) {
+    @media (min-width: breakpoint($name)) {
+        @content;
+    }
+}
+
+@mixin between($lower, $upper) {
+    @media (min-width: breakpoint($lower)) and (max-width: #{breakpoint($upper) - 0.02px}) {
+        @content;
+    }
+}
+
+// Téléphone et tablette portrait étroite.
 @mixin mobile {
-    @media (max-width: 768px) {
+    @include below(md) {
+        @content;
+    }
+}
+
+// Pointeur imprécis : impose les cibles tactiles de 44 px. `pointer: coarse`
+// couvre les tablettes larges (iPad Pro paysage fait 1366 px CSS) que la seule
+// largeur laisserait passer ; le repli en largeur couvre les fenêtres étroites
+// et les navigateurs sans détection de pointeur.
+@mixin touch {
+    @media (pointer: coarse), (max-width: #{breakpoint(lg) - 0.02px}) {
         @content;
     }
 }

@@ -248,8 +248,37 @@ export default function ActivityPage() {
                 </>
             ) : (
                 <div className="audit-table card">
-                    <div className="audit-row audit-row--header"><span>{t("activity.date")}</span><span>{t("activity.actor")}</span><span>{t("activity.action")}</span><span>{t("activity.target")}</span><span>{t("activity.result")}</span></div>
-                    {audit.map((event) => <div key={event.id} className="audit-row"><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(locale)}</time><span>{event.actor_username ?? t("common.system")}</span><code>{event.action}</code><span>{event.resource_type}{event.resource_id ? ` · ${event.resource_id.slice(0, 8)}` : ""}</span><span className={`badge badge--${event.outcome === "success" ? "success" : event.outcome === "denied" ? "warning" : "danger"}`}>{t(`activity.outcomes.${event.outcome}`)}</span></div>)}
+                    <table>
+                        <caption className="sr-only">{t("activity.journal")}</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">{t("activity.date")}</th>
+                                <th scope="col">{t("activity.actor")}</th>
+                                <th scope="col">{t("activity.action")}</th>
+                                <th scope="col">{t("activity.target")}</th>
+                                <th scope="col">{t("activity.result")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {audit.map((event) => (
+                                <tr key={event.id}>
+                                    <td data-label={t("activity.date")}>
+                                        <time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(locale)}</time>
+                                    </td>
+                                    <td data-label={t("activity.actor")}>{event.actor_username ?? t("common.system")}</td>
+                                    <td data-label={t("activity.action")}><code>{event.action}</code></td>
+                                    <td data-label={t("activity.target")}>
+                                        {event.resource_type}{event.resource_id ? ` · ${event.resource_id.slice(0, 8)}` : ""}
+                                    </td>
+                                    <td data-label={t("activity.result")}>
+                                        <span className={`badge badge--${event.outcome === "success" ? "success" : event.outcome === "denied" ? "warning" : "danger"}`}>
+                                            {t(`activity.outcomes.${event.outcome}`)}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                     {nextAuditId && <div className="activity-load-more"><Button variant="secondary" onClick={() => void loadMoreAudit()}>{t("activity.load_more")}</Button></div>}
                 </div>
             )}

@@ -309,6 +309,12 @@
         font-family: var(--font-family-mono);
         font-size: var(--font-size-sm);
 
+        // Voir .input : sous 16 px, Safari iOS zoome et ne revient jamais.
+        @include touch {
+            min-height: 44px;
+            font-size: 1rem;
+        }
+
         &:focus {
             border-color: var(--color-success);
             box-shadow: 0 0 0 1px rgba(var(--color-success), 0.2);

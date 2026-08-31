@@ -1,3 +1,5 @@
+@use "../mixins" as *;
+
 .dashboard-page {
     display: flex;
     flex-direction: column;
@@ -124,17 +126,44 @@
     time { color: var(--color-text-muted); font-size: var(--font-size-xs); }
 }
 
-@media (max-width: 1100px) {
+@include below(xl) {
     .dashboard-header-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dashboard-operations-grid { grid-template-columns: 1fr; }
-    .health-row { grid-template-columns: auto minmax(0, 1fr) minmax(12rem, auto) auto; }
-    .health-row__version { display: none; }
+    .health-row { grid-template-columns: auto minmax(0, 1fr) minmax(12rem, auto) auto auto; }
 }
 
-@media (max-width: 640px) {
-    .dashboard-header-stats { grid-template-columns: 1fr; }
-    .health-row { grid-template-columns: auto minmax(0, 1fr) auto; }
-    .health-row .server-resource-usage { display: none; }
-    .activity-preview-row { grid-template-columns: auto minmax(0, 1fr); }
-    .activity-preview-row time { display: none; }
+@include mobile {
+    // Deux colonnes jusqu'en bas : quatre cartes empilées consommaient 425 px de
+    // hauteur pour afficher quatre nombres.
+    .dashboard-header-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .stat-pill {
+        padding: var(--spacing-4);
+        gap: var(--spacing-3);
+
+        &__icon { display: none; }
+    }
+
+    // Version et consommation restent lisibles : elles descendent sur une
+    // seconde ligne au lieu d'être masquées.
+    .health-row,
+    .activity-preview-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: var(--spacing-3);
+        row-gap: var(--spacing-1);
+    }
+
+    .health-row {
+        &__identity { flex: 1 1 8rem; }
+        .server-resource-usage { flex: 1 1 100%; order: 4; }
+        &__version { order: 5; }
+        .badge { margin-left: auto; }
+    }
+
+    .activity-preview-row {
+        strong { flex: 1 1 8rem; }
+        time { flex: 1 1 100%; }
+    }
 }

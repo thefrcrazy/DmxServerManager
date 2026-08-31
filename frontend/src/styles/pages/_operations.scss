@@ -148,19 +148,59 @@
     progress { width: 100%; accent-color: var(--color-accent); }
 }
 
-.audit-table { padding: 0; overflow: hidden; }
-.audit-row {
-    min-height: 60px;
-    padding: var(--spacing-3) var(--spacing-5);
-    display: grid;
-    grid-template-columns: 11rem minmax(7rem, 0.7fr) minmax(10rem, 1fr) minmax(9rem, 1fr) auto;
-    align-items: center;
-    gap: var(--spacing-3);
-    border-bottom: 1px solid var(--color-border);
-    font-size: var(--font-size-sm);
+.audit-table {
+    padding: 0;
+    overflow: hidden;
+
+    table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
+
+    th,
+    td {
+        padding: var(--spacing-3) var(--spacing-5);
+        text-align: left;
+        vertical-align: middle;
+    }
+
+    th {
+        color: var(--color-text-muted);
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    tbody tr { border-bottom: 1px solid var(--color-border); }
+    tbody tr:last-child { border-bottom: 0; }
+
     time { color: var(--color-text-muted); font-size: var(--font-size-xs); }
-    code { overflow: hidden; text-overflow: ellipsis; }
-    &--header { color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 600; text-transform: uppercase; }
+    code { overflow-wrap: anywhere; }
+
+    // Un journal d'audit amputé n'est pas un journal d'audit : sur petit écran on
+    // empile les cellules en portant l'intitulé de colonne sur chacune, plutôt
+    // que de masquer « action » et « cible » comme le faisait la version 1.1.6.
+    @include mobile {
+        thead { display: none; }
+
+        tbody tr {
+            display: block;
+            padding: var(--spacing-3) var(--spacing-4);
+        }
+
+        td {
+            display: grid;
+            grid-template-columns: minmax(5rem, 7rem) minmax(0, 1fr);
+            align-items: baseline;
+            gap: var(--spacing-3);
+            padding: var(--spacing-1) 0;
+
+            &::before {
+                content: attr(data-label);
+                color: var(--color-text-muted);
+                font-size: var(--font-size-xs);
+                text-transform: uppercase;
+            }
+        }
+    }
 }
 
 .activity-load-more { padding: var(--spacing-4); display: flex; justify-content: center; }
@@ -231,16 +271,26 @@
     &__actions { display: flex; justify-content: flex-end; }
 }
 
-@media (max-width: 800px) {
+@include mobile {
     .activity-toolbar { align-items: stretch; flex-direction: column; }
-    .activity-tabs { overflow-x: auto; }
     .activity-filters { flex-direction: column; }
     .activity-filters label { min-width: 0; }
-    .operation-row { grid-template-columns: auto minmax(0, 1fr) auto; }
-    .operation-row progress,
-    .operation-row time { display: none; }
-    .audit-row { grid-template-columns: 8rem minmax(0, 1fr) auto; }
-    .audit-row > :nth-child(3),
-    .audit-row > :nth-child(4) { display: none; }
     .activity-drawer dl { grid-template-columns: 1fr; }
+
+    // La progression et l'horodatage passent sur leur propre ligne au lieu
+    // d'être masqués : suivre une installation depuis un téléphone est le cas
+    // d'usage mobile principal du panneau.
+    .operation-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: var(--spacing-3);
+        row-gap: var(--spacing-2);
+
+        > .badge { order: 1; }
+        &__main { order: 2; flex: 1 1 8rem; }
+        > svg { order: 3; margin-left: auto; }
+        > progress { order: 4; flex: 1 1 100%; }
+        > time { order: 5; flex: 1 1 100%; }
+    }
 }

@@ -1,4 +1,7 @@
 import { DiffEditor, Editor } from "@monaco-editor/react";
+// Registers the bundled Monaco build before any editor mounts. This module lives
+// in the lazily loaded editor chunk so its weight never reaches the entry bundle.
+import "@/lib/monaco";
 import { AlertTriangle, Columns2, FileCode2, RefreshCw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";

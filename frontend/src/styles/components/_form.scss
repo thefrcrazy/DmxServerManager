@@ -17,6 +17,13 @@
     font-family: inherit;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 
+    // Safari iOS zoome irréversiblement sur tout champ sous 16 px. La densité
+    // desktop est conservée, le confort tactile prime partout ailleurs.
+    @include touch {
+        height: 44px;
+        font-size: 1rem;
+    }
+
     &::placeholder {
         color: var(--color-text-muted);
     }

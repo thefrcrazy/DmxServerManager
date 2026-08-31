@@ -1,3 +1,5 @@
+@use "../mixins" as *;
+
 .system-metrics {
     overflow: hidden;
     border: 1px solid var(--color-border);
