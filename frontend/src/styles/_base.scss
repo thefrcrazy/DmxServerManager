@@ -129,9 +129,11 @@ a {
 }
 
 // Code
+// Ces deux familles n'étaient pas embarquées : le rendu retombait sur la police
+// monospace générique en contournant le jeton, pourtant correctement défini.
 code,
 pre {
-    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-family: var(--font-family-mono);
 }
 
 pre {

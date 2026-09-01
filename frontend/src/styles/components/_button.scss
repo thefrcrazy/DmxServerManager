@@ -116,11 +116,6 @@
     }
 }
 
-// Button group
-.btn-group {
-    display: flex;
-    gap: var(--spacing-2);
-}
 
 // Spinner
 .spinner {
@@ -138,7 +133,7 @@
     }
 
     &--light {
-        border-color: rgba(255, 255, 255, 0.3);
+        border-color: color-mix(in srgb, var(--color-text-primary) 30%, transparent);
         border-top-color: white;
     }
 }

@@ -59,9 +59,16 @@ export default function Sidebar({ width, isMobileOpen, onWidthChange, onMobileCl
 
     useLayoutEffect(() => {
         if (!isMobileOpen) return;
-        const focusClose = () => mobileCloseRef.current?.focus({ preventScroll: true });
-        focusClose();
-        const frame = requestAnimationFrame(focusClose);
+        const close = mobileCloseRef.current;
+        close?.focus({ preventScroll: true });
+        // Seconde tentative si le premier appel a précédé l'insertion du bouton.
+        // Elle ne doit pas reprendre le focus que l'utilisateur a déjà déplacé
+        // au clavier entre-temps, sinon la première tabulation est annulée.
+        const frame = requestAnimationFrame(() => {
+            if (document.activeElement === document.body) {
+                mobileCloseRef.current?.focus({ preventScroll: true });
+            }
+        });
         return () => cancelAnimationFrame(frame);
     }, [isMobileOpen]);
 

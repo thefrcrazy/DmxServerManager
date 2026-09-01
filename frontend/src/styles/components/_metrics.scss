@@ -43,7 +43,7 @@
 
         &--connected > span {
             background: var(--color-success);
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 12%, transparent);
         }
     }
 

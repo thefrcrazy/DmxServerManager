@@ -32,9 +32,9 @@
         color: var(--color-text-secondary);
         background: var(--color-bg-primary);
 
-        &--success { color: var(--color-success); background: rgba(16, 185, 129, 0.1); }
-        &--warning { color: var(--color-warning); background: rgba(245, 158, 11, 0.1); }
-        &--danger { color: var(--color-danger); background: rgba(239, 68, 68, 0.1); }
+        &--success { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 10%, transparent); }
+        &--warning { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 10%, transparent); }
+        &--danger { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
         &--muted { color: var(--color-text-muted); }
     }
 

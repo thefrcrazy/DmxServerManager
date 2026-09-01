@@ -36,23 +36,23 @@
     gap: var(--spacing-3);
     margin: var(--spacing-4) var(--spacing-6) 0;
     padding: var(--spacing-3) var(--spacing-4);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
     border-radius: var(--radius-md);
-    color: var(--color-warning) !important;
-    background: rgba(245, 158, 11, 0.08);
-    font-size: var(--font-size-xs) !important;
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+    font-size: var(--font-size-xs);
 }
 
 .operations-error {
     justify-content: space-between;
-    border-color: rgba(239, 68, 68, 0.35);
-    color: var(--color-danger) !important;
-    background: rgba(239, 68, 68, 0.08);
+    border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 8%, transparent);
 }
 
 .operations-notice {
     border-color: var(--color-border);
-    color: var(--color-text-secondary) !important;
+    color: var(--color-text-secondary);
     background: var(--color-bg-tertiary);
 }
 
@@ -125,7 +125,7 @@
 
     &:hover { border-color: var(--color-border); color: var(--color-text-primary); background: var(--color-bg-tertiary); }
     &:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-    &--danger:hover { color: var(--color-danger); background: rgba(239, 68, 68, 0.09); }
+    &--danger:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 9%, transparent); }
 }
 
 // File browser
@@ -201,7 +201,7 @@
     min-width: 0;
     grid-template-rows: auto minmax(18rem, 1fr) auto;
     border-left: 1px solid var(--color-border);
-    background: #0b0d10;
+    background: color-mix(in srgb, var(--color-bg-primary) 92%, var(--color-bg-secondary));
 
     &__header,
     &__footer {
@@ -222,8 +222,8 @@
         resize: vertical;
         border: 0;
         outline: 0;
-        color: #d4d4d4;
-        background: #1e1e1e;
+        color: var(--color-text-secondary);
+        background: var(--color-bg-elevated);
         font-family: var(--font-family-mono);
         font-size: var(--font-size-xs);
         line-height: 1.6;
@@ -240,7 +240,7 @@
     padding: var(--spacing-4) var(--spacing-6);
     border-top: 1px solid var(--color-border);
     color: var(--color-text-muted);
-    font-size: var(--font-size-xs) !important;
+    font-size: var(--font-size-xs);
     svg { color: var(--color-success); }
 }
 

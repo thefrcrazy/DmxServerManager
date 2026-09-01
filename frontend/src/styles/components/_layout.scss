@@ -50,24 +50,6 @@
         }
     }
 
-    .page-header {
-        @include flex-between;
-        margin-bottom: var(--spacing-5);
-
-        &__title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--color-text-primary);
-            letter-spacing: -0.02em;
-            margin-bottom: var(--spacing-1);
-        }
-
-        &__subtitle {
-            color: var(--color-text-muted);
-            font-size: 0.8125rem;
-        }
-    }
-
     @include below(lg) {
         .main-content {
             padding: 0;
