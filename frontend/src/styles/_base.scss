@@ -172,6 +172,17 @@ select {
     font-size: inherit;
 }
 
+// Les cases et boutons radio restaient à 13 ou 16 px selon le conteneur. Leur
+// étiquette porte la zone cliquable, mais la pastille elle-même doit rester
+// visible et pointable au doigt.
+@include touch {
+    input[type="checkbox"],
+    input[type="radio"] {
+        width: 20px;
+        height: 20px;
+    }
+}
+
 // Disabled
 [disabled] {
     cursor: not-allowed;
