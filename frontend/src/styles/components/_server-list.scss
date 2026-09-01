@@ -302,11 +302,17 @@
         }
     }
 
+    // Posée sur l'illustration : le fond translucide de la pastille disparaît
+    // sur un ciel clair, il lui faut donc une surface opaque.
     &__update {
         position: absolute;
         top: var(--spacing-3);
         left: var(--spacing-3);
         z-index: 1;
+        border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+        background: color-mix(in srgb, var(--color-bg-primary) 82%, var(--color-warning));
+        color: var(--color-warning);
+        box-shadow: var(--shadow-sm);
     }
 
     &__state {
