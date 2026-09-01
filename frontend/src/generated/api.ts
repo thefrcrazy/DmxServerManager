@@ -833,6 +833,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/servers/update-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listServerUpdateStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/servers/{id}": {
         parameters: {
             query?: never;
@@ -1725,6 +1741,18 @@ export interface components {
             /** Format: uuid */
             instance_id: string;
         };
+        InstanceUpdateStatus: {
+            available_build?: string | null;
+            available_version?: string | null;
+            /** Format: date-time */
+            checked_at: string;
+            installed_build?: string | null;
+            installed_version?: string | null;
+            /** Format: uuid */
+            instance_id: string;
+            /** @enum {unknown} */
+            state: "not_installed" | "up_to_date" | "update_available" | "check_failed";
+        };
         Job: {
             /** Format: date-time */
             created_at: string;
@@ -2188,6 +2216,9 @@ export interface components {
             enabled: boolean;
             name: string;
             trigger: components["schemas"]["ScheduleTrigger"];
+        };
+        UpdateStatusList: {
+            items: components["schemas"]["InstanceUpdateStatus"][];
         };
         UpdateUserRequest: {
             accent_color?: string | null;
@@ -4189,6 +4220,29 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    listServerUpdateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stored update verdicts for every visible instance. Triggers no provider check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatusList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             default: components["responses"]["Problem"];
         };
     };
