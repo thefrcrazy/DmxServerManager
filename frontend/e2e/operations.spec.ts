@@ -225,3 +225,34 @@ test("l’autorisation appareil Hytale SSE reste éphémère et pointe uniquemen
     const persisted = await page.evaluate(() => `${JSON.stringify(localStorage)}${JSON.stringify(sessionStorage)}`);
     expect(persisted).not.toContain("x6nimECK");
 });
+
+test("une instance rouvre sur le dernier onglet consulté, terminal par défaut", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    const instance = INSTANCES[0]!;
+
+    // Sans préférence enregistrée, le terminal prime sur la configuration.
+    await page.goto(`/servers/${instance.id}`);
+    await expect(page.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+
+    await page.getByRole("tab", { name: "Joueurs" }).click();
+    await expect(page).toHaveURL(/tab=players/);
+
+    // La préférence est purement locale et suit l'instance.
+    await page.goto("/dashboard");
+    await page.goto(`/servers/${instance.id}`);
+    await expect(page.getByRole("tab", { name: "Joueurs" })).toHaveAttribute("aria-selected", "true");
+
+    expect(await page.evaluate((id) => localStorage.getItem(`dmx_server_tab:${id}`), instance.id)).toBe("players");
+});
+
+test("un onglet indisponible dans l’URL ne laisse pas un lien mensonger", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+
+    // Valheim n'expose pas l'onglet Mods : l'URL conservait `tab=mods` alors
+    // qu'un autre panneau s'affichait.
+    await page.goto(`/servers/${INSTANCES[0]!.id}?tab=mods`);
+    await expect(page.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    await expect(page).not.toHaveURL(/tab=mods/);
+});

@@ -319,24 +319,29 @@ impl RuntimeManager {
         }
     }
 
+    /// `refresh` ignore le résultat mis en cache. Sans cela, une vérification
+    /// relancée après un correctif rendait pendant dix minutes le même verdict
+    /// périmé, sans moyen de la forcer.
     pub async fn game_update_status(
         &self,
         instance_id: &str,
+        refresh: bool,
     ) -> Result<GameUpdateStatus, AppError> {
         let instance = load_runtime_instance(&self.inner.pool, instance_id)
             .await
             .map_err(operation_failure_to_app)?;
         let fingerprint = game_update_fingerprint(&instance);
-        if let Some(cached) = self
-            .inner
-            .game_update_checks
-            .lock()
-            .await
-            .get(instance_id)
-            .filter(|cached| {
-                cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
-            })
-            .cloned()
+        if !refresh
+            && let Some(cached) = self
+                .inner
+                .game_update_checks
+                .lock()
+                .await
+                .get(instance_id)
+                .filter(|cached| {
+                    cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
+                })
+                .cloned()
         {
             return Ok(cached.status);
         }
@@ -349,16 +354,17 @@ impl RuntimeManager {
             )
         };
         let _check_guard = check_lock.lock().await;
-        if let Some(cached) = self
-            .inner
-            .game_update_checks
-            .lock()
-            .await
-            .get(instance_id)
-            .filter(|cached| {
-                cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
-            })
-            .cloned()
+        if !refresh
+            && let Some(cached) = self
+                .inner
+                .game_update_checks
+                .lock()
+                .await
+                .get(instance_id)
+                .filter(|cached| {
+                    cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
+                })
+                .cloned()
         {
             return Ok(cached.status);
         }
@@ -8213,7 +8219,7 @@ impl HytaleDownloaderPhase {
 
     fn safe_arguments(self) -> &'static str {
         match self {
-            Self::VersionCheck => "-print-version -skip-update-check",
+            Self::VersionCheck => "-print-version",
             Self::ServerDownload => {
                 "-download-path <ephemeral-session>/hytale-game.zip -skip-update-check"
             }

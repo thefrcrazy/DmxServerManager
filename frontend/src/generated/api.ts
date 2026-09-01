@@ -5045,7 +5045,10 @@ export interface operations {
     };
     getServerUpdateStatus: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Ignore the cached verdict and query the provider again. Requires server.update_game. */
+                refresh?: boolean;
+            };
             header?: never;
             path: {
                 id: components["parameters"]["ServerId"];

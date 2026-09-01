@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::{get, put},
 };
@@ -136,14 +136,34 @@ pub fn routes() -> Router<AppState> {
         .merge(imports::routes())
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct UpdateStatusQuery {
+    /// Ignore le résultat mis en cache et réinterroge le fournisseur.
+    #[serde(default)]
+    refresh: bool,
+}
+
 async fn get_update_status(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<String>,
+    Query(query): Query<UpdateStatusQuery>,
 ) -> Result<Json<GameUpdateStatus>, AppError> {
     validate_instance_id(&id)?;
-    authorize_instance(&state, &auth, &id, "server.read").await?;
-    state.runtime.game_update_status(&id).await.map(Json)
+    // Relancer une vérification lance le downloader ou SteamCMD : c'est une
+    // action de maintenance, pas une simple lecture.
+    let permission = if query.refresh {
+        "server.update_game"
+    } else {
+        "server.read"
+    };
+    authorize_instance(&state, &auth, &id, permission).await?;
+    state
+        .runtime
+        .game_update_status(&id, query.refresh)
+        .await
+        .map(Json)
 }
 
 async fn list(

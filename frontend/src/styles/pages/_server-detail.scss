@@ -165,6 +165,27 @@
 
         .btn { flex: 1 1 100%; }
     }
+
+    // Échec de vérification : ni « à jour » ni « mise à jour disponible », un
+    // état à part que rien ne signalait auparavant.
+    &--failed {
+        border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+        background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+
+        > svg { color: var(--color-warning); }
+    }
+}
+
+.update-status-line {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin: calc(var(--spacing-5) * -1) 0 var(--spacing-4);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+
+    > svg { flex: 0 0 auto; color: var(--color-success); }
+    > span { flex: 1; min-width: 0; }
 }
 
 // stat-pill styles → centralisés dans _dashboard.scss

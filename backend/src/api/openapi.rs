@@ -679,7 +679,11 @@ fn server_paths() -> Value {
         "/servers/{id}/update-status": {
             "get": {
                 "operationId": "getServerUpdateStatus", "tags": ["servers"],
-                "parameters": [{"$ref": "#/components/parameters/ServerId"}],
+                "parameters": [
+                    {"$ref": "#/components/parameters/ServerId"},
+                    {"name": "refresh", "in": "query", "required": false, "schema": {"type": "boolean", "default": false},
+                     "description": "Ignore the cached verdict and query the provider again. Requires server.update_game."}
+                ],
                 "responses": {"200": {"description": "Provider-backed update availability for the installed game.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GameUpdateStatus"}}}}}
             }
         },

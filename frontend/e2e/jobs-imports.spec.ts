@@ -140,6 +140,9 @@ test("la mise à jour manuelle affiche la version installée et crée un job", a
     await page.goto("/servers/22222222-2222-4222-8222-222222222222");
     await expect(page.getByText("Version installée")).toBeVisible();
     await expect(page.getByText("1.21.8", { exact: true })).toBeVisible();
+    // Le terminal est désormais l'onglet par défaut ; les diagnostics vivent
+    // dans la configuration.
+    await page.getByRole("tab", { name: "Config" }).click();
     await page.getByText("Diagnostics internes").click();
     await expect(page.getByText("server.jar", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Mettre à jour le jeu" }).click();
@@ -219,4 +222,41 @@ test("aucun avis de mise à jour quand le jeu est à jour", async ({ page }) => 
 
     await expect.poll(() => api.findRequest("GET", `/servers/${INSTANCES[0]!.id}/update-status`)).toBeDefined();
     await expect(page.getByText("Mise à jour du jeu disponible")).toHaveCount(0);
+});
+
+test("un échec de vérification est signalé au lieu de rester invisible", async ({ page }) => {
+    // Auparavant seul `update_available` produisait un affichage : « à jour » et
+    // « vérification impossible » étaient tous deux rendus par un écran vide,
+    // donc indiscernables.
+    const api = new ApiMock();
+    await api.install(page);
+    await page.route(`**/api/v1/servers/${INSTANCES[0]!.id}/update-status*`, (route) => route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+            state: "check_failed",
+            installed_version: "0.219.16",
+            installed_build: null,
+            available_version: null,
+            available_build: null,
+            checked_at: "2026-07-13T12:00:00.000Z",
+        }),
+    }));
+
+    await page.goto(`/servers/${INSTANCES[0]!.id}`);
+    await expect(page.getByText("Impossible de vérifier les mises à jour")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Vérifier maintenant" })).toBeVisible();
+});
+
+test("« à jour » reste visible et rejouable", async ({ page }) => {
+    const api = new ApiMock({ updateAvailable: false });
+    await api.install(page);
+
+    await page.goto(`/servers/${INSTANCES[0]!.id}`);
+    await expect(page.getByText("Jeu à jour d’après le fournisseur.")).toBeVisible();
+    await page.getByRole("button", { name: "Vérifier maintenant" }).click();
+    await expect.poll(() => api.requests.some((request) =>
+        request.method === "GET"
+        && request.path === `/servers/${INSTANCES[0]!.id}/update-status`
+        && request.search?.includes("refresh=true"))).toBe(true);
 });

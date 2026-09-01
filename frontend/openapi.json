@@ -9015,6 +9015,16 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ServerId"
+          },
+          {
+            "description": "Ignore the cached verdict and query the provider again. Requires server.update_game.",
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
