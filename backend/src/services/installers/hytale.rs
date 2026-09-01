@@ -57,11 +57,16 @@ pub struct HytaleDownloaderPlan {
 }
 
 impl HytaleDownloaderPlan {
+    /// Interroge le downloader officiel sur la version disponible.
+    ///
+    /// `-print-version` rapporte la version de mise à jour disponible. Il était
+    /// accompagné de `-skip-update-check`, qui saute précisément la recherche
+    /// que le premier doit rapporter : la commande retombait alors sur la
+    /// version déjà installée et le panneau concluait « à jour » en permanence,
+    /// même quand le serveur de jeu annonçait lui-même une version plus récente.
+    /// Le drapeau garde tout son sens pour le téléchargement, pas ici.
     pub fn version_args(&self) -> Vec<OsString> {
-        vec![
-            OsString::from("-print-version"),
-            OsString::from("-skip-update-check"),
-        ]
+        vec![OsString::from("-print-version")]
     }
 }
 
@@ -983,6 +988,36 @@ fn strip_terminal_controls(value: &str) -> String {
 mod tests {
     use super::*;
     use zip::{ZipWriter, write::SimpleFileOptions};
+
+    #[test]
+    fn version_check_asks_for_the_available_version_without_suppressing_the_lookup() {
+        let plan = HytaleDownloaderPlan {
+            executable: PathBuf::from("/tmp/hytale-downloader"),
+            cwd: PathBuf::from("/tmp"),
+            args: Vec::new(),
+            output_archive: PathBuf::from("/tmp/hytale-game.zip"),
+            credential_file: PathBuf::from("/tmp/.hytale-downloader-credentials.json"),
+            downloader_artifact: InstalledArtifact {
+                name: "hytale-downloader".to_string(),
+                sha256: String::new(),
+                size: 0,
+            },
+        };
+        let args: Vec<String> = plan
+            .version_args()
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"-print-version".to_string()));
+        // `-skip-update-check` annulait la recherche que `-print-version` doit
+        // rapporter : la commande retombait sur la version installée et le
+        // panneau concluait « à jour » en permanence.
+        assert!(
+            !args.contains(&"-skip-update-check".to_string()),
+            "la vérification de version ne doit pas sauter la recherche de mise à jour : {args:?}"
+        );
+    }
 
     #[test]
     fn device_authorization_only_accepts_the_official_origin() {

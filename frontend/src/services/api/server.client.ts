@@ -60,9 +60,10 @@ export class ServerClient extends BaseClient {
         return this.request(`/servers/${encodeURIComponent(id)}/connection`, ConnectionInfoSchema);
     }
 
-    async getUpdateStatus(id: string): Promise<ClientResponse<GameUpdateStatus>> {
+    /** `refresh` ignore le verdict mis en cache et réinterroge le fournisseur. */
+    async getUpdateStatus(id: string, refresh = false): Promise<ClientResponse<GameUpdateStatus>> {
         return this.request(
-            `/servers/${encodeURIComponent(id)}/update-status`,
+            `/servers/${encodeURIComponent(id)}/update-status${refresh ? "?refresh=true" : ""}`,
             GameUpdateStatusSchema,
         );
     }

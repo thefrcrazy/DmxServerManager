@@ -1,5 +1,5 @@
 import { Activity, Archive, CalendarClock, Copy, Download, Eye, EyeOff, FolderOpen, Globe2, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Skull, Square, Terminal, TriangleAlert, Trash2, Users, Wrench } from "lucide-react";
-import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConfigFiles, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerPlayers, ServerSchedules, profileSettingTitle } from "@/components/features/server";
 import { EmptyState, LoadingScreen } from "@/components/shared";
@@ -20,6 +20,29 @@ import type { ProfileValue } from "@/utils/profileSettings";
 import { gameProfileVisual } from "@/constants/gameProfiles";
 
 type TabId = "configuration" | "console" | "players" | "files" | "backups" | "metrics" | "mods" | "schedules";
+
+const TAB_STORAGE_PREFIX = "dmx_server_tab:";
+
+// Préférence purement locale, par instance : rouvrir une instance sur l'onglet
+// que l'on venait de quitter, et à défaut sur le terminal plutôt que sur la
+// configuration. Rien n'est envoyé au serveur.
+function rememberedTab(instanceId: string | undefined): TabId | null {
+    if (!instanceId) return null;
+    try {
+        return localStorage.getItem(`${TAB_STORAGE_PREFIX}${instanceId}`) as TabId | null;
+    } catch {
+        return null;
+    }
+}
+
+function rememberTab(instanceId: string | undefined, tab: TabId): void {
+    if (!instanceId) return;
+    try {
+        localStorage.setItem(`${TAB_STORAGE_PREFIX}${instanceId}`, tab);
+    } catch {
+        // Navigation privée : la préférence est simplement perdue.
+    }
+}
 
 export default function ServerDetail() {
     const { id } = useParams<{ id: string }>();
@@ -55,6 +78,7 @@ export default function ServerDetail() {
     const [connectionError, setConnectionError] = useState<string | null>(null);
     const [connectionRevealed, setConnectionRevealed] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<GameUpdateStatus | null>(null);
+    const [updateChecking, setUpdateChecking] = useState(false);
 
     const loadInstance = useCallback(async () => {
         if (!id) return;
@@ -94,11 +118,14 @@ export default function ServerDetail() {
         setConnectionError(null);
     }, [id]);
 
-    const loadUpdateStatus = useCallback(async () => {
+    const loadUpdateStatus = useCallback(async (refresh = false) => {
         if (!id) return;
-        const response = await apiService.servers.getUpdateStatus(id);
+        if (refresh) setUpdateChecking(true);
+        const response = await apiService.servers.getUpdateStatus(id, refresh);
+        setUpdateChecking(false);
         setUpdateStatus(response.success ? response.data : null);
-    }, [id]);
+        if (refresh && !response.success) toast.error(response.error.message);
+    }, [id, toast]);
 
     useEffect(() => {
         void loadInstance().finally(() => setLoading(false));
@@ -286,16 +313,45 @@ export default function ServerDetail() {
         return result;
     }, [hasPermission, instance?.settings.loader, profile, t]);
 
-    useEffect(() => {
-        if (!tabs.some((tab) => tab.id === activeTab)) setActiveTab("configuration");
-    }, [activeTab, tabs]);
+    // Les onglets dérivent des capacités du profil, chargé de façon asynchrone :
+    // la liste s'étoffe après le premier rendu. Tant que l'utilisateur n'a pas
+    // choisi lui-même, la préférence est donc réévaluée à chaque évolution de la
+    // liste, sinon elle se figeait sur une liste partielle ne contenant que
+    // « configuration ».
+    const userSelectedTab = useRef(false);
+    useEffect(() => { userSelectedTab.current = false; }, [id]);
 
     useEffect(() => {
-        const requestedTab = searchParams.get("tab");
-        if (requestedTab && tabs.some((tab) => tab.id === requestedTab)) {
-            setActiveTab(requestedTab as TabId);
+        if (userSelectedTab.current || tabs.length === 0 || !id) return;
+        const available = (candidate: string | null | undefined): candidate is TabId =>
+            Boolean(candidate) && tabs.some((tab) => tab.id === candidate);
+
+        const requested = searchParams.get("tab");
+        if (available(requested)) {
+            userSelectedTab.current = true;
+            setActiveTab(requested);
+            return;
         }
-    }, [searchParams, tabs]);
+
+        const remembered = rememberedTab(id);
+        const preferred = available(remembered) ? remembered
+            : available("console") ? "console"
+                : tabs[0]!.id;
+        setActiveTab(preferred);
+
+        // L'URL conservait un onglet indisponible alors qu'un autre s'affichait :
+        // un lien partagé ouvrait silencieusement le mauvais panneau.
+        if (requested && requested !== preferred && profile) {
+            const next = new URLSearchParams(searchParams);
+            next.set("tab", preferred);
+            setSearchParams(next, { replace: true });
+        }
+    }, [id, profile, searchParams, setSearchParams, tabs]);
+
+    useEffect(() => {
+        if (tabs.length === 0 || tabs.some((tab) => tab.id === activeTab)) return;
+        setActiveTab(tabs.some((tab) => tab.id === "console") ? "console" : tabs[0]!.id);
+    }, [activeTab, tabs]);
 
     const runAction = async (nextAction: ServerAction) => {
         if (!id) return;
@@ -449,6 +505,21 @@ export default function ServerDetail() {
                 serveur en marche, rien n'indiquait qu'une version plus récente
                 existait. L'avis est désormais affiché dès l'arrivée sur la page,
                 quel que soit l'état d'exécution. */}
+            {installed && updateStatus?.state === "check_failed" && (
+                <div className="update-notice update-notice--failed" role="status">
+                    <TriangleAlert size={18} aria-hidden="true" />
+                    <div className="update-notice__body">
+                        <strong>{t("server_detail.update_check_failed_title")}</strong>
+                        <span>{t("server_detail.update_check_failed_detail")}</span>
+                    </div>
+                    {hasPermission("server.update_game") && (
+                        <Button variant="secondary" size="sm" isLoading={updateChecking} onClick={() => void loadUpdateStatus(true)} icon={<RefreshCw size={16} />}>
+                            {t("server_detail.update_check_now")}
+                        </Button>
+                    )}
+                </div>
+            )}
+
             {installed && updateStatus?.state === "update_available" && (
                 <div className="update-notice" role="status">
                     <PackageCheck size={18} aria-hidden="true" />
@@ -472,6 +543,20 @@ export default function ServerDetail() {
                         </Button>
                     )}
                 </div>
+            )}
+
+            {/* Même « à jour » doit être visible et rejouable : sans cela, un verdict
+                erroné restait indiscernable d'une absence de vérification. */}
+            {installed && updateStatus?.state === "up_to_date" && (
+                <p className="update-status-line">
+                    <PackageCheck size={15} aria-hidden="true" />
+                    <span>{t("server_detail.update_up_to_date")}</span>
+                    {hasPermission("server.update_game") && (
+                        <Button variant="ghost" size="sm" isLoading={updateChecking} onClick={() => void loadUpdateStatus(true)}>
+                            {t("server_detail.update_check_now")}
+                        </Button>
+                    )}
+                </p>
             )}
 
             {!connection?.configured && hasPermission("panel.network.manage") && <div className="connection-notice"><Globe2 size={18} /><span>{t("server_detail.connection.configure_hint")}</span><Button as="link" to="/administration?tab=network" variant="ghost" size="sm">{t("server_detail.connection.configure")}</Button></div>}
@@ -501,7 +586,9 @@ export default function ServerDetail() {
             )}
 
             <Tabs tabs={tabs} activeTab={activeTab} onTabChange={(tab: TabId) => {
+                userSelectedTab.current = true;
                 setActiveTab(tab);
+                rememberTab(id, tab);
                 const next = new URLSearchParams(searchParams);
                 next.set("tab", tab);
                 setSearchParams(next, { replace: true });
