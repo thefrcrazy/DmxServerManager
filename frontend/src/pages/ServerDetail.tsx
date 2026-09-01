@@ -444,12 +444,41 @@ export default function ServerDetail() {
                 </div>
             </div>
 
+            {/* Une mise à jour disponible n'était signalée que par un bouton
+                secondaire, lui-même masqué tant que l'instance tournait : sur un
+                serveur en marche, rien n'indiquait qu'une version plus récente
+                existait. L'avis est désormais affiché dès l'arrivée sur la page,
+                quel que soit l'état d'exécution. */}
+            {installed && updateStatus?.state === "update_available" && (
+                <div className="update-notice" role="status">
+                    <PackageCheck size={18} aria-hidden="true" />
+                    <div className="update-notice__body">
+                        <strong>{t("server_detail.update_available_title")}</strong>
+                        <span>
+                            {t("server_detail.update_available_detail")
+                                .replace("{{installed}}", updateStatus.installed_version ?? updateStatus.installed_build ?? "—")
+                                .replace("{{available}}", updateStatus.available_version ?? updateStatus.available_build ?? "—")}
+                        </span>
+                        {running && <small>{t("server_detail.update_requires_stop")}</small>}
+                    </div>
+                    {canInstall && hasPermission("server.update_game") && !running && instance.desired_state === "stopped" && (
+                        <Button variant="primary" size="sm" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={16} />}>
+                            {t("server_detail.update_game")}
+                        </Button>
+                    )}
+                    {canInstall && hasPermission("server.update_game") && running && hasPermission("server.stop") && (
+                        <Button variant="secondary" size="sm" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={16} />}>
+                            {t("server_detail.update_stop_to_apply")}
+                        </Button>
+                    )}
+                </div>
+            )}
+
             {!connection?.configured && hasPermission("panel.network.manage") && <div className="connection-notice"><Globe2 size={18} /><span>{t("server_detail.connection.configure_hint")}</span><Button as="link" to="/administration?tab=network" variant="ghost" size="sm">{t("server_detail.connection.configure")}</Button></div>}
 
             <div className="server-actions server-detail-actions">
                 {hasPermission("job.read") && <Button as="link" to={`/activity?tab=operations&instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
                 {!installed && canInstall && hasPermission("server.update_game") && <Button onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.install")}</Button>}
-                {installed && updateStatus?.state === "update_available" && canInstall && !running && instance.desired_state === "stopped" && hasPermission("server.update_game") && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={17} />}>{t("server_detail.update_game")}</Button>}
                 {installed && canStartStop && !running && instance.desired_state === "stopped" && hasPermission("server.start") && <Button variant="success" onClick={() => void runAction("start")} disabled={busy} icon={<Play size={17} />}>{t("servers.start")}</Button>}
                 {canCancelDesiredRun && hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={17} />}>{t("server_detail.cancel_watchdog")}</Button>}
                 {running && canStartStop && <>

@@ -367,20 +367,34 @@ impl RuntimeManager {
         } else {
             match self.resolve_game_update_target(&instance).await {
                 Ok((available_version, available_build)) => {
-                    let update_available = has_game_update(
+                    let state = if !game_update_comparable(
                         &instance,
                         available_version.as_deref(),
                         available_build.as_deref(),
-                    );
+                    ) {
+                        // Sans référence installée comparable — un manifeste Steam
+                        // introuvable laisse `installed_build` vide — annoncer
+                        // « à jour » masquerait indéfiniment une mise à jour réelle.
+                        tracing::warn!(
+                            instance_id,
+                            profile_id = %instance.profile_id,
+                            "no installed reference to compare the available game version against"
+                        );
+                        GameUpdateState::CheckFailed
+                    } else if has_game_update(
+                        &instance,
+                        available_version.as_deref(),
+                        available_build.as_deref(),
+                    ) {
+                        GameUpdateState::UpdateAvailable
+                    } else {
+                        GameUpdateState::UpToDate
+                    };
                     game_update_status_from_target(
                         &instance,
                         available_version,
                         available_build,
-                        if update_available {
-                            GameUpdateState::UpdateAvailable
-                        } else {
-                            GameUpdateState::UpToDate
-                        },
+                        state,
                     )
                 }
                 Err(error) => {
@@ -447,6 +461,35 @@ impl RuntimeManager {
         Ok((None, Some(build)))
     }
 
+    /// Recopie dans le coffre le jeton que le téléchargeur vient d'écrire.
+    ///
+    /// Appelé quel que soit le sort de la commande : le jeton de rafraîchissement
+    /// tourne à chaque exécution, donc l'abandonner après un échec révoque
+    /// l'accès enregistré et impose une nouvelle autorisation par appareil.
+    async fn persist_rotated_hytale_credentials(
+        &self,
+        instance_id: &str,
+        credential_file: &Path,
+    ) -> Result<(), OperationFailure> {
+        match installers::hytale::read_plaintext_credentials(credential_file).await {
+            Ok(refreshed) => self
+                .inner
+                .secrets
+                .set(
+                    &self.inner.pool,
+                    instance_id,
+                    installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
+                    &refreshed,
+                )
+                .await
+                .map_err(OperationFailure::internal),
+            // `-print-version` n'exige pas toujours une authentification : sans
+            // fichier, il n'y a simplement rien à conserver.
+            Err(error) if error.code == "hytale_credentials_missing" => Ok(()),
+            Err(error) => Err(installer_failure(error)),
+        }
+    }
+
     async fn resolve_hytale_update_version(
         &self,
         instance_id: &str,
@@ -503,23 +546,16 @@ impl RuntimeManager {
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
-            let output = run_contained_capture(&mut command, GAME_UPDATE_PROCESS_TIMEOUT).await?;
-            match installers::hytale::read_plaintext_credentials(&plan.credential_file).await {
-                Ok(refreshed) => {
-                    self.inner
-                        .secrets
-                        .set(
-                            &self.inner.pool,
-                            instance_id,
-                            installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
-                            &refreshed,
-                        )
-                        .await
-                        .map_err(OperationFailure::internal)?;
-                }
-                Err(error) if error.code == "hytale_credentials_missing" => {}
-                Err(error) => return Err(installer_failure(error)),
-            }
+            let run = run_contained_capture(&mut command, GAME_UPDATE_PROCESS_TIMEOUT).await;
+            // Le téléchargeur officiel fait tourner le jeton de rafraîchissement
+            // à chaque appel : celui qui vient d'être écrit sur disque est le
+            // seul encore valide côté fournisseur. Il doit donc être persisté
+            // même quand la commande échoue ou expire, sinon le jeton stocké est
+            // déjà révoqué et l'utilisateur doit refaire l'autorisation par
+            // appareil — ce qui donnait l'impression que rien n'était persistant.
+            self.persist_rotated_hytale_credentials(instance_id, &plan.credential_file)
+                .await?;
+            let output = run?;
             installers::hytale::parse_printed_version(&output).ok_or_else(|| {
                 OperationFailure::new(
                     "hytale_version_invalid",
@@ -3045,6 +3081,12 @@ impl InstanceActor {
         let result = self
             .run_hytale_downloader(job_id, plan, phase, redactions.clone(), root, cancellation)
             .await;
+        // Le jeton de rafraîchissement tourne à chaque exécution du téléchargeur.
+        // Abandonner celui qui vient d'être écrit parce que le téléchargement a
+        // échoué plus loin révoque l'accès enregistré : la tentative suivante
+        // exigeait alors une nouvelle autorisation par appareil.
+        self.persist_rotated_hytale_credentials(&plan.credential_file)
+            .await?;
         let Err(error) = result else {
             return result;
         };
@@ -3075,8 +3117,38 @@ impl InstanceActor {
             "[DMX] Starting a fresh Hytale OAuth device authorization (automatic recovery attempt 1/1).",
         )
         .await?;
-        self.run_hytale_downloader(job_id, plan, phase, redactions, root, cancellation)
-            .await
+        let retried = self
+            .run_hytale_downloader(job_id, plan, phase, redactions, root, cancellation)
+            .await;
+        self.persist_rotated_hytale_credentials(&plan.credential_file)
+            .await?;
+        retried
+    }
+
+    /// Recopie dans le coffre le jeton que le téléchargeur vient d'écrire.
+    ///
+    /// Pendant de `RuntimeManager::persist_rotated_hytale_credentials`, pour le
+    /// chemin d'installation. Sans fichier, il n'y a rien à conserver : la
+    /// vérification de version n'exige pas toujours une authentification.
+    async fn persist_rotated_hytale_credentials(
+        &self,
+        credential_file: &Path,
+    ) -> Result<(), OperationFailure> {
+        match installers::hytale::read_plaintext_credentials(credential_file).await {
+            Ok(refreshed) => self
+                .inner
+                .secrets
+                .set(
+                    &self.inner.pool,
+                    &self.instance_id,
+                    installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
+                    &refreshed,
+                )
+                .await
+                .map_err(OperationFailure::internal),
+            Err(error) if error.code == "hytale_credentials_missing" => Ok(()),
+            Err(error) => Err(installer_failure(error)),
+        }
     }
 
     async fn run_hytale_downloader(
@@ -5288,6 +5360,20 @@ fn game_update_status_from_target(
         available_build,
         checked_at: chrono::Utc::now().to_rfc3339(),
     }
+}
+
+/// Indique si la version disponible peut être confrontée à ce qui est installé.
+///
+/// Quand aucune référence installée ne correspond au type de cible renvoyé par
+/// le fournisseur, la comparaison n'a pas de sens : le résultat doit être un
+/// échec de vérification, pas un « à jour » silencieux.
+fn game_update_comparable(
+    instance: &RuntimeInstance,
+    available_version: Option<&str>,
+    available_build: Option<&str>,
+) -> bool {
+    (available_version.is_some() && instance.installed_version.is_some())
+        || (available_build.is_some() && instance.installed_build.is_some())
 }
 
 fn has_game_update(
@@ -8678,6 +8764,42 @@ mod tests {
             Some("2026.06.14-efgh"),
             None
         ));
+    }
+
+    #[test]
+    fn an_available_target_without_installed_reference_is_not_comparable() {
+        let steam_instance = RuntimeInstance {
+            id: uuid::Uuid::new_v4().to_string(),
+            profile_id: "valheim".to_string(),
+            profile_revision: 1,
+            settings: "{}".to_string(),
+            config_version: 1,
+            installation_state: "installed".to_string(),
+            installed_version: None,
+            // Un manifeste `appmanifest_*.acf` introuvable à l'installation laisse
+            // ce champ vide : la comparaison de build devient impossible.
+            installed_build: None,
+            desired_state: "stopped".to_string(),
+            runtime_state: "running".to_string(),
+            auto_start: false,
+            watchdog_enabled: true,
+        };
+        assert!(!game_update_comparable(
+            &steam_instance,
+            None,
+            Some("18234")
+        ));
+        assert!(!has_game_update(&steam_instance, None, Some("18234")));
+
+        let with_build = RuntimeInstance {
+            installed_build: Some("18100".to_string()),
+            ..steam_instance
+        };
+        assert!(game_update_comparable(&with_build, None, Some("18234")));
+        assert!(has_game_update(&with_build, None, Some("18234")));
+
+        // Une cible de version face à un build installé reste incomparable.
+        assert!(!game_update_comparable(&with_build, Some("0.6.2"), None));
     }
 
     #[tokio::test]

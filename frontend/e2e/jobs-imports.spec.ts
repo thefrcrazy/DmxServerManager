@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { GameProfileSchema, InstanceSchema, JobSchema } from "../src/schemas/api";
-import { ApiMock, GAME_PROFILES, OWNER } from "./api.fixture";
+import { ApiMock, GAME_PROFILES, INSTANCES, OWNER } from "./api.fixture";
 
 const BEDROCK_INSTANCE_ID = "abababab-abab-4bab-8bab-abababababab";
 const BEDROCK_JOB_ID = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
@@ -195,4 +195,28 @@ test("un refresh restaure l’interaction Bedrock persistée puis reprend le mê
     expect(request?.headers["idempotency-key"]).toBe(BEDROCK_JOB_ID);
     expect(api.jobs[0]?.id).toBe(BEDROCK_JOB_ID);
     expect(api.jobs[0]?.state).toBe("queued");
+});
+
+test("une instance en marche signale quand même une mise à jour disponible", async ({ page }) => {
+    // Le bouton de mise à jour était masqué tant que l'instance tournait : rien
+    // n'indiquait alors qu'une version plus récente existait, et il fallait
+    // interroger le jeu lui-même pour l'apprendre.
+    const api = new ApiMock({ updateAvailable: true });
+    await api.install(page);
+
+    await page.goto(`/servers/${INSTANCES[0]!.id}`);
+
+    await expect(page.getByText("Mise à jour du jeu disponible")).toBeVisible();
+    await expect(page.getByText(/0\.219\.16 installée · .+ disponible\./)).toBeVisible();
+    await expect(page.getByText("Arrêtez complètement l’instance pour appliquer la mise à jour.")).toBeVisible();
+});
+
+test("aucun avis de mise à jour quand le jeu est à jour", async ({ page }) => {
+    const api = new ApiMock({ updateAvailable: false });
+    await api.install(page);
+
+    await page.goto(`/servers/${INSTANCES[0]!.id}`);
+
+    await expect.poll(() => api.findRequest("GET", `/servers/${INSTANCES[0]!.id}/update-status`)).toBeDefined();
+    await expect(page.getByText("Mise à jour du jeu disponible")).toHaveCount(0);
 });
