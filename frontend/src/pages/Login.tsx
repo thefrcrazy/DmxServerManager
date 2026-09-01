@@ -3,6 +3,7 @@ import { AlertCircle, LogIn } from "lucide-react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { PASSWORD_CHANGED_EVENT, PASSWORD_CHANGED_FLASH_KEY, useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { apiService } from "@/services";
 
 export default function Login() {
     const { user, login } = useAuth();
@@ -19,6 +20,16 @@ export default function Login() {
     ));
 
     const [passwordChangedVisible, setPasswordChangedVisible] = useState(passwordChanged);
+    // La version était écrite en dur : elle affichait 1.1.6 quelle que soit la
+    // version réellement déployée. `/health` est public, comme la barre latérale
+    // l'exploite déjà une fois la session ouverte.
+    const [version, setVersion] = useState("");
+
+    useEffect(() => {
+        void apiService.system.health().then((response) => {
+            if (response.success) setVersion(response.data.version);
+        });
+    }, []);
 
     useEffect(() => {
         const revealPasswordChanged = () => setPasswordChangedVisible(true);
@@ -71,7 +82,7 @@ export default function Login() {
                         {t("auth.login")}
                     </button>
                 </form>
-                <footer className="login-footer"><p>DmxServerManager v1.1.6</p></footer>
+                <footer className="login-footer"><p>DmxServerManager{version && ` v${version}`}</p></footer>
             </section>
         </main>
     );
