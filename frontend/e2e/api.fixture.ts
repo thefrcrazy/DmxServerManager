@@ -565,6 +565,25 @@ export class ApiMock {
         });
     }
 
+    private updateStatusFor(instance: Instance): Record<string, unknown> {
+        const availableVersion = this.updateAvailable && instance.installed_version
+            ? `${instance.installed_version}.next`
+            : instance.installed_version;
+        const availableBuild = this.updateAvailable && !instance.installed_version && instance.installed_build
+            ? `${instance.installed_build}1`
+            : instance.installed_build;
+        return {
+            state: instance.installation_state !== "installed"
+                ? "not_installed"
+                : this.updateAvailable ? "update_available" : "up_to_date",
+            installed_version: instance.installed_version,
+            installed_build: instance.installed_build,
+            available_version: availableVersion,
+            available_build: availableBuild,
+            checked_at: NOW,
+        };
+    }
+
     async install(page: Page): Promise<void> {
         if (this.authenticated) await this.addSessionCookie(page);
         await page.route("**/api/v1/**", (route) => this.handle(route, page));
@@ -1504,26 +1523,20 @@ export class ApiMock {
             });
         }
 
+        if (path === "/servers/update-status" && request.method() === "GET") {
+            return this.json(route, 200, {
+                items: this.instances.map((instance) => ({
+                    instance_id: instance.id,
+                    ...this.updateStatusFor(instance),
+                })),
+            });
+        }
+
         const updateStatusMatch = path.match(/^\/servers\/([0-9a-f-]+)\/update-status$/i);
         if (updateStatusMatch && request.method() === "GET") {
             const instance = this.instances.find((candidate) => candidate.id === updateStatusMatch[1]);
             if (!instance) return this.problem(route, 404, "Instance introuvable");
-            const availableVersion = this.updateAvailable && instance.installed_version
-                ? `${instance.installed_version}.next`
-                : instance.installed_version;
-            const availableBuild = this.updateAvailable && !instance.installed_version && instance.installed_build
-                ? `${instance.installed_build}1`
-                : instance.installed_build;
-            return this.json(route, 200, {
-                state: instance.installation_state !== "installed"
-                    ? "not_installed"
-                    : this.updateAvailable ? "update_available" : "up_to_date",
-                installed_version: instance.installed_version,
-                installed_build: instance.installed_build,
-                available_version: availableVersion,
-                available_build: availableBuild,
-                checked_at: NOW,
-            });
+            return this.json(route, 200, this.updateStatusFor(instance));
         }
 
         const serverMatch = path.match(/^\/servers\/([0-9a-f-]+)$/i);

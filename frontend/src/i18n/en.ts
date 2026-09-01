@@ -240,6 +240,7 @@ export const en: TranslationType = {
         crashed: "Crashed",
         action_required: "Needs attention",
         operations_running: "Active operations",
+        updates_available: "Updates available",
         server_health: "Server health",
         server_health_hint: "Actual state and version of accessible instances.",
         view_all_servers: "View all servers",
@@ -264,6 +265,7 @@ export const en: TranslationType = {
     servers: {
         title: "My Servers",
         create_new: "New Server",
+        update_available: "Update",
         create_subtitle: "Configure a new game server instance",
         no_servers: "No servers",
         import_zip: "Import .zip",

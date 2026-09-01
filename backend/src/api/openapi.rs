@@ -676,6 +676,12 @@ fn server_paths() -> Value {
                 "responses": {"200": {"description": "Connection methods derived from the global advertised host and effective profile ports.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConnectionInfo"}}}}}
             }
         },
+        "/servers/update-status": {
+            "get": {
+                "operationId": "listServerUpdateStatus", "tags": ["servers"],
+                "responses": {"200": {"description": "Stored update verdicts for every visible instance. Triggers no provider check.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateStatusList"}}}}}
+            }
+        },
         "/servers/{id}/update-status": {
             "get": {
                 "operationId": "getServerUpdateStatus", "tags": ["servers"],
@@ -1779,6 +1785,23 @@ fn server_schemas() -> Value {
                 "endpoints": {"type": "array", "items": {"$ref": "#/components/schemas/ConnectionEndpoint"}}
             }
         },
+        "UpdateStatusList": {
+            "type": "object", "additionalProperties": false, "required": ["items"],
+            "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/InstanceUpdateStatus"}}}
+        },
+        "InstanceUpdateStatus": {
+            "type": "object", "additionalProperties": false,
+            "required": ["instance_id", "state", "checked_at"],
+            "properties": {
+                "instance_id": {"type": "string", "format": "uuid"},
+                "state": {"enum": ["not_installed", "up_to_date", "update_available", "check_failed"]},
+                "installed_version": {"type": ["string", "null"]},
+                "installed_build": {"type": ["string", "null"]},
+                "available_version": {"type": ["string", "null"]},
+                "available_build": {"type": ["string", "null"]},
+                "checked_at": {"type": "string", "format": "date-time"}
+            }
+        },
         "GameUpdateStatus": {
             "type": "object", "additionalProperties": false,
             "required": ["state", "installed_version", "installed_build", "available_version", "available_build", "checked_at"],
@@ -2316,6 +2339,7 @@ mod tests {
         "GET /servers/{id}/config-files",
         "GET /servers/{id}/config-files/text",
         "GET /servers/{id}/connection",
+        "GET /servers/update-status",
         "GET /servers/{id}/update-status",
         "GET /servers/{id}/logs",
         "GET /servers/{id}/metrics",

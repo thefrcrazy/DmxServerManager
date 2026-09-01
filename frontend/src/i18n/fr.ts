@@ -238,6 +238,7 @@ export const fr = {
         crashed: "Crashés",
         action_required: "À traiter",
         operations_running: "Opérations en cours",
+        updates_available: "Mises à jour disponibles",
         server_health: "Santé des serveurs",
         server_health_hint: "État réel et version des instances accessibles.",
         view_all_servers: "Voir tous les serveurs",
@@ -262,6 +263,7 @@ export const fr = {
     servers: {
         title: "Mes Serveurs",
         create_new: "Nouveau serveur",
+        update_available: "Mise à jour",
         create_subtitle: "Configurez une nouvelle instance de jeu",
         no_servers: "Aucun serveur",
         import_zip: "Importer .zip",

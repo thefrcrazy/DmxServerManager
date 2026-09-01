@@ -1,4 +1,4 @@
-import { AlertTriangle, Activity, CircleCheck, Server as ServerIcon } from "lucide-react";
+import { AlertTriangle, Activity, ArrowUpCircle, CircleCheck, Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState, LoadingScreen, SystemMetricsStrip } from "@/components/shared";
@@ -6,7 +6,7 @@ import { ServerResourceUsage } from "@/components/features/server";
 import { StatPill } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useGlobalEvents, useLiveMetrics, usePermission, useServers } from "@/hooks";
+import { useGlobalEvents, useLiveMetrics, usePermission, useServers, useUpdateStatuses } from "@/hooks";
 import type { Job } from "@/schemas/api";
 import type { ActivitySummary } from "@/schemas/operations";
 import { apiService } from "@/services";
@@ -31,6 +31,7 @@ export default function Dashboard() {
     const [error, setError] = useState("");
     const canReadJobs = hasPermission("job.read");
     const { systemMetrics, serverMetrics, isConnected: metricsConnected } = useLiveMetrics();
+    const { outdatedCount } = useUpdateStatuses();
 
     useEffect(() => setPageTitle(t("sidebar.dashboard"), t("dashboard.operational_subtitle")), [setPageTitle, t]);
 
@@ -72,6 +73,7 @@ export default function Dashboard() {
                 <StatPill icon={<AlertTriangle size={17} />} label={t("dashboard.crashed")} value={summary.crashed_servers} variant={summary.crashed_servers ? "danger" : "muted"} />
                 <StatPill icon={<Activity size={17} />} label={t("dashboard.action_required")} value={actionRequired} variant={actionRequired ? "warning" : "muted"} />
                 <StatPill icon={<CircleCheck size={17} />} label={t("dashboard.operations_running")} value={summary.active_jobs} variant="default" />
+                <StatPill icon={<ArrowUpCircle size={17} />} label={t("dashboard.updates_available")} value={outdatedCount} variant={outdatedCount ? "warning" : "muted"} />
             </section>
 
             <SystemMetricsStrip metrics={systemMetrics} connected={metricsConnected} />

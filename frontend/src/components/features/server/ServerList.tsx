@@ -1,4 +1,4 @@
-import { Download, Play, RotateCw, Skull, Square } from "lucide-react";
+import { ArrowUpCircle, Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ConnectionInfo, GameProfile, Instance } from "@/schemas/api";
@@ -6,7 +6,7 @@ import type { CurrentServerMetric } from "@/schemas/operations";
 import type { ServerAction } from "@/services/api/server.client";
 import { Table, Tooltip } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { usePermission } from "@/hooks";
+import { usePermission, useUpdateStatuses } from "@/hooks";
 import { useToast } from "@/contexts/ToastContext";
 import { fallbackGameArtwork, gameProfileVisual } from "@/constants/gameProfiles";
 import ServerCard from "./ServerCard";
@@ -32,6 +32,7 @@ export default function ServerList({ servers, profiles, viewMode, onAction, metr
     const { t } = useLanguage();
     const toast = useToast();
     const { hasPermission } = usePermission();
+    const { statuses: updateStatuses } = useUpdateStatuses();
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
     const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
     const [connections, setConnections] = useState<Record<string, ConnectionInfo>>({});
@@ -76,6 +77,7 @@ export default function ServerList({ servers, profiles, viewMode, onAction, metr
                     playerCount={playerCounts[server.id]}
                     connection={connections[server.id]}
                     metric={metrics[server.id]}
+                    updateAvailable={updateStatuses[server.id]?.state === "update_available"}
                     onAction={(id, action) => void run(id, action)}
                 />)}
             </div>
@@ -115,6 +117,12 @@ export default function ServerList({ servers, profiles, viewMode, onAction, metr
                                     <strong>{server.name}</strong>
                                     <small>{visual.label}</small>
                                 </span>
+                                {updateStatuses[server.id]?.state === "update_available" && (
+                                    <span className="update-pill" title={t("servers.update_available")}>
+                                        <ArrowUpCircle size={13} aria-hidden="true" />
+                                        {t("servers.update_available")}
+                                    </span>
+                                )}
                             </Link>
                         </td>
                         <td>
