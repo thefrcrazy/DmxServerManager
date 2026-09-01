@@ -1,3 +1,5 @@
+@use "../mixins" as *;
+
 .administration-page {
     display: flex;
     flex-direction: column;
@@ -20,39 +22,13 @@
         }
 
         &--info {
-            color: #93c5fd;
-            background: rgba(59, 130, 246, 0.12);
-            border-color: rgba(59, 130, 246, 0.35);
+            color: color-mix(in srgb, var(--color-info) 55%, var(--color-text-primary));
+            background: color-mix(in srgb, var(--color-info) 12%, transparent);
+            border-color: color-mix(in srgb, var(--color-info) 35%, transparent);
         }
     }
 }
 
-.administration-tabs {
-    display: flex;
-    gap: var(--spacing-2);
-    overflow-x: auto;
-    border-bottom: 1px solid var(--color-border);
-
-    &__tab {
-        appearance: none;
-        border: 0;
-        border-bottom: 2px solid transparent;
-        background: transparent;
-        color: var(--color-text-muted);
-        padding: 0.625rem 0.875rem;
-        cursor: pointer;
-        font-weight: 600;
-
-        &:hover {
-            color: var(--color-text-primary);
-        }
-
-        &--active {
-            color: var(--color-text-primary);
-            border-bottom-color: var(--color-accent);
-        }
-    }
-}
 
 .administration-panel {
     display: flex;
@@ -219,7 +195,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--spacing-2);
-    color: var(--color-warning) !important;
+    color: var(--color-warning);
 }
 
 .administration-color-field {
@@ -287,15 +263,15 @@
     font-weight: 600;
 
     &--active {
-        color: #6ee7b7;
-        background: rgba(16, 185, 129, 0.12);
-        border-color: rgba(16, 185, 129, 0.3);
+        color: color-mix(in srgb, var(--color-success) 55%, var(--color-text-primary));
+        background: color-mix(in srgb, var(--color-success) 12%, transparent);
+        border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
     }
 
     &--inactive {
-        color: #fca5a5;
-        background: rgba(239, 68, 68, 0.12);
-        border-color: rgba(239, 68, 68, 0.3);
+        color: color-mix(in srgb, var(--color-danger) 55%, var(--color-text-primary));
+        background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+        border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
     }
 }
 
@@ -336,8 +312,8 @@
     }
 
     &--high-risk {
-        border-color: rgba(245, 158, 11, 0.4);
-        background: rgba(245, 158, 11, 0.05);
+        border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+        background: color-mix(in srgb, var(--color-warning) 5%, transparent);
     }
 
     input {
@@ -381,7 +357,7 @@
         align-items: center;
         gap: var(--spacing-1);
         flex: 0 0 auto;
-        color: #fbbf24;
+        color: color-mix(in srgb, var(--color-warning) 75%, var(--color-text-primary));
         font-size: var(--font-size-xs);
     }
 }
@@ -392,10 +368,10 @@
     align-items: center;
     gap: var(--spacing-3);
     padding: var(--spacing-3);
-    border: 1px solid rgba(59, 130, 246, 0.35);
+    border: 1px solid color-mix(in srgb, var(--color-info) 35%, transparent);
     border-radius: var(--radius-md);
-    background: rgba(59, 130, 246, 0.08);
-    color: #bfdbfe;
+    background: color-mix(in srgb, var(--color-info) 8%, transparent);
+    color: color-mix(in srgb, var(--color-info) 40%, var(--color-text-primary));
 }
 
 .administration-assignments {
@@ -530,9 +506,9 @@
     font-size: var(--font-size-sm);
 
     &--error {
-        border-color: rgba(239, 68, 68, 0.4);
-        background: rgba(239, 68, 68, 0.08);
-        color: #fca5a5;
+        border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+        background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+        color: color-mix(in srgb, var(--color-danger) 55%, var(--color-text-primary));
     }
 }
 
@@ -850,9 +826,9 @@
 
 .administration-page .badge {
     &--success {
-        color: #6ee7b7;
-        background: rgba(16, 185, 129, 0.12);
-        border-color: rgba(16, 185, 129, 0.3);
+        color: color-mix(in srgb, var(--color-success) 55%, var(--color-text-primary));
+        background: color-mix(in srgb, var(--color-success) 12%, transparent);
+        border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
     }
 
     &--muted {
@@ -918,7 +894,7 @@
     }
 
     &__date {
-        font-size: var(--font-size-sm) !important;
+        font-size: var(--font-size-sm);
     }
 }
 
@@ -971,10 +947,10 @@
     align-items: flex-start;
     gap: var(--spacing-2);
     padding: var(--spacing-3);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
     border-radius: var(--radius-md);
-    background: rgba(16, 185, 129, 0.08);
-    color: #a7f3d0;
+    background: color-mix(in srgb, var(--color-success) 8%, transparent);
+    color: color-mix(in srgb, var(--color-success) 40%, var(--color-text-primary));
     font-size: var(--font-size-sm);
 
     svg {
@@ -1045,7 +1021,7 @@
     font-weight: 600;
 }
 
-@media (max-width: 980px) {
+@include below(lg) {
     .administration-split {
         grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
     }
@@ -1072,7 +1048,7 @@
     }
 }
 
-@media (max-width: 700px) {
+@include below(md) {
     .administration-panel__heading,
     .administration-assignments__heading {
         align-items: stretch;

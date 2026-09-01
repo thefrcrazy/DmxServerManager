@@ -156,7 +156,7 @@ export default function ServerFiles({ instanceId, canWrite, isStopped, refreshSi
                     {error && <div className="operations-error" role="alert">{error}<Button size="sm" variant="secondary" onClick={() => void load()}>{t("administration.retry")}</Button></div>}
                     {!loading && !error && entries.length === 0 && <div className="operations-empty"><Folder aria-hidden="true" /><p>{t("server_detail.files.empty_folder")}</p></div>}
                     {!loading && !error && entries.length > 0 && (
-                        <div className="table-scroll">
+                        <div className="table-scroll" tabIndex={0}>
                             <table className="file-table">
                                 <thead><tr><th>{t("server_detail.files.name")}</th><th>{t("server_detail.files.size")}</th><th>{t("server_detail.files.modified")}</th><th><span className="sr-only">{t("common.actions")}</span></th></tr></thead>
                                 <tbody>{entries.map((entry) => (

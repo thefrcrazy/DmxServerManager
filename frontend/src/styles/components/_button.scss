@@ -4,6 +4,22 @@
 .btn {
     @include button-base;
 
+    // Un <a> n'a pas d'état désactivé natif : la variante lien s'appuie sur
+    // `aria-disabled`, qu'il faut refléter visuellement.
+    &--disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    // Plancher tactile WCAG 2.5.5 / Apple HIG. L'audit relevait jusqu'à 17 px de
+    // haut sur « Révoquer les autres » et 26 px sur les boutons icône.
+    @include touch {
+        min-height: 44px;
+        min-width: 44px;
+        padding-block: var(--spacing-2);
+    }
+
     // Primary Button (Accent)
     &--primary {
         background-color: var(--color-accent);
@@ -39,13 +55,15 @@
         }
     }
 
-    // Danger Button
+    // Danger Button — la teinte pure du jeton `danger` ne tient pas 4.5:1 en
+    // texte sur son propre aplat. Le mélange vers la couleur de texte principale
+    // conserve la sémantique tout en restant conforme, y compris en thème clair.
     &--danger {
-        background-color: rgba(239, 68, 68, 0.1);
-        color: var(--color-danger);
+        background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
+        color: color-mix(in srgb, var(--color-danger) 55%, var(--color-text-primary));
 
         &:hover:not(:disabled) {
-            background-color: rgba(239, 68, 68, 0.2);
+            background-color: color-mix(in srgb, var(--color-danger) 22%, transparent);
         }
     }
 
@@ -63,18 +81,25 @@
 
     // Success Button
     &--success {
-        background-color: rgba(16, 185, 129, 0.1);
-        color: var(--color-success);
+        background-color: color-mix(in srgb, var(--color-success) 12%, transparent);
+        color: color-mix(in srgb, var(--color-success) 70%, var(--color-text-primary));
 
         &:hover:not(:disabled) {
-            background-color: rgba(16, 185, 129, 0.2);
+            background-color: color-mix(in srgb, var(--color-success) 22%, transparent);
         }
     }
 
     // Sizes
     &--sm {
         padding: 0.125rem var(--spacing-2);
-        font-size: 0.6875rem;
+        font-size: var(--font-size-2xs);
+
+        // La variante compacte n'a pas de sens au doigt : elle retombe sur le
+        // gabarit standard plutôt que de produire une cible de 17 px.
+        @include touch {
+            padding: var(--spacing-2) var(--spacing-3);
+            font-size: 0.8125rem;
+        }
     }
 
     &--lg {
@@ -86,6 +111,11 @@
         padding: var(--spacing-1);
         aspect-ratio: 1;
         height: 34px;
+
+        @include touch {
+            height: 44px;
+            min-width: 44px;
+        }
     }
 
     // Full width
@@ -94,11 +124,6 @@
     }
 }
 
-// Button group
-.btn-group {
-    display: flex;
-    gap: var(--spacing-2);
-}
 
 // Spinner
 .spinner {
@@ -116,7 +141,7 @@
     }
 
     &--light {
-        border-color: rgba(255, 255, 255, 0.3);
+        border-color: color-mix(in srgb, var(--color-text-primary) 30%, transparent);
         border-top-color: white;
     }
 }

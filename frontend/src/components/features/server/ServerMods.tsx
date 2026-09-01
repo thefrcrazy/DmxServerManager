@@ -219,7 +219,7 @@ export default function ServerMods({ instanceId, isInstalled, isStopped, refresh
             {loading && <div className="operations-loading"><LoaderCircle className="spinner" aria-hidden="true" />{t("common.loading")}</div>}
             {error && <div className="operations-error" role="alert">{error}<Button size="sm" variant="secondary" onClick={() => void load()}>{t("administration.retry")}</Button></div>}
             {!loading && !error && mods.length === 0 && <div className="operations-empty"><FileArchive aria-hidden="true" /><p>{t("server_detail.mods.empty")}</p></div>}
-            {!loading && !error && mods.length > 0 && <div className="table-scroll"><table className="mods-table">
+            {!loading && !error && mods.length > 0 && <div className="table-scroll" tabIndex={0}><table className="mods-table">
                 <thead><tr><th>{t("server_detail.mods.name")}</th><th>{t("server_detail.mods.source")}</th><th>{t("server_detail.mods.size")}</th><th>{t("server_detail.mods.checksum")}</th><th>{t("server_detail.mods.status")}</th><th>{t("server_detail.mods.added_at")}</th><th><span className="sr-only">{t("common.actions")}</span></th></tr></thead>
                 <tbody>{mods.map((mod) => <tr key={mod.id}>
                     <td><strong>{mod.display_name}</strong></td>

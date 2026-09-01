@@ -1,3 +1,5 @@
+@use "../mixins" as *;
+
 .system-metrics {
     overflow: hidden;
     border: 1px solid var(--color-border);
@@ -41,13 +43,32 @@
 
         &--connected > span {
             background: var(--color-success);
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 12%, transparent);
         }
+    }
+
+    &__toggle {
+        display: inline-flex;
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-primary);
+        cursor: pointer;
+
+        svg { transition: transform var(--transition-fast); }
+        &--open { transform: rotate(180deg); }
     }
 
     &__grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
+
+        &[hidden] { display: none; }
     }
 }
 
@@ -65,7 +86,7 @@
     > svg { color: var(--color-accent); }
     > div { display: flex; min-width: 0; flex-direction: column; gap: 0.3rem; }
     span,
-    small { color: var(--color-text-muted); font-size: 0.6875rem; }
+    small { color: var(--color-text-muted); font-size: var(--font-size-2xs); }
     strong {
         overflow: hidden;
         color: var(--color-text-primary);
@@ -111,14 +132,14 @@
         background: var(--color-bg-primary);
 
         svg { width: 13px; height: 13px; color: var(--color-text-muted); }
-        small { color: var(--color-text-muted); font-size: 0.625rem; text-transform: uppercase; }
+        small { color: var(--color-text-muted); font-size: var(--font-size-2xs); text-transform: uppercase; }
         strong {
             grid-column: 1 / -1;
             overflow: hidden;
             margin-top: 0.2rem;
             color: var(--color-text-secondary);
             font-family: var(--font-family-mono);
-            font-size: 0.6875rem;
+            font-size: var(--font-size-2xs);
             font-variant-numeric: tabular-nums;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -138,27 +159,26 @@
             background: transparent;
 
             small { display: none; }
-            strong { margin: 0; font-size: 0.6875rem; }
+            strong { margin: 0; font-size: var(--font-size-2xs); }
         }
     }
 }
 
 .servers-page > .system-metrics { margin-bottom: var(--spacing-6); }
 
-@media (max-width: 1100px) {
+@include below(lg) {
     .system-metrics__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .system-metric:nth-child(2) { border-right: 0; }
     .system-metric:nth-child(-n + 2) { border-bottom: 1px solid var(--color-border); }
 }
 
-@media (max-width: 640px) {
-    .system-metrics__header { align-items: flex-start; flex-direction: column; }
-    .system-metrics__grid { grid-template-columns: 1fr; }
+// Deux colonnes maintenues jusqu'en bas plutôt qu'une pile de quatre : le
+// bandeau passe de 470 px à environ 230 px sur téléphone.
+@include below(sm) {
     .system-metric {
         min-height: 4.75rem;
-        border-right: 0;
-        border-bottom: 1px solid var(--color-border);
+        padding: var(--spacing-3);
+
+        > svg { display: none; }
     }
-    .system-metric:nth-child(3) { border-bottom: 1px solid var(--color-border); }
-    .system-metric:last-child { border-bottom: 0; }
 }

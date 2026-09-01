@@ -58,10 +58,28 @@
 
 .color-picker {
     display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    align-items: center;
+    flex-direction: column;
+    gap: var(--spacing-3);
     margin-bottom: 1rem;
+
+    &__swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    &__warning {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-2);
+        max-width: 44rem;
+        color: var(--color-warning);
+        font-size: var(--font-size-xs);
+        line-height: 1.5;
+
+        > svg { flex: 0 0 auto; margin-top: 1px; }
+    }
 
     &__swatch {
         width: 48px;
@@ -113,7 +131,7 @@
             content: "+";
             font-size: 1.5rem;
             color: white;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            text-shadow: 0 1px 2px color-mix(in srgb, var(--color-bg-primary) 50%, transparent);
             pointer-events: none;
         }
     }
@@ -223,7 +241,7 @@
     span { color: var(--color-text-muted); font-size: var(--font-size-xs); }
 }
 
-@media (max-width: 800px) {
+@include below(md) {
     .account-preferences,
     .form-grid--3col { grid-template-columns: 1fr; }
     .account-section > header { align-items: flex-start; flex-wrap: wrap; }
@@ -231,19 +249,8 @@
     .language-selector { flex-direction: column; }
 }
 
-// Utility classes for saving states
-.text-success {
-    color: var(--color-success);
-}
-
-.mt-2 {
-    margin-top: 0.5rem;
-}
 
 .mt-4 {
     margin-top: 1rem;
 }
 
-.mb-4 {
-    margin-bottom: 1rem;
-}

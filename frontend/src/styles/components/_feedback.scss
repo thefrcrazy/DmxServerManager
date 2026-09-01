@@ -1,13 +1,26 @@
+@use "../mixins" as *;
+
 // Toasts
 .toast-container {
     position: fixed;
-    top: 1rem;
-    right: 1rem;
+    top: max(1rem, env(safe-area-inset-top));
+    right: max(1rem, env(safe-area-inset-right));
+    left: auto;
     z-index: 9999;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     pointer-events: none; // Allow clicks through container
+
+    @include mobile {
+        left: max(1rem, env(safe-area-inset-left));
+    }
+}
+
+.toast-region {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
 .toast {
@@ -104,7 +117,7 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    background: color-mix(in srgb, var(--color-bg-primary) 50%, transparent);
     backdrop-filter: blur(4px);
     z-index: 10000;
     display: flex;

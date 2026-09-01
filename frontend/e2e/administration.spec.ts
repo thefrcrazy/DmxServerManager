@@ -312,8 +312,9 @@ test("l’Admin ne gère ni l’Owner, ni les rôles, ni les définitions Steam 
     expect(api.findRequest("GET", "/permissions")).toBeUndefined();
 
     await page.goto("/servers/create");
-    await expect(page.getByLabel("Profil de jeu").locator("option[value='steam-example']")).toHaveCount(1);
-    await page.getByLabel("Profil de jeu").selectOption("steam-example");
+    const profilePicker = page.getByRole("radiogroup", { name: "Profil de jeu" });
+    await expect(profilePicker.getByRole("radio", { name: /Steam Example/ })).toHaveCount(1);
+    await profilePicker.getByRole("radio", { name: /Steam Example/ }).click();
     await expect(page.getByText(/AppID et exécutables ne sont pas modifiables/)).toBeVisible();
     await expect(page.getByLabel("Steam AppID")).toHaveCount(0);
     await expect(page.getByLabel("Linux AMD64")).toHaveCount(0);

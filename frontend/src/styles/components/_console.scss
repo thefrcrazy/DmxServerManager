@@ -49,7 +49,7 @@
 
             &--connected {
                 background-color: var(--color-success);
-                box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+                box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 40%, transparent);
             }
 
             &--disconnected {
@@ -65,7 +65,7 @@
         display: flex;
         flex-direction: column;
         gap: 1px;
-        background-color: #0d0d0d;
+        background-color: color-mix(in srgb, var(--color-bg-primary) 94%, var(--color-bg-secondary));
         @include custom-scrollbar;
 
         &-line {
@@ -76,15 +76,15 @@
             word-break: break-all;
 
             &--info {
-                color: #60a5fa; // Blue
+                color: color-mix(in srgb, var(--color-info) 70%, var(--color-text-primary)); // Blue
             }
 
             &--warning {
-                color: #fbbf24; // Amber
+                color: color-mix(in srgb, var(--color-warning) 75%, var(--color-text-primary)); // Amber
             }
 
             &--error {
-                color: #f87171; // Red
+                color: color-mix(in srgb, var(--color-danger) 70%, var(--color-text-primary)); // Red
             }
 
             // Timestamp styling if applicable

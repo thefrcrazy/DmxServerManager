@@ -1,43 +1,57 @@
 @use "../mixins" as *;
 
-// Tabs Navigation
-.tabs-nav,
+// Implémentation unique de la barre d'onglets, en deux variantes. Le détail
+// d'instance, l'administration et l'activité en avaient chacun une.
 .server-tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--spacing-4);
-    border-bottom: 2px solid var(--color-border);
-    margin-bottom: var(--spacing-6);
-    padding-bottom: 2px; // Space for active border
+    align-items: center;
+
+    &--underline {
+        gap: var(--spacing-4);
+        border-bottom: 2px solid var(--color-border);
+        margin-bottom: var(--spacing-6);
+        padding-bottom: 2px; // Space for active border
+    }
+
+    &--pill {
+        gap: var(--spacing-1);
+    }
+
+    // Sous 1024 px les huit onglets d'administration faisaient 776 px : quatre
+    // sortaient du cadre sans indice de défilement, rendant des sections
+    // entières inaccessibles au doigt. La barre passe en grille.
+    &--wrap-below-lg {
+        @include below(lg) {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+            gap: var(--spacing-1);
+            padding-bottom: var(--spacing-2);
+        }
+    }
 }
 
 .tab-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--spacing-2);
     padding: var(--spacing-3) var(--spacing-4);
     background: none;
     border: none;
-    border-bottom: 2px solid transparent;
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
     transition: all var(--transition-fast);
     white-space: nowrap;
-    margin-bottom: -2px; // Overlap border
+
+    @include touch {
+        min-height: 44px;
+    }
 
     &:hover {
         color: var(--color-text-primary);
-    }
-
-    &--active {
-        color: var(--color-accent);
-        border-bottom-color: var(--color-accent);
-
-        svg {
-            color: var(--color-accent);
-        }
     }
 
     svg {
@@ -45,5 +59,55 @@
         height: 16px;
         color: var(--color-text-muted);
         transition: color var(--transition-fast);
+    }
+
+    .server-tabs--underline & {
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px; // Overlap border
+    }
+
+    .server-tabs--pill & {
+        border-radius: var(--radius-md);
+        font-weight: 600;
+    }
+
+    // L'intitulé actif reste en texte principal : l'accent est choisi librement
+    // par l'utilisateur et descendait à 3.33:1 sur fond sombre. Le soulignement
+    // et l'icône portent la couleur, l'état ne repose donc pas que sur elle.
+    &--active {
+        color: var(--color-text-primary);
+        font-weight: 600;
+
+        svg {
+            color: var(--color-accent);
+        }
+
+        .server-tabs--underline & {
+            border-bottom-color: var(--color-accent);
+        }
+
+        .server-tabs--pill & {
+            background: var(--color-bg-elevated);
+        }
+    }
+
+    .server-tabs--pill &:hover {
+        background: var(--color-bg-elevated);
+    }
+
+    .server-tabs--wrap-below-lg & {
+        @include below(lg) {
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            margin-bottom: 0;
+            text-align: center;
+        }
+    }
+
+    .server-tabs--wrap-below-lg &--active {
+        @include below(lg) {
+            border-color: var(--color-accent);
+            background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+        }
     }
 }

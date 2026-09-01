@@ -3,13 +3,24 @@
 // Layout styles
 .layout {
     display: flex;
-    min-height: 100vh;
+    min-height: 100dvh;
 
-    &__sidebar {
-        position: fixed;
-        left: 0;
-        top: 0;
-        background-color: var(--color-bg-primary);
+    // Largeur effective de la barre latérale, dérivée du réglage utilisateur.
+    // La variable intermédiaire est indispensable : le style inline posé par
+    // Layout.tsx l'emporterait sur n'importe quelle règle de feuille de style,
+    // donc le palier tablette ne pourrait pas le réduire.
+    --sidebar-width: var(--sidebar-width-user, 232px);
+
+    // Tablette paysage et petit laptop : barre latérale en icônes seules. Sans
+    // ce palier, un iPad de 1024 px recevait la barre complète de 232 px et il
+    // ne restait que 792 px de contenu, ce qui écrasait les cartes.
+    @include between(lg, xl) {
+        --sidebar-width: var(--sidebar-collapsed-width);
+    }
+
+    // Téléphone et tablette portrait : tiroir hors flux, aucune largeur réservée.
+    @include below(lg) {
+        --sidebar-width: 0px;
     }
 
     .main-content {
@@ -19,7 +30,9 @@
         // padding removed to allow full scroll area
         padding-top: var(--header-height);
         background-color: var(--color-bg-primary);
-        height: 100vh; // Fixed height
+        // `dvh` suit la barre d'URL mobile ; `vh` laissait le bas de chaque page
+        // sous le cadre du navigateur.
+        height: 100dvh;
         min-width: 0;
         transition: none;
         display: flex;
@@ -37,35 +50,17 @@
         }
     }
 
-    .page-header {
-        @include flex-between;
-        margin-bottom: var(--spacing-5);
-
-        &__title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--color-text-primary);
-            letter-spacing: -0.02em;
-            margin-bottom: var(--spacing-1);
-        }
-
-        &__subtitle {
-            color: var(--color-text-muted);
-            font-size: 0.8125rem;
-        }
-    }
-
-    // Media queries - mobile uniquement
-    @media (max-width: 1023px) {
+    @include below(lg) {
         .main-content {
-            width: 100%;
-            margin-left: 0;
             padding: 0;
             padding-top: var(--header-height);
 
             .page-container {
                 max-width: 100%;
                 padding: var(--spacing-4);
+                padding-bottom: calc(var(--spacing-4) + env(safe-area-inset-bottom));
+                padding-left: calc(var(--spacing-4) + env(safe-area-inset-left));
+                padding-right: calc(var(--spacing-4) + env(safe-area-inset-right));
             }
         }
     }

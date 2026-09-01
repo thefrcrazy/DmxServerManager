@@ -55,3 +55,6 @@ frontend/blob-report/
 
 # Help
 help/
+
+# Captures d’audit UI régénérées par `bun run audit:ui`
+artifacts/ui-audit/

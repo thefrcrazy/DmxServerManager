@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title">
+  <title id="title">Scrap metal base on a cold shore</title>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#141a1f"/><stop offset=".7" stop-color="#3d4650"/><stop offset="1" stop-color="#8d6a4a"/></linearGradient></defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <circle cx="150" cy="88" r="40" fill="#cfd6db" opacity=".55"/>
+  <path d="M0 244 84 216l78 22 90-34 92 30 84-40 106 36 106-24v154H0Z" fill="#2a2b28"/>
+  <path d="M0 292c150-14 250 8 358 4 106-4 176-16 282-8v72H0Z" fill="#191a18"/>
+  <g fill="#5a4632" stroke="#2b2118" stroke-width="5">
+    <path d="M228 288V166l86-40 86 40v122z"/>
+    <path d="M400 288v-70l64-24v94z"/>
+  </g>
+  <g fill="#8a6b45"><rect x="268" y="196" width="42" height="34"/><rect x="326" y="196" width="42" height="34"/><rect x="292" y="244" width="46" height="44"/></g>
+  <g stroke="#b4703a" stroke-width="6"><path d="M228 166h172M400 218h64"/></g>
+  <g stroke="#8f9aa2" stroke-width="5"><path d="M120 288V206m0 0-24 14m24-14 24 14M520 288v-64m0 0-20 12m20-12 20 12"/></g>
+</svg>

@@ -147,7 +147,7 @@ jobs:
             echo "BLOCKING: add the pinned @playwright/test dependency and test:e2e script."
             exit 1
           }
-          bunx playwright install --with-deps chromium
+          bunx playwright install --with-deps chromium webkit
           bun run test:e2e
 
   real-e2e:

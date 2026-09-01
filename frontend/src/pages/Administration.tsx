@@ -1,7 +1,8 @@
-import { KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, RefreshCw, ShieldX } from "lucide-react";
 import { CatalogManagement, ModProviderManagement, NetworkManagement, PanelReleaseManagement, RoleManagement, SteamProfileManagement, UserManagement, WebhookManagement } from "@/components/features/administration";
+import { Tabs } from "@/components/ui";
 import { PERMISSION_CATALOG } from "@/constants/permissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -127,20 +128,6 @@ export default function Administration() {
         next.set("tab", tab);
         setSearchParams(next, { replace: true });
     };
-    const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: AdministrationTab) => {
-        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-        event.preventDefault();
-        const currentIndex = tabs.indexOf(tab);
-        const targetIndex = event.key === "Home"
-            ? 0
-            : event.key === "End"
-                ? tabs.length - 1
-                : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
-        const target = tabs[targetIndex];
-        if (!target) return;
-        selectTab(target);
-        document.getElementById(`administration-tab-${target}`)?.focus();
-    };
 
     if (!canRead && !canManageProfiles && !canManageNetwork) {
         return (
@@ -175,24 +162,14 @@ export default function Administration() {
 
     return (
         <div className="administration-page">
-            <div className="administration-tabs" role="tablist" aria-label={t("administration.title")}>
-                {tabs.map((tab) => (
-                    <button
-                        key={tab}
-                        id={`administration-tab-${tab}`}
-                        type="button"
-                        role="tab"
-                        aria-selected={activeTab === tab}
-                        aria-controls={`administration-panel-${tab}`}
-                        tabIndex={activeTab === tab ? 0 : -1}
-                        className={activeTab === tab ? "administration-tabs__tab administration-tabs__tab--active" : "administration-tabs__tab"}
-                        onClick={() => selectTab(tab)}
-                        onKeyDown={(event) => handleTabKeyDown(event, tab)}
-                    >
-                        {t(`administration.tabs.${tab}`)}
-                    </button>
-                ))}
-            </div>
+            <Tabs
+                className="server-tabs--wrap-below-lg"
+                idPrefix="administration"
+                label={t("administration.title")}
+                tabs={tabs.map((tab) => ({ id: tab, label: t(`administration.tabs.${tab}`) }))}
+                activeTab={activeTab}
+                onTabChange={selectTab}
+            />
 
             {activeTab === "users" && (
                 <div id="administration-panel-users" role="tabpanel" aria-labelledby="administration-tab-users">

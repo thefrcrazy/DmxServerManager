@@ -9,19 +9,25 @@
     top: 0;
     left: var(--sidebar-width);
     right: 0;
-    height: var(--header-height);
-    background-color: rgba(16, 16, 16, 0.92);
+    // `min-height` et non `height` : le sous-titre injecté par PageTitleContext
+    // montait à 78 px sur « Nouveau serveur » en 360 px et débordait de la barre.
+    min-height: var(--header-height);
+    background-color: color-mix(in srgb, var(--color-bg-secondary) 92%, transparent);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--color-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--spacing-3);
     padding: 0 1.5rem;
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
     z-index: 40;
     transition: none;
 
     &__left {
         display: flex;
+        min-width: 0;
         align-items: center;
         gap: var(--spacing-3);
     }
@@ -31,6 +37,9 @@
     }
 
     &__back-btn {
+        // `flex: 0 0 auto` : sans cela le bouton retour se faisait comprimer
+        // jusqu'à 22 px de large par le titre voisin sur téléphone.
+        flex: 0 0 auto;
         width: 32px;
         height: 32px;
         border-radius: var(--radius-md);
@@ -44,6 +53,11 @@
         transition: all var(--transition-fast);
         text-decoration: none;
 
+        @include touch {
+            width: 44px;
+            height: 44px;
+        }
+
         &:hover {
             background: var(--color-bg-elevated);
             color: var(--color-text-primary);
@@ -53,6 +67,7 @@
 
     &__page-info {
         display: flex;
+        min-width: 0;
         flex-direction: column;
         justify-content: center;
     }
@@ -66,55 +81,27 @@
     }
 
     &__subtitle {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-2xs);
         color: var(--color-text-muted);
         margin: 0;
         line-height: 1.3;
     }
 
-    &__actions {
-        display: flex;
-        align-items: center;
-        margin-right: var(--spacing-3);
-        padding-right: var(--spacing-3);
-        border-right: 1px solid var(--color-border);
-    }
-
     &__right {
         display: flex;
+        flex: 0 0 auto;
         align-items: center;
         gap: var(--spacing-3);
     }
-
-    &__icon-btn {
-        width: 34px;
-        height: 34px;
-        border-radius: var(--radius-md);
-        background: transparent;
-        border: none;
-        color: var(--color-text-muted);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all var(--transition-fast);
-
-        &:hover {
-            background: var(--color-bg-elevated);
-            color: var(--color-text-primary);
-        }
-    }
 }
 
-// Mobile responsive
-@media (max-width: 1023px) {
+// Mobile responsive — `left` suit --sidebar-width, mise à 0 par le layout.
+@include below(lg) {
     .topbar {
-        left: 0;
-
         &__mobile-menu {
             display: flex;
-            width: 36px;
-            height: 36px;
+            width: 44px;
+            height: 44px;
             align-items: center;
             justify-content: center;
             flex: 0 0 auto;
@@ -125,7 +112,23 @@
             cursor: pointer;
         }
     }
+}
 
+// Le sous-titre passait sur trois ou quatre lignes sur téléphone et sortait de
+// la barre. Le titre suffit à situer la page ; le sous-titre revient dès 768 px.
+@include mobile {
+    .topbar {
+        padding-left: max(var(--spacing-3), env(safe-area-inset-left));
+        padding-right: max(var(--spacing-3), env(safe-area-inset-right));
+
+        &__subtitle { display: none; }
+
+        &__title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    }
 }
 
 // ========================================
@@ -146,6 +149,10 @@
         cursor: pointer;
         transition: all var(--transition-fast);
 
+        @include touch {
+            min-height: 44px;
+        }
+
         &:hover {
             background: var(--color-bg-elevated);
         }
@@ -155,7 +162,7 @@
         width: 32px;
         height: 32px;
         border-radius: var(--radius-full);
-        background: linear-gradient(135deg, var(--color-accent) 0%, #8b5cf6 100%);
+        background: linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 55%, var(--color-info)) 100%);
         color: white;
         display: flex;
         align-items: center;
@@ -187,7 +194,7 @@
         background: var(--color-bg-secondary);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-lg);
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 10px 40px color-mix(in srgb, var(--color-bg-primary) 30%, transparent);
         padding: var(--spacing-2);
         z-index: 100;
         animation: fadeIn 0.15s ease-out;
@@ -240,6 +247,10 @@
         text-decoration: none;
         transition: all var(--transition-fast);
 
+        @include touch {
+            min-height: 44px;
+        }
+
         svg {
             color: var(--color-text-muted);
         }
@@ -256,100 +267,8 @@
             }
 
             &:hover {
-                background: rgba(239, 68, 68, 0.1);
+                background: color-mix(in srgb, var(--color-danger) 10%, transparent);
             }
         }
-    }
-}
-
-
-// ========================================
-// Header Actions (Injected)
-// ========================================
-
-.header-actions-group {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-3);
-}
-
-.header-divider {
-    width: 1px;
-    height: 24px;
-    background: var(--color-border);
-    margin: 0 var(--spacing-1);
-    opacity: 0.5;
-}
-
-.header-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-2);
-}
-
-.status-badge-large {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.25rem 0.75rem;
-    border-radius: var(--radius-full);
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    background: var(--color-bg-tertiary);
-    border: 1px solid var(--color-border);
-    white-space: nowrap;
-
-    &--online {
-        border-color: rgba(16, 185, 129, 0.2);
-        color: #10b981;
-        background: rgba(16, 185, 129, 0.1);
-
-        .status-dot {
-            background: #10b981;
-            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
-        }
-    }
-
-    &--offline {
-        color: var(--color-text-muted);
-
-        .status-dot {
-            background: var(--color-text-muted);
-        }
-    }
-
-    &--error {
-        border-color: rgba(239, 68, 68, 0.2);
-        color: #ef4444;
-        background: rgba(239, 68, 68, 0.1);
-
-        .status-dot {
-            background: #ef4444;
-        }
-    }
-
-    &--warning {
-        border-color: rgba(245, 158, 11, 0.2);
-        color: #f59e0b;
-        background: rgba(245, 158, 11, 0.1);
-
-        .status-dot {
-            background: #f59e0b;
-        }
-    }
-
-    .status-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-    }
-}
-
-// Responsive adjustments
-@media (max-width: 768px) {
-    .header-actions-group {
-        display: none; // Hide complex actions on mobile or move to a menu if needed
     }
 }

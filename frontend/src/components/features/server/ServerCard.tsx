@@ -1,5 +1,5 @@
 import { AlertTriangle, Download, Play, RotateCw, Skull, Square } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { ConnectionInfo, Instance } from "@/schemas/api";
 import type { CurrentServerMetric } from "@/schemas/operations";
 import type { ServerAction } from "@/services/api/server.client";
@@ -27,7 +27,6 @@ function stateLabel(server: Instance, t: (key: string) => string): string {
 export default function ServerCard({ server, capabilities, playerCount, connection, metric, onAction }: ServerCardProps) {
     const { t } = useLanguage();
     const { hasPermission } = usePermission();
-    const navigate = useNavigate();
     const running = server.runtime_state === "running";
     const transitioning = ["starting", "stopping"].includes(server.runtime_state)
         || ["installing", "updating"].includes(server.installation_state);
@@ -37,32 +36,22 @@ export default function ServerCard({ server, capabilities, playerCount, connecti
     const canStartStop = capabilities.has("lifecycle");
     const visual = gameProfileVisual(server.profile_id);
 
-    const handleCardClick = (event: React.MouseEvent) => {
-        if (!(event.target as HTMLElement).closest("button")) navigate(`/servers/${server.id}`);
-    };
     const action = (event: React.MouseEvent, value: ServerAction) => {
         event.stopPropagation();
         onAction(server.id, value);
     };
 
+    // Motif du lien étendu : un seul vrai lien, dont la zone cliquable couvre la
+    // carte. La version précédente posait `role="link"` sur un <div> contenant
+    // des <button>, ce qui imbriquait des éléments interactifs.
     return (
-        <Card
-            className={`server-card ${running ? "server-card--running" : ""}`}
-            onClick={handleCardClick}
-            role="link"
-            tabIndex={0}
-            aria-label={`${t("servers.open_server")} ${server.name}`}
-            onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    navigate(`/servers/${server.id}`);
-                }
-            }}
-        >
+        <Card className={`server-card ${running ? "server-card--running" : ""}`}>
             <div className="server-card__artwork">
                 <img
                     src={visual.artwork}
                     alt=""
+                    width={640}
+                    height={280}
                     loading="lazy"
                     referrerPolicy="no-referrer"
                     style={{ objectPosition: visual.artworkPosition }}
@@ -79,13 +68,14 @@ export default function ServerCard({ server, capabilities, playerCount, connecti
                 <div className="server-card__header">
                     <div>
                         <span className="server-card__profile">{visual.label}</span>
-                        <h3 className="server-card__title">{server.name}</h3>
+                        <h3 className="server-card__title">
+                            <Link className="server-card__link" to={`/servers/${server.id}`}>{server.name}</Link>
+                        </h3>
                     </div>
                     <span className={`server-card__live-dot ${running ? "server-card__live-dot--running" : ""}`} aria-hidden="true" />
                 </div>
 
                 <div className="server-card__stats">
-                    <div className="server-card__stat-row"><span>{t("servers.status")}</span><span>{stateLabel(server, t)}</span></div>
                     <div className="server-card__stat-row"><span>{t("servers.players")}</span><span>{playerCount ?? "—"}</span></div>
                     <div className="server-card__stat-row"><span>{t("servers.installed_version")}</span><span>{server.installed_version ?? server.installed_build ?? "—"}</span></div>
                     <div className="server-card__stat-row server-card__stat-row--connection"><span>{t("servers.connection")}</span><MaskedConnection connection={connection} compact /></div>

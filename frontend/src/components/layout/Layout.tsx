@@ -1,4 +1,4 @@
-import { type CSSProperties, useState, useRef, useEffect, useCallback } from "react";
+import { type CSSProperties, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { Outlet, Navigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -15,7 +15,7 @@ import {
 
 export default function Layout() {
     const { user, logout, isLoading } = useAuth();
-    const { title, subtitle, backLink, headerActions } = usePageTitle();
+    const { title, subtitle, backLink } = usePageTitle();
     const { t } = useLanguage();
     const location = useLocation();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -37,7 +37,9 @@ export default function Layout() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    useEffect(() => {
+    // `useLayoutEffect` : la largeur enregistrée est appliquée avant la peinture,
+    // sinon la barre latérale saute de 232 px à sa valeur réelle au chargement.
+    useLayoutEffect(() => {
         const saved = Number(localStorage.getItem(`dmx_sidebar_width:${user?.id}`));
         setSidebarWidth(Number.isFinite(saved) && saved >= 200 && saved <= 400 ? saved : 232);
     }, [user?.id]);
@@ -72,7 +74,7 @@ export default function Layout() {
     }
 
     return (
-        <div className="layout" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+        <div className="layout" style={{ "--sidebar-width-user": `${sidebarWidth}px` } as CSSProperties}>
             <Sidebar
                 width={sidebarWidth}
                 isMobileOpen={isMobileSidebarOpen}
@@ -125,13 +127,6 @@ export default function Layout() {
                 </div>
 
                 <div className="topbar__right">
-                    {/* Header Actions (injected from pages) */}
-                    {headerActions && (
-                        <div className="topbar__actions">
-                            {headerActions}
-                        </div>
-                    )}
-
                     {/* User Menu */}
                     <div className="user-menu" ref={menuRef}>
                         <button

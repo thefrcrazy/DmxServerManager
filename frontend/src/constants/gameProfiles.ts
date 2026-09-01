@@ -38,18 +38,22 @@ const visuals: Record<string, GameProfileVisual> = {
     },
     satisfactory: {
         artwork: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/header.jpg",
+        fallbackArtwork: "/game-art/satisfactory.svg",
         label: "Satisfactory",
     },
     "seven-days-to-die": {
         artwork: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/251570/header.jpg",
+        fallbackArtwork: "/game-art/seven-days-to-die.svg",
         label: "7 Days to Die",
     },
     "project-zomboid": {
         artwork: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/108600/header.jpg",
+        fallbackArtwork: "/game-art/project-zomboid.svg",
         label: "Project Zomboid",
     },
     rust: {
         artwork: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/252490/header.jpg",
+        fallbackArtwork: "/game-art/rust.svg",
         label: "Rust",
     },
     steam: { artwork: "/game-art/steam.svg", label: "SteamCMD" },

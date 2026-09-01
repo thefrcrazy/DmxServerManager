@@ -50,13 +50,6 @@
     }
 }
 
-// Stats grid
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--spacing-4);
-    margin-bottom: var(--spacing-5);
-}
 
 // Server card
 .server-card {
@@ -87,7 +80,7 @@
         border-radius: var(--radius-full);
 
         &--running {
-            background: rgba(16, 185, 129, 0.15);
+            background: color-mix(in srgb, var(--color-success) 15%, transparent);
             color: var(--color-success);
 
             &::before {
@@ -101,7 +94,7 @@
         }
 
         &--stopped {
-            background: rgba(161, 161, 170, 0.15);
+            background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
             color: var(--color-text-muted);
 
             &::before {

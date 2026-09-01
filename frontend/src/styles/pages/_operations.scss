@@ -11,10 +11,10 @@
     font-weight: 600;
     white-space: nowrap;
 
-    &--success { color: #6ee7b7; border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.12); }
-    &--danger { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.12); }
-    &--warning { color: #fde68a; border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.12); }
-    &--info { color: #bfdbfe; border-color: rgba(59, 130, 246, 0.35); background: rgba(59, 130, 246, 0.12); }
+    &--success { color: color-mix(in srgb, var(--color-success) 55%, var(--color-text-primary)); border-color: color-mix(in srgb, var(--color-success) 35%, transparent); background: color-mix(in srgb, var(--color-success) 12%, transparent); }
+    &--danger { color: color-mix(in srgb, var(--color-danger) 55%, var(--color-text-primary)); border-color: color-mix(in srgb, var(--color-danger) 35%, transparent); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
+    &--warning { color: color-mix(in srgb, var(--color-warning) 45%, var(--color-text-primary)); border-color: color-mix(in srgb, var(--color-warning) 35%, transparent); background: color-mix(in srgb, var(--color-warning) 12%, transparent); }
+    &--info { color: color-mix(in srgb, var(--color-info) 40%, var(--color-text-primary)); border-color: color-mix(in srgb, var(--color-info) 35%, transparent); background: color-mix(in srgb, var(--color-info) 12%, transparent); }
     &--muted,
     &--neutral { color: var(--color-text-muted); background: var(--color-bg-elevated); }
 }
@@ -46,28 +46,6 @@
     &__status { display: flex; align-items: center; gap: var(--spacing-2); color: var(--color-text-muted); font-size: var(--font-size-xs); }
 }
 
-.activity-tabs {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-1);
-
-    button {
-        min-height: 40px;
-        padding: 0 var(--spacing-4);
-        display: inline-flex;
-        align-items: center;
-        gap: var(--spacing-2);
-        border: 0;
-        border-radius: var(--radius-md);
-        color: var(--color-text-muted);
-        background: transparent;
-        cursor: pointer;
-        font-weight: 600;
-    }
-
-    button:hover,
-    button.active { color: var(--color-text-primary); background: var(--color-bg-elevated); }
-}
 
 .activity-count {
     min-width: 20px;
@@ -77,8 +55,8 @@
     place-items: center;
     border-radius: var(--radius-full);
     color: var(--color-warning);
-    background: rgba(245, 158, 11, 0.14);
-    font-size: 0.6875rem;
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+    font-size: var(--font-size-2xs);
 }
 
 .attention-list { display: flex; flex-direction: column; gap: var(--spacing-3); }
@@ -148,19 +126,59 @@
     progress { width: 100%; accent-color: var(--color-accent); }
 }
 
-.audit-table { padding: 0; overflow: hidden; }
-.audit-row {
-    min-height: 60px;
-    padding: var(--spacing-3) var(--spacing-5);
-    display: grid;
-    grid-template-columns: 11rem minmax(7rem, 0.7fr) minmax(10rem, 1fr) minmax(9rem, 1fr) auto;
-    align-items: center;
-    gap: var(--spacing-3);
-    border-bottom: 1px solid var(--color-border);
-    font-size: var(--font-size-sm);
+.audit-table {
+    padding: 0;
+    overflow: hidden;
+
+    table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
+
+    th,
+    td {
+        padding: var(--spacing-3) var(--spacing-5);
+        text-align: left;
+        vertical-align: middle;
+    }
+
+    th {
+        color: var(--color-text-muted);
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    tbody tr { border-bottom: 1px solid var(--color-border); }
+    tbody tr:last-child { border-bottom: 0; }
+
     time { color: var(--color-text-muted); font-size: var(--font-size-xs); }
-    code { overflow: hidden; text-overflow: ellipsis; }
-    &--header { color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 600; text-transform: uppercase; }
+    code { overflow-wrap: anywhere; }
+
+    // Un journal d'audit amputé n'est pas un journal d'audit : sur petit écran on
+    // empile les cellules en portant l'intitulé de colonne sur chacune, plutôt
+    // que de masquer « action » et « cible » comme le faisait la version 1.1.6.
+    @include mobile {
+        thead { display: none; }
+
+        tbody tr {
+            display: block;
+            padding: var(--spacing-3) var(--spacing-4);
+        }
+
+        td {
+            display: grid;
+            grid-template-columns: minmax(5rem, 7rem) minmax(0, 1fr);
+            align-items: baseline;
+            gap: var(--spacing-3);
+            padding: var(--spacing-1) 0;
+
+            &::before {
+                content: attr(data-label);
+                color: var(--color-text-muted);
+                font-size: var(--font-size-xs);
+                text-transform: uppercase;
+            }
+        }
+    }
 }
 
 .activity-load-more { padding: var(--spacing-4); display: flex; justify-content: center; }
@@ -173,7 +191,7 @@
     justify-content: flex-end;
     pointer-events: none;
     opacity: 0;
-    background: rgba(0, 0, 0, 0.62);
+    background: color-mix(in srgb, var(--color-bg-primary) 62%, transparent);
     transition: opacity 220ms ease;
 
     &.is-open {
@@ -219,10 +237,10 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: var(--spacing-4);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
     border-radius: var(--radius-lg);
-    background: rgba(245, 158, 11, 0.09);
-    &__icon { width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border-radius: 50%; color: var(--color-warning); background: rgba(245, 158, 11, 0.16); }
+    background: color-mix(in srgb, var(--color-warning) 9%, transparent);
+    &__icon { width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border-radius: 50%; color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 16%, transparent); }
     &__content { min-width: 0; }
     &__form { margin-top: var(--spacing-3); display: flex; flex-direction: column; gap: var(--spacing-3); }
     &__filename { overflow-wrap: anywhere; color: var(--color-text-muted); font-size: var(--font-size-xs); }
@@ -231,16 +249,32 @@
     &__actions { display: flex; justify-content: flex-end; }
 }
 
-@media (max-width: 800px) {
+@include mobile {
     .activity-toolbar { align-items: stretch; flex-direction: column; }
-    .activity-tabs { overflow-x: auto; }
     .activity-filters { flex-direction: column; }
     .activity-filters label { min-width: 0; }
-    .operation-row { grid-template-columns: auto minmax(0, 1fr) auto; }
-    .operation-row progress,
-    .operation-row time { display: none; }
-    .audit-row { grid-template-columns: 8rem minmax(0, 1fr) auto; }
-    .audit-row > :nth-child(3),
-    .audit-row > :nth-child(4) { display: none; }
     .activity-drawer dl { grid-template-columns: 1fr; }
+
+    // La progression et l'horodatage passent sur leur propre ligne au lieu
+    // d'être masqués : suivre une installation depuis un téléphone est le cas
+    // d'usage mobile principal du panneau.
+    .operation-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: var(--spacing-3);
+        row-gap: var(--spacing-2);
+
+        > .badge { order: 1; }
+        &__main { order: 2; flex: 1 1 8rem; }
+        > svg { order: 3; margin-left: auto; }
+        > progress { order: 4; flex: 1 1 100%; }
+        > time { order: 5; flex: 1 1 100%; }
+    }
+}
+
+.activity-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-5);
 }

@@ -8,7 +8,7 @@ test("la création pilotée par profil sépare les secrets et envoie cookie plus
     await page.goto("/servers/create");
     await expect(page.getByRole("heading", { name: "Nouveau serveur" })).toBeVisible();
 
-    await page.getByLabel("Profil de jeu").selectOption("valheim");
+    await page.getByRole("radiogroup", { name: "Profil de jeu" }).getByRole("radio", { name: /Valheim/ }).click();
     await page.getByLabel("Nom du serveur").fill("Valheim des amis");
     await page.getByLabel("Nom public").fill("Valheim Public");
     await page.getByLabel("Monde").fill("DmxWorld");

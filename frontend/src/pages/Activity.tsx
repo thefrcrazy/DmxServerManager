@@ -13,13 +13,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice } from "@/components/features/server";
-import { Button } from "@/components/ui";
+import { Button, Tabs } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDialog } from "@/contexts/DialogContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useToast } from "@/contexts/ToastContext";
-import { useGlobalEvents, usePermission } from "@/hooks";
+import { useFocusTrap, useGlobalEvents, usePermission } from "@/hooks";
 import type { Instance, Job } from "@/schemas/api";
 import {
     BedrockArchiveAuthorizationSchema,
@@ -113,6 +113,8 @@ export default function ActivityPage() {
     const attentionJobs = useMemo(() => jobs.filter((job) => job.state === "waiting_for_user"
         || job.state === "failed" || job.state === "interrupted"), [jobs]);
     const crashed = useMemo(() => instances.filter((instance) => instance.runtime_state === "crashed"), [instances]);
+    const actionRequired = summary.waiting_for_user + summary.failed_jobs_24h
+        + summary.crashed_servers + summary.config_conflicts;
 
     const switchTab = (tab: ActivityTab) => {
         if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
@@ -153,6 +155,11 @@ export default function ActivityPage() {
         }, reducedMotion ? 0 : 280);
     }, [searchParams, setSearchParams]);
 
+    const { containerRef: drawerRef, onKeyDown: onDrawerKeyDown } = useFocusTrap<HTMLElement>({
+        active: Boolean(selectedJob),
+        onEscape: closeDetails,
+    });
+
     useEffect(() => {
         if (!selectedJobId) return;
         if (drawerCloseTimer.current !== null) {
@@ -162,15 +169,6 @@ export default function ActivityPage() {
         const frame = window.requestAnimationFrame(() => setDrawerVisible(true));
         return () => window.cancelAnimationFrame(frame);
     }, [selectedJobId]);
-
-    useEffect(() => {
-        if (!selectedJob) return;
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") closeDetails();
-        };
-        window.addEventListener("keydown", onKeyDown);
-        return () => window.removeEventListener("keydown", onKeyDown);
-    }, [closeDetails, selectedJob]);
 
     useEffect(() => () => {
         if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
@@ -212,15 +210,38 @@ export default function ActivityPage() {
     return (
         <section className="activity-page">
             <div className="activity-toolbar card">
-                <div className="activity-tabs" role="tablist" aria-label={t("activity.title")}>
-                    <button role="tab" aria-selected={activeTab === "attention"} className={activeTab === "attention" ? "active" : ""} onClick={() => switchTab("attention")}><CircleAlert size={17} />{t("activity.attention")}{(summary.waiting_for_user + summary.failed_jobs_24h + summary.crashed_servers + summary.config_conflicts) > 0 && <span className="activity-count">{summary.waiting_for_user + summary.failed_jobs_24h + summary.crashed_servers + summary.config_conflicts}</span>}</button>
-                    <button role="tab" aria-selected={activeTab === "operations"} className={activeTab === "operations" ? "active" : ""} onClick={() => switchTab("operations")}><ListChecks size={17} />{t("activity.operations")}</button>
-                    {canReadAudit && <button role="tab" aria-selected={activeTab === "journal"} className={activeTab === "journal" ? "active" : ""} onClick={() => switchTab("journal")}><History size={17} />{t("activity.journal")}</button>}
-                </div>
+                <Tabs
+                    variant="pill"
+                    idPrefix="activity"
+                    label={t("activity.title")}
+                    tabs={[
+                        {
+                            id: "attention" as const,
+                            label: t("activity.attention"),
+                            icon: <CircleAlert size={17} aria-hidden="true" />,
+                            badge: actionRequired > 0 ? <span className="activity-count">{actionRequired}</span> : undefined,
+                        },
+                        { id: "operations" as const, label: t("activity.operations"), icon: <ListChecks size={17} aria-hidden="true" /> },
+                        ...(canReadAudit
+                            ? [{ id: "journal" as const, label: t("activity.journal"), icon: <History size={17} aria-hidden="true" /> }]
+                            : []),
+                    ]}
+                    activeTab={activeTab}
+                    onTabChange={switchTab}
+                />
                 <div className="activity-toolbar__status"><span className={`connection-dot ${isConnected ? "connection-dot--online" : ""}`} />{isConnected ? t("realtime.connected") : t("realtime.reconnecting")}<Button size="sm" variant="ghost" aria-label={t("common.refresh")} onClick={() => void reload()}><RefreshCw size={16} /></Button></div>
             </div>
 
             {error && <div className="alert alert--error" role="alert">{error}</div>}
+            {/* Un onglet doit contrôler un panneau réel : les trois listes
+                partagent ce conteneur, dont l'identifiant suit l'onglet actif. */}
+            <div
+                id={`activity-panel-${activeTab}`}
+                role="tabpanel"
+                aria-labelledby={`activity-tab-${activeTab}`}
+                tabIndex={-1}
+                className="activity-panel"
+            >
             {loading ? <div className="card operations-loading">{t("common.loading")}</div> : activeTab === "attention" ? (
                 <div className="attention-list">
                     {attentionJobs.map((job) => <button key={job.id} className="attention-row card" onClick={() => selectJob(job)}><AlertTriangle size={19} /><span><strong>{t(`jobs.kinds.${job.kind}`)}</strong><small>{job.instance_id ? instanceNames.get(job.instance_id) ?? t("jobs.unknown_instance") : t("common.system")}</small></span><span className={`badge badge--${badgeVariant(job.state)}`}>{t(`jobs.states.${job.state}`)}</span><ChevronRight size={18} /></button>)}
@@ -248,13 +269,51 @@ export default function ActivityPage() {
                 </>
             ) : (
                 <div className="audit-table card">
-                    <div className="audit-row audit-row--header"><span>{t("activity.date")}</span><span>{t("activity.actor")}</span><span>{t("activity.action")}</span><span>{t("activity.target")}</span><span>{t("activity.result")}</span></div>
-                    {audit.map((event) => <div key={event.id} className="audit-row"><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(locale)}</time><span>{event.actor_username ?? t("common.system")}</span><code>{event.action}</code><span>{event.resource_type}{event.resource_id ? ` · ${event.resource_id.slice(0, 8)}` : ""}</span><span className={`badge badge--${event.outcome === "success" ? "success" : event.outcome === "denied" ? "warning" : "danger"}`}>{t(`activity.outcomes.${event.outcome}`)}</span></div>)}
+                    <table>
+                        <caption className="sr-only">{t("activity.journal")}</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">{t("activity.date")}</th>
+                                <th scope="col">{t("activity.actor")}</th>
+                                <th scope="col">{t("activity.action")}</th>
+                                <th scope="col">{t("activity.target")}</th>
+                                <th scope="col">{t("activity.result")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {audit.map((event) => (
+                                <tr key={event.id}>
+                                    <td data-label={t("activity.date")}>
+                                        <time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(locale)}</time>
+                                    </td>
+                                    <td data-label={t("activity.actor")}>{event.actor_username ?? t("common.system")}</td>
+                                    <td data-label={t("activity.action")}><code>{event.action}</code></td>
+                                    <td data-label={t("activity.target")}>
+                                        {event.resource_type}{event.resource_id ? ` · ${event.resource_id.slice(0, 8)}` : ""}
+                                    </td>
+                                    <td data-label={t("activity.result")}>
+                                        <span className={`badge badge--${event.outcome === "success" ? "success" : event.outcome === "denied" ? "warning" : "danger"}`}>
+                                            {t(`activity.outcomes.${event.outcome}`)}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                     {nextAuditId && <div className="activity-load-more"><Button variant="secondary" onClick={() => void loadMoreAudit()}>{t("activity.load_more")}</Button></div>}
                 </div>
             )}
+            </div>
 
-            {selectedJob && <div className={`activity-drawer-backdrop ${drawerVisible ? "is-open" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && closeDetails()}><aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="activity-detail-title">
+            {selectedJob && <div className={`activity-drawer-backdrop ${drawerVisible ? "is-open" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && closeDetails()}><aside
+                ref={drawerRef}
+                className="activity-drawer"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="activity-detail-title"
+                tabIndex={-1}
+                onKeyDown={onDrawerKeyDown}
+            >
                 <header><div><span className={`badge badge--${badgeVariant(selectedJob.state)}`}>{t(`jobs.states.${selectedJob.state}`)}</span><h2 id="activity-detail-title">{t(`jobs.kinds.${selectedJob.kind}`)}</h2></div><Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={closeDetails}><X size={19} /></Button></header>
                 <dl><div><dt>{t("jobs.instance_filter")}</dt><dd>{selectedJob.instance_id ? instanceNames.get(selectedJob.instance_id) ?? selectedJob.instance_id : t("common.system")}</dd></div><div><dt>{t("jobs.created")}</dt><dd>{new Date(selectedJob.created_at).toLocaleString(locale)}</dd></div><div><dt>{t("jobs.progress")}</dt><dd>{selectedJob.progress}%</dd></div><div><dt>ID</dt><dd><code>{selectedJob.id}</code></dd></div></dl>
                 {ACTIVE_STATES.has(selectedJob.state) && <progress max={100} value={selectedJob.progress} />}

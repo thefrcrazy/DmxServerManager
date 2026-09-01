@@ -32,6 +32,7 @@ use crate::{
         AppState, database,
         error::{AppError, codes::ErrorCode},
     },
+    services::catalog,
 };
 
 const SESSION_COOKIE: &str = "dmx_session";
@@ -701,7 +702,7 @@ async fn update_preferences(
         validate_language(language)?;
     }
     if let Some(accent_color) = body.accent_color.as_deref() {
-        validate_accent_color(accent_color)?;
+        catalog::validate_accent_color(&state.pool, accent_color).await?;
     }
 
     let language = body
@@ -951,17 +952,6 @@ fn validate_language(value: &str) -> Result<(), AppError> {
         Ok(())
     } else {
         Err(AppError::BadRequest("users.invalid_language".into()))
-    }
-}
-
-fn validate_accent_color(value: &str) -> Result<(), AppError> {
-    if value.len() == 7
-        && value.starts_with('#')
-        && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        Ok(())
-    } else {
-        Err(AppError::BadRequest("users.invalid_accent_color".into()))
     }
 }
 

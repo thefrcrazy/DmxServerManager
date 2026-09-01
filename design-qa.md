@@ -1,47 +1,85 @@
-# UI/UX QA — 2026-07-22
+# QA UI/UX — 1er septembre 2026
 
 ## Résultat
 
-Réussi — aucun problème P0, P1 ou P2 restant dans les vues vérifiées.
+Réussi. Les garde-fous mesurés passent sur les trois viewports explicites et sur
+les trois appareils émulés, WebKit compris.
 
-## Périmètre
+## Ce qui est réellement vérifié
 
-- Captures source fournies le 22 juillet 2026 pour Fichiers, Sauvegardes, Métriques, Mods et Tâches.
-- Langage visuel existant du panel v1.1.x : surfaces sombres, bordures discrètes, accent bleu, densité opérationnelle.
-- Dashboard, liste/grille des serveurs, détail d’une instance et panneau Activité.
-- Configuration d’instance, fichiers natifs, sauvegardes, métriques, mods, tâches et zone de danger.
-- Desktop et mobile, avec contrôle du débordement horizontal et des actions empilées.
+Cette page décrit la couverture **mesurée**, pas une impression de relecture.
+La version précédente concluait « aucun problème P0/P1/P2 » et déclarait le
+responsive vérifié, alors que ses neuf captures de preuve étaient toutes en
+1680×1080 ou 1542×1080. Aucune ne montrait un téléphone ni une tablette.
 
-## Vérifications visuelles
+### Garde-fous bloquants
 
-- Dashboard : bandeau CPU, RAM, disque et réseau lisible, indicateur temps réel, santé des serveurs conservée.
-- Serveurs : mêmes métriques hôte, statistiques CPU/RAM/disque par instance dans les cartes et la liste.
-- Activité : entrée/sortie animée du panneau latéral et couverture plein écran sur mobile.
-- Configuration : aperçu structuré, formulaire minimal à la demande, secrets masqués et zone de danger séparée.
-- Fichiers : barre d’actions, fil d’Ariane, tableau et état vide correctement structurés.
-- Sauvegardes : en-tête, actions, tableau/état vide et information d’intégrité homogènes.
-- Métriques : sélecteur sombre, résumé en cartes, graphiques contrastés et état vide explicite.
-- Mods : formulaire fournisseur compact, champs sombres, upload et état vide alignés.
-- Tâches : en-tête et action primaire regroupés, formulaire/liste et état vide dans une surface cohérente.
-- Responsive : les grilles et outils passent en une colonne et les tables restent défilables sur petit écran.
+`frontend/e2e/responsive-guardrails.spec.ts` et
+`frontend/e2e/device-guardrails.spec.ts` mesurent, sur **11 routes** :
 
-## Interactions vérifiées
+| Invariant | Seuil | Motif |
+|---|---|---|
+| Largeur du document | ≤ viewport | aucun défilement horizontal de page |
+| Bord droit de chaque élément visible | ≤ viewport | aucun contenu hors cadre |
+| `font-size` des champs de saisie | ≥ 16 px sur tactile | Safari iOS zoome irréversiblement en dessous |
+| Boîte de chaque élément interactif | ≥ 44 × 44 px sur tactile | WCAG 2.5.5 / Apple HIG |
+| axe-core | 0 violation | `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa` |
 
-- Authentification locale et navigation dashboard → serveurs → instance.
-- Navigation directe entre Fichiers, Sauvegardes, Métriques, Mods et Tâches.
-- Actualisation des métriques hôte par flux temps réel avec reprise REST.
-- Modification et mise en file d’un brouillon natif, avec préservation des clés inconnues et commentaires couverte par tests.
-- Aucun avertissement ou erreur dans la console du navigateur pendant le parcours.
+Les zones tactiles étendues sont prises en compte : l'étiquette d'une case à
+cocher et le lien étendu d'une carte sont mesurés à leur surface réellement
+atteignable, pas à la boîte du contrôle.
 
-## Validation automatisée
+### Moteurs et formats
 
-- Formatage Rust, Clippy avec avertissements interdits et 290 tests backend réussis (5 tests réseau ignorés).
-- ESLint, TypeScript strict, 55 tests frontend et build de production réussis.
-- 47 tests Playwright réussis, dont accessibilité Axe A/AA, responsive, dashboard, serveurs et outils d’instance.
-- Contrat OpenAPI backend/frontend synchronisé et validé par le test de contrat backend.
+| Projet Playwright | Moteur | Portée |
+|---|---|---|
+| `chromium` (Desktop Chrome) | Chromium | suite complète, plus les garde-fous en 390×844, 768×1024 et 1366×768 |
+| `mobile-safari` (iPhone 13) | **WebKit** | garde-fous au viewport et au toucher de l'appareil |
+| `mobile-chrome` (Pixel 5) | Chromium | idem |
+| `tablet` (iPad gen 7) | Chromium | idem |
 
-## Captures
+WebKit est le moteur où se manifestent le zoom automatique iOS, le comportement
+de `dvh` face à la barre d'URL et les zones de sécurité : les vérifier sous
+Chromium seul ne prouvait rien.
 
-Les références de validation sont stockées dans `artifacts/design-qa/`.
+### Autres tests liés à l'interface
 
-final result: passed
+- `no-external-requests.spec.ts` — échoue sur toute requête sortante hors
+  origine, en dehors des deux CDN d'illustrations explicitement autorisés.
+  C'est ce test qui aurait attrapé le chargement de Monaco depuis jsDelivr.
+- `tests/components.test.tsx` — montage réel des primitives corrigées : état
+  désactivé du bouton lien, liaison du message d'erreur au champ, motif ARIA des
+  onglets, régions live des notifications.
+- `tests/i18n.test.ts` — parité stricte des clés FR/EN, et vérification que
+  toute clé littérale employée dans le code existe. `t()` retombant sur le
+  chemin brut, une clé manquante s'affichait telle quelle sans rien casser.
+- `tests/mergeLogHistory.test.ts` — fusion d'historique de journal, dont un cas
+  de volume qui verrouille la complexité linéaire.
+
+## Reproduire
+
+```bash
+cd frontend && bunx playwright install --with-deps chromium webkit && bun run test:e2e
+```
+
+Captures complètes sur sept viewports, non versionnées :
+
+```bash
+cd frontend && bun run audit:ui
+```
+
+## Limites connues
+
+- Les garde-fous couvrent 11 routes sur les écrans principaux ; les modales et
+  les formulaires d'administration secondaires ne sont pas parcourus
+  automatiquement.
+- axe-core ne détecte pas l'absence de piège de focus, la navigation aux
+  flèches d'un motif ARIA, ni un contenu masqué par `display: none` en
+  responsive. Ces points relèvent des tests de composants et de la relecture.
+- `services::runtime::tests::dropping_managed_process_kills_its_process_group`
+  est intermittent sous charge parallèle (temporisation de terminaison de groupe
+  de processus). Il n'est pas lié à l'interface.
+
+## Référence
+
+L'audit détaillé qui a motivé ces correctifs : `AUDIT-UI-UX-2026-08-31.md`.

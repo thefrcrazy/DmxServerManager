@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Copy, Download, FolderInput, Gamepad2, Link2, Play, ShieldCheck, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui";
@@ -49,6 +49,7 @@ export default function CreateServer() {
     const uploadTask = useRef<ImportUploadTask | null>(null);
     const uploadCancelled = useRef(false);
     const fileInput = useRef<HTMLInputElement>(null);
+    const profileOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const [profiles, setProfiles] = useState<GameProfile[]>([]);
     const [profileId, setProfileId] = useState("");
     const [name, setName] = useState("");
@@ -187,6 +188,23 @@ export default function CreateServer() {
         setUploadProgress(0);
         setProfileOptions({});
         setError("");
+    };
+
+    const moveProfileFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+        const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"];
+        if (!keys.includes(event.key) || profiles.length === 0) return;
+        event.preventDefault();
+        const current = profiles.findIndex((profile) => profile.id === profileId);
+        const index = current < 0 ? 0 : current;
+        const target = event.key === "Home" ? 0
+            : event.key === "End" ? profiles.length - 1
+                : event.key === "ArrowRight" || event.key === "ArrowDown"
+                    ? (index + 1) % profiles.length
+                    : (index - 1 + profiles.length) % profiles.length;
+        const profile = profiles[target];
+        if (!profile) return;
+        selectProfile(profile.id);
+        profileOptionRefs.current[target]?.focus();
     };
 
     const selectArchive = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -345,35 +363,38 @@ export default function CreateServer() {
                     <h2 className="server-config-title"><Gamepad2 size={20} aria-hidden="true" />{t("server_creation.profile_title")}</h2>
                     <fieldset className="server-creation-fieldset" disabled={Boolean(createdInstanceId) || isSubmitting}>
                         <div className="form-group">
-                            <label className="profile-picker__label" htmlFor="server-profile">{t("server_creation.profile_label")}</label>
-                            <select
-                                id="server-profile"
-                                className="sr-only"
-                                value={profileId}
-                                onChange={(event) => selectProfile(event.target.value)}
-                                required
+                            {/* Le groupe radio visible est le seul contrôle : le <select>
+                                masqué qui le doublait annonçait deux fois la même liste
+                                et ajoutait un point de tabulation pour rien. */}
+                            <span className="profile-picker__label" id="server-profile-label">{t("server_creation.profile_label")}</span>
+                            <div
+                                className="profile-picker"
+                                role="radiogroup"
+                                aria-labelledby="server-profile-label"
+                                onKeyDown={moveProfileFocus}
                             >
-                                {profiles.map((profile) => (
-                                    <option key={`${profile.id}@${profile.revision}`} value={profile.id}>{profile.name}</option>
-                                ))}
-                            </select>
-                            <div className="profile-picker" role="radiogroup" aria-label={t("server_creation.profile_picker_aria")}>
-                                {profiles.map((profile) => {
+                                {profiles.map((profile, index) => {
                                     const visual = gameProfileVisual(profile.id, profile.name);
                                     const selected = profile.id === profileId;
                                     return (
                                         <button
                                             key={`${profile.id}@${profile.revision}`}
+                                            ref={(element) => { profileOptionRefs.current[index] = element; }}
                                             type="button"
                                             className={`profile-picker__option ${selected ? "profile-picker__option--selected" : ""}`}
                                             role="radio"
                                             aria-checked={selected}
+                                            // Un groupe radio n'expose qu'un seul point de
+                                            // tabulation ; les flèches parcourent les options.
+                                            tabIndex={selected ? 0 : -1}
                                             onClick={() => selectProfile(profile.id)}
                                         >
                                             <span className="profile-picker__artwork">
                                                 <img
                                                     src={visual.artwork}
                                                     alt=""
+                                                    width={640}
+                                                    height={360}
                                                     loading="lazy"
                                                     referrerPolicy="no-referrer"
                                                     style={{ objectPosition: visual.artworkPosition }}

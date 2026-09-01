@@ -1,4 +1,5 @@
 export * from "./useAsync";
+export * from "./useFocusTrap";
 export * from "./useFilteredServers";
 export * from "./useServers";
 export * from "./useServerEvents";

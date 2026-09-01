@@ -1,10 +1,14 @@
+@use "../mixins" as *;
+
 // ========================================
 // Tooltip Component
 // ========================================
 
+// `display: contents` : le conteneur ne doit pas exister en tant que boîte,
+// sinon il s'intercale dans les contextes flex des barres d'actions et fausse
+// l'alignement des boutons icône qu'il enveloppe.
 .tooltip-wrapper {
-    position: relative;
-    display: inline-flex;
+    display: contents;
 }
 
 .tooltip {

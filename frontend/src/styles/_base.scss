@@ -22,6 +22,23 @@ html {
     scroll-behavior: smooth;
 }
 
+// WCAG 2.3.3. Le projet ne couvrait que deux sélecteurs du tiroir Activité,
+// pour 17 animations, 66 transitions et un défilement fluide global.
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
 body {
     font-family: var(--font-family-sans);
     font-size: var(--font-size-base);
@@ -112,9 +129,11 @@ a {
 }
 
 // Code
+// Ces deux familles n'étaient pas embarquées : le rendu retombait sur la police
+// monospace générique en contournant le jeton, pourtant correctement défini.
 code,
 pre {
-    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-family: var(--font-family-mono);
 }
 
 pre {
@@ -151,6 +170,17 @@ textarea,
 select {
     font-family: inherit;
     font-size: inherit;
+}
+
+// Les cases et boutons radio restaient à 13 ou 16 px selon le conteneur. Leur
+// étiquette porte la zone cliquable, mais la pastille elle-même doit rester
+// visible et pointable au doigt.
+@include touch {
+    input[type="checkbox"],
+    input[type="radio"] {
+        width: 20px;
+        height: 20px;
+    }
 }
 
 // Disabled

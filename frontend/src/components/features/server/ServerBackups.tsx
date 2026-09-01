@@ -85,7 +85,7 @@ export default function ServerBackups({ instanceId, canManage, isStopped, refres
             {error && <div className="operations-error" role="alert">{error}<Button size="sm" variant="secondary" onClick={() => void load()}>{t("administration.retry")}</Button></div>}
             {!loading && !error && backups.length === 0 && <div className="operations-empty"><Archive aria-hidden="true" /><p>{t("backups.empty_desc")}</p>{canMutate && <Button onClick={() => void create()}>{t("backups.create_first")}</Button>}</div>}
             {!loading && !error && backups.length > 0 && (
-                <div className="table-scroll"><table className="backup-table">
+                <div className="table-scroll" tabIndex={0}><table className="backup-table">
                     <thead><tr><th>{t("backups.date")}</th><th>{t("backups.status")}</th><th>{t("backups.size")}</th><th>{t("backups.checksum")}</th><th>{t("common.actions")}</th></tr></thead>
                     <tbody>{backups.map((backup) => (
                         <tr key={backup.id}>

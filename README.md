@@ -16,7 +16,7 @@ Gestionnaire mono-hôte de serveurs de jeux, écrit en Rust et React. La version
 - sessions opaques, CSRF, RBAC, affectation des instances et journal d’audit ;
 - sauvegardes locales vérifiées, gestionnaire de fichiers cloisonné et imports ZIP sécurisés ;
 - tâches planifiées, notifications, chat d’équipe, webhooks Discord et catalogue local `.dmxpack` ;
-- interface React responsive en français et en anglais, pilotée par les capacités de chaque profil, avec sélecteur visuel et illustrations locales des jeux.
+- interface React responsive en français et en anglais, pilotée par les capacités de chaque profil, avec sélecteur visuel et illustrations des jeux servies par les CDN des éditeurs, chacune doublée d’un repli local vectoriel pour les déploiements hors ligne.
 
 ## Profils 1.0
 

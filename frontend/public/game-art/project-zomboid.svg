@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title">
+  <title id="title">Barricaded house seen from above</title>
+  <defs><linearGradient id="ground" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#20281c"/><stop offset="1" stop-color="#39432c"/></linearGradient></defs>
+  <rect width="640" height="360" fill="url(#ground)"/>
+  <g stroke="#151a12" stroke-width="3" opacity=".5"><path d="M0 120h640M0 250h640M180 0v360M470 0v360"/></g>
+  <rect x="196" y="112" width="252" height="150" rx="6" fill="#4a3a2a" stroke="#241c14" stroke-width="6"/>
+  <rect x="220" y="134" width="204" height="106" fill="#2c2219"/>
+  <g fill="#7a5c3c"><rect x="236" y="150" width="52" height="40"/><rect x="356" y="150" width="52" height="40"/><rect x="296" y="196" width="52" height="44"/></g>
+  <g stroke="#c9a468" stroke-width="7"><path d="m230 144 64 52m0-52-64 52m120 0 64-52m0 52-64-52"/></g>
+  <circle cx="122" cy="200" r="15" fill="#6f8a3f"/>
+  <circle cx="530" cy="292" r="15" fill="#6f8a3f"/>
+  <circle cx="556" cy="150" r="15" fill="#6f8a3f"/>
+  <circle cx="96" cy="306" r="15" fill="#6f8a3f"/>
+</svg>

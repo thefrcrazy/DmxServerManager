@@ -16,7 +16,9 @@ use axum::{
     response::Response,
     routing::get_service,
 };
-use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
+use tower_http::{
+    catch_panic::CatchPanicLayer, cors::CorsLayer, services::ServeDir, trace::TraceLayer,
+};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -270,6 +272,10 @@ fn build_app(state: AppState) -> anyhow::Result<Router> {
         // Buffered extractors remain capped. Streaming upload handlers enforce their
         // own stricter byte quotas while consuming the body incrementally.
         .layer(DefaultBodyLimit::max(1024 * 1024))
+        // Sans cette couche, une panique dans un gestionnaire coupait la
+        // connexion sans réponse HTTP : le client ne distinguait pas un défaut
+        // du serveur d'une coupure réseau.
+        .layer(CatchPanicLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -305,12 +311,34 @@ fn build_app(state: AppState) -> anyhow::Result<Router> {
     Ok(app)
 }
 
+/// Politique de cache des ressources statiques.
+///
+/// Vite produit des noms de fichiers empreintés sous `/assets/` : ils sont donc
+/// immuables et peuvent être conservés indéfiniment. Sans cet en-tête, chaque
+/// chargement rejouait une requête conditionnelle par ressource — un aller-retour
+/// complet par fichier sur une liaison mobile. `index.html` doit au contraire
+/// être revalidé, faute de quoi une page en cache continue de pointer vers des
+/// ressources empreintées supprimées après une mise à jour.
+fn apply_cache_policy(path: &str, headers: &mut header::HeaderMap) {
+    if path.starts_with("/api/") || headers.contains_key(header::CACHE_CONTROL) {
+        return;
+    }
+    let policy = if path.starts_with("/assets/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(policy));
+}
+
 async fn security_headers(
     State(state): State<AppState>,
     request: axum::extract::Request,
     next: Next,
 ) -> Response {
+    let path = request.uri().path().to_string();
     let mut response = next.run(request).await;
+    apply_cache_policy(&path, response.headers_mut());
     let headers = response.headers_mut();
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,

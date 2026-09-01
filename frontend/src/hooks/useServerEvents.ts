@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EventEnvelopeSchema, JobSchema, RuntimeStateSchema } from "@/schemas/api";
 import {
     BedrockArchiveAuthorization,
@@ -12,6 +12,8 @@ import type { ServerLogSource } from "@/services/api/server.client";
 
 const MAX_VISIBLE_CONSOLE_LOG_LINES = 1_000;
 const MAX_VISIBLE_INSTALL_LOG_LINES = 10_000;
+const RECONNECT_MIN_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
 
 interface UseServerEventsOptions {
     serverId: string | undefined;
@@ -43,17 +45,38 @@ function visibleLogLimit(source: ServerLogSource): number {
     return source === "install" ? MAX_VISIBLE_INSTALL_LOG_LINES : MAX_VISIBLE_CONSOLE_LOG_LINES;
 }
 
-function mergeLogHistory(history: string[], live: string[], limit: number): string[] {
-    if (live.length === 0) return history.slice(-limit);
+/** Séparateur impossible à confondre avec une ligne de journal. */
+const OVERLAP_SENTINEL = Symbol("overlap");
+
+/**
+ * Longueur du plus long suffixe de `history` égal à un préfixe de `live`.
+ *
+ * Calcul de bordure KMP, en O(n+m). La version précédente comparait des tranches
+ * décroissantes : avec 10 000 lignes d'historique et autant en direct, cela
+ * représentait jusqu'à 50 millions de comparaisons et 10 000 allocations de
+ * tableau sur le thread principal, à chaque reconnexion du flux.
+ */
+function longestOverlap(history: string[], live: string[]): number {
     const maxOverlap = Math.min(history.length, live.length);
-    let overlap = 0;
-    for (let size = maxOverlap; size > 0; size -= 1) {
-        if (history.slice(-size).every((line, index) => line === live[index])) {
-            overlap = size;
-            break;
-        }
+    if (maxOverlap === 0) return 0;
+    const combined: Array<string | symbol> = [
+        ...live.slice(0, maxOverlap),
+        OVERLAP_SENTINEL,
+        ...history.slice(-maxOverlap),
+    ];
+    const border = new Array<number>(combined.length).fill(0);
+    for (let index = 1; index < combined.length; index += 1) {
+        let length = border[index - 1]!;
+        while (length > 0 && combined[index] !== combined[length]) length = border[length - 1]!;
+        if (combined[index] === combined[length]) length += 1;
+        border[index] = length;
     }
-    return [...history, ...live.slice(overlap)].slice(-limit);
+    return border[border.length - 1]!;
+}
+
+export function mergeLogHistory(history: string[], live: string[], limit: number): string[] {
+    if (live.length === 0) return history.slice(-limit);
+    return [...history, ...live.slice(longestOverlap(history, live))].slice(-limit);
 }
 
 export function useServerEvents({ serverId, serverStatus, logSource, onServerUpdate, onStatusChange }: UseServerEventsOptions): UseServerEventsReturn {
@@ -65,6 +88,37 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
     const [pendingDeviceAuthorization, setPendingDeviceAuthorization] = useState<HytaleDeviceAuthorization | null>(null);
     const [pendingBedrockArchive, setPendingBedrockArchive] = useState<BedrockArchiveAuthorization | null>(null);
     const historyRequest = useRef(0);
+    // Les lignes reçues sont regroupées et appliquées une fois par trame. Un
+    // `setLogs` par ligne provoquait, pendant une installation SteamCMD qui en
+    // émet des centaines par seconde, deux allocations de tableau de 10 000
+    // éléments et un rendu complet de la console à chaque ligne.
+    const pendingLogs = useRef<string[]>([]);
+    const flushFrame = useRef<number | null>(null);
+
+    const flushLogs = useCallback(() => {
+        flushFrame.current = null;
+        const pending = pendingLogs.current;
+        if (pending.length === 0) return;
+        pendingLogs.current = [];
+        setLogs((current) => [...current, ...pending].slice(-visibleLogLimit(logSource)));
+    }, [logSource]);
+
+    const appendLog = useCallback((line: string) => {
+        pendingLogs.current.push(line);
+        if (flushFrame.current !== null) return;
+        flushFrame.current = requestAnimationFrame(flushLogs);
+    }, [flushLogs]);
+
+    const clearLogs = useCallback(() => {
+        pendingLogs.current = [];
+        setLogs([]);
+    }, []);
+
+    const clearPendingBedrockArchive = useCallback(() => setPendingBedrockArchive(null), []);
+
+    useEffect(() => () => {
+        if (flushFrame.current !== null) cancelAnimationFrame(flushFrame.current);
+    }, []);
 
     const applyEvent = useCallback((event: MessageEvent<string>) => {
         let raw: unknown;
@@ -97,10 +151,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
             const isRequestedSource = typeof stream !== "string"
                 || (logSource === "install" ? stream.startsWith("install") : !stream.startsWith("install"));
             if (typeof message === "string" && isRequestedSource) {
-                setLogs((current) => [
-                    ...current,
-                    formatLogLine(typeof stream === "string" ? stream : "", message),
-                ].slice(-visibleLogLimit(logSource)));
+                appendLog(formatLogLine(typeof stream === "string" ? stream : "", message));
             }
             return;
         }
@@ -117,7 +168,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         if (type === "server.players") setPlayerRevision((revision) => revision + 1);
         if (type.startsWith("schedule.")) setScheduleRevision((revision) => revision + 1);
         if (type.startsWith("server.") || type.startsWith("job.")) onServerUpdate();
-    }, [logSource, onServerUpdate, onStatusChange, serverId]);
+    }, [appendLog, logSource, onServerUpdate, onStatusChange, serverId]);
 
     const loadHistory = useCallback(async () => {
         if (!serverId) return;
@@ -148,11 +199,29 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
     useEffect(() => {
         if (!serverId) return;
         const source = new EventSource(`${API_BASE_URL}/events?server_id=${encodeURIComponent(serverId)}`, { withCredentials: true });
-        source.onopen = () => setIsConnected(true);
+        // `EventSource` se reconnecte seul toutes les trois secondes environ et
+        // déclenche `onerror` à chaque tentative. Rattraper l'historique sans
+        // délai à chaque échec martelait deux points d'entrée REST indéfiniment
+        // tant que le serveur restait indisponible.
+        let retryDelay = RECONNECT_MIN_DELAY_MS;
+        let retryTimer: number | null = null;
+        source.onopen = () => {
+            setIsConnected(true);
+            retryDelay = RECONNECT_MIN_DELAY_MS;
+            if (retryTimer !== null) {
+                window.clearTimeout(retryTimer);
+                retryTimer = null;
+            }
+        };
         source.onerror = () => {
             setIsConnected(false);
-            void loadHistory();
-            onServerUpdate();
+            if (retryTimer !== null) return;
+            retryTimer = window.setTimeout(() => {
+                retryTimer = null;
+                retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_DELAY_MS);
+                void loadHistory();
+                onServerUpdate();
+            }, retryDelay);
         };
         source.onmessage = applyEvent;
         for (const type of [
@@ -169,7 +238,10 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         }
         source.addEventListener("stream.reset", resynchronize);
         source.addEventListener("stream.lagged", resynchronize);
-        return () => source.close();
+        return () => {
+            if (retryTimer !== null) window.clearTimeout(retryTimer);
+            source.close();
+        };
     }, [applyEvent, loadHistory, onServerUpdate, resynchronize, serverId]);
 
     useEffect(() => {
@@ -187,21 +259,32 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         if (!serverId || !command.trim()) return false;
         const response = await apiService.servers.sendCommand(serverId, command.trim());
         if (!response.success) return false;
-        setLogs((current) => [...current, `> ${command.trim()}`].slice(-visibleLogLimit(logSource)));
+        appendLog(`> ${command.trim()}`);
         return true;
-    }, [logSource, serverId]);
+    }, [appendLog, serverId]);
 
-    return {
+    return useMemo(() => ({
         logs,
         setLogs,
         isConnected,
         sendCommand,
-        clearLogs: () => setLogs([]),
+        clearLogs,
         operationRevision,
         playerRevision,
         scheduleRevision,
         pendingDeviceAuthorization,
         pendingBedrockArchive,
-        clearPendingBedrockArchive: () => setPendingBedrockArchive(null),
-    };
+        clearPendingBedrockArchive,
+    }), [
+        clearLogs,
+        clearPendingBedrockArchive,
+        isConnected,
+        logs,
+        operationRevision,
+        pendingBedrockArchive,
+        pendingDeviceAuthorization,
+        playerRevision,
+        scheduleRevision,
+        sendCommand,
+    ]);
 }

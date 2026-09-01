@@ -19,6 +19,7 @@ use crate::{
         },
     },
     core::{AppState, database, error::AppError},
+    services::catalog,
 };
 
 const PERMISSIONS: &[&str] = &[
@@ -424,7 +425,7 @@ async fn update_user(
         validate_language(language)?;
     }
     if let Some(color) = body.accent_color.as_deref() {
-        validate_accent_color(color)?;
+        catalog::validate_accent_color(&state.pool, color).await?;
     }
     if let Some(password) = body.password.as_deref() {
         validate_password_strength(password)?;
@@ -771,17 +772,6 @@ fn validate_language(value: &str) -> Result<(), AppError> {
     }
 }
 
-fn validate_accent_color(value: &str) -> Result<(), AppError> {
-    if value.len() == 7
-        && value.starts_with('#')
-        && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        Ok(())
-    } else {
-        Err(AppError::BadRequest("users.invalid_accent_color".into()))
-    }
-}
-
 fn default_language() -> String {
     "fr".into()
 }
@@ -818,8 +808,6 @@ mod tests {
     fn role_names_and_colors_are_bounded() {
         assert_eq!(validate_role_name("  Moderators ").unwrap(), "Moderators");
         assert!(validate_role_name("\n").is_err());
-        assert!(validate_accent_color("#3A82F6").is_ok());
-        assert!(validate_accent_color("red").is_err());
     }
 
     #[test]
