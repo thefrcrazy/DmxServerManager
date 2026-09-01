@@ -256,3 +256,31 @@ test("un onglet indisponible dans l’URL ne laisse pas un lien mensonger", asyn
     await expect(page.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
     await expect(page).not.toHaveURL(/tab=mods/);
 });
+
+test("le terminal filtre, surligne, masque les horodatages et complète les commandes", async ({ page }) => {
+    const api = new ApiMock();
+    await api.install(page);
+    await page.goto(`/servers/${INSTANCES[0]!.id}?tab=console`);
+
+    const output = page.locator(".console-output");
+    await expect(output).toContainText("Serveur prêt");
+
+    // Le filtre par niveau et la recherche portent sur le journal complet, pas
+    // seulement sur la fenêtre affichée.
+    await page.getByRole("button", { name: "Erreurs" }).click();
+    await expect(output).not.toContainText("Serveur prêt");
+    await page.getByRole("button", { name: "Erreurs" }).click();
+
+    await page.getByLabel("Rechercher dans le journal").fill("prêt");
+    await expect(page.locator(".console-match").first()).toBeVisible();
+    await page.getByRole("button", { name: "Effacer" }).click();
+
+    // L'historique de commandes survit à un rechargement et complète à la tabulation.
+    const input = page.locator(".console-input");
+    await input.fill("say bonjour");
+    await input.press("Enter");
+    await page.reload();
+    await page.locator(".console-input").fill("say");
+    await page.locator(".console-input").press("Tab");
+    await expect(page.locator(".console-input")).toHaveValue("say bonjour");
+});

@@ -59,6 +59,12 @@ const LEASE_RELEASE_RETRY_DELAY: Duration = Duration::from_millis(100);
 const GAME_UPDATE_CHECK_TTL: Duration = Duration::from_secs(10 * 60);
 const GAME_UPDATE_CHECK_FAILURE_TTL: Duration = Duration::from_secs(60);
 const GAME_UPDATE_PROCESS_TIMEOUT: Duration = Duration::from_secs(90);
+/// Rythme du balayage de fond. Le verdict conservé ayant sa propre durée de
+/// validité, un passage fréquent ne relance pas les processus pour autant.
+const GAME_UPDATE_SWEEP_INTERVAL: Duration = Duration::from_secs(15 * 60);
+/// Respiration entre deux instances : six profils Steam lanceraient sinon six
+/// SteamCMD simultanés sur l'hôte qui fait aussi tourner les jeux.
+const GAME_UPDATE_SWEEP_SPACING: Duration = Duration::from_secs(5);
 const MAX_GAME_UPDATE_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,13 +127,6 @@ pub struct GameUpdateStatus {
     pub available_version: Option<String>,
     pub available_build: Option<String>,
     pub checked_at: String,
-}
-
-#[derive(Debug, Clone)]
-struct CachedGameUpdateStatus {
-    fingerprint: String,
-    expires_at: Instant,
-    status: GameUpdateStatus,
 }
 
 #[derive(Debug)]
@@ -287,7 +286,6 @@ struct RuntimeInner {
     actors: Mutex<HashMap<String, mpsc::Sender<ActorCommand>>>,
     actor_crash_restarts: Mutex<HashMap<String, u8>>,
     install_cancellations: Mutex<HashMap<String, ActiveInstallCancellation>>,
-    game_update_checks: Mutex<HashMap<String, CachedGameUpdateStatus>>,
     game_update_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
 }
 
@@ -313,7 +311,6 @@ impl RuntimeManager {
                 actors: Mutex::new(HashMap::new()),
                 actor_crash_restarts: Mutex::new(HashMap::new()),
                 install_cancellations: Mutex::new(HashMap::new()),
-                game_update_checks: Mutex::new(HashMap::new()),
                 game_update_locks: Mutex::new(HashMap::new()),
             }),
         }
@@ -322,6 +319,12 @@ impl RuntimeManager {
     /// `refresh` ignore le résultat mis en cache. Sans cela, une vérification
     /// relancée après un correctif rendait pendant dix minutes le même verdict
     /// périmé, sans moyen de la forcer.
+    /// `refresh` ignore le verdict conservé et réinterroge le fournisseur.
+    ///
+    /// Le verdict vit en base et non en mémoire : il répond donc instantanément
+    /// à l'ouverture d'une page, survit au redémarrage du panneau, et alimente
+    /// la liste des serveurs sans déclencher autant de vérifications qu'il y a
+    /// d'instances.
     pub async fn game_update_status(
         &self,
         instance_id: &str,
@@ -332,19 +335,14 @@ impl RuntimeManager {
             .map_err(operation_failure_to_app)?;
         let fingerprint = game_update_fingerprint(&instance);
         if !refresh
-            && let Some(cached) = self
-                .inner
-                .game_update_checks
-                .lock()
-                .await
-                .get(instance_id)
-                .filter(|cached| {
-                    cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
-                })
-                .cloned()
+            && let Some(stored) =
+                load_stored_update_check(&self.inner.pool, instance_id, &fingerprint).await?
         {
-            return Ok(cached.status);
+            return Ok(stored);
         }
+
+        // Un seul contrôle à la fois par instance : ils lancent un processus
+        // externe, et la tâche de fond peut concourir avec une demande humaine.
         let check_lock = {
             let mut locks = self.inner.game_update_locks.lock().await;
             Arc::clone(
@@ -355,84 +353,98 @@ impl RuntimeManager {
         };
         let _check_guard = check_lock.lock().await;
         if !refresh
-            && let Some(cached) = self
-                .inner
-                .game_update_checks
-                .lock()
-                .await
-                .get(instance_id)
-                .filter(|cached| {
-                    cached.fingerprint == fingerprint && cached.expires_at > Instant::now()
-                })
-                .cloned()
+            && let Some(stored) =
+                load_stored_update_check(&self.inner.pool, instance_id, &fingerprint).await?
         {
-            return Ok(cached.status);
+            return Ok(stored);
         }
-        let status = if instance.installation_state != "installed" {
-            game_update_status_from_target(&instance, None, None, GameUpdateState::NotInstalled)
-        } else {
-            match self.resolve_game_update_target(&instance).await {
-                Ok((available_version, available_build)) => {
-                    let state = if !game_update_comparable(
-                        &instance,
-                        available_version.as_deref(),
-                        available_build.as_deref(),
-                    ) {
-                        // Sans référence installée comparable — un manifeste Steam
-                        // introuvable laisse `installed_build` vide — annoncer
-                        // « à jour » masquerait indéfiniment une mise à jour réelle.
-                        tracing::warn!(
-                            instance_id,
-                            profile_id = %instance.profile_id,
-                            "no installed reference to compare the available game version against"
-                        );
-                        GameUpdateState::CheckFailed
-                    } else if has_game_update(
-                        &instance,
-                        available_version.as_deref(),
-                        available_build.as_deref(),
-                    ) {
-                        GameUpdateState::UpdateAvailable
-                    } else {
-                        GameUpdateState::UpToDate
-                    };
-                    game_update_status_from_target(
-                        &instance,
-                        available_version,
-                        available_build,
-                        state,
-                    )
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        instance_id,
-                        code = error.code,
-                        detail = ?error.internal,
-                        "game update check failed"
-                    );
-                    game_update_status_from_target(
-                        &instance,
-                        None,
-                        None,
-                        GameUpdateState::CheckFailed,
-                    )
-                }
+
+        let status = self.compute_game_update_status(&instance).await;
+        let previous = load_stored_update_check_any(&self.inner.pool, instance_id).await?;
+        store_update_check(&self.inner.pool, instance_id, &fingerprint, &status).await?;
+
+        // Une mise à jour qui apparaît doit se voir sans recharger la page.
+        if status.state == GameUpdateState::UpdateAvailable
+            && previous.as_ref().map(|entry| entry.state) != Some(GameUpdateState::UpdateAvailable)
+        {
+            self.inner.events.publish(
+                "server.update_available",
+                Some(instance_id.to_string()),
+                serde_json::to_value(&status).unwrap_or(Value::Null),
+            );
+        }
+        Ok(status)
+    }
+
+    /// Rafraîchit le verdict des instances installées dont la ligne conservée a
+    /// expiré. Les instances à jour depuis peu ne relancent aucun processus.
+    pub async fn sweep_game_updates(&self) {
+        let installed: Vec<String> = match sqlx::query_scalar(
+            "SELECT id FROM instances WHERE installation_state = 'installed' ORDER BY id",
+        )
+        .fetch_all(&self.inner.pool)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(error) => {
+                tracing::warn!(%error, "could not list instances for the game update sweep");
+                return;
             }
         };
-        let ttl = if status.state == GameUpdateState::CheckFailed {
-            GAME_UPDATE_CHECK_FAILURE_TTL
-        } else {
-            GAME_UPDATE_CHECK_TTL
-        };
-        self.inner.game_update_checks.lock().await.insert(
-            instance_id.to_string(),
-            CachedGameUpdateStatus {
-                fingerprint,
-                expires_at: Instant::now() + ttl,
-                status: status.clone(),
-            },
-        );
-        Ok(status)
+        for instance_id in installed {
+            if let Err(error) = self.game_update_status(&instance_id, false).await {
+                tracing::warn!(instance_id, %error, "background game update check failed");
+            }
+            tokio::time::sleep(GAME_UPDATE_SWEEP_SPACING).await;
+        }
+    }
+
+    async fn compute_game_update_status(&self, instance: &RuntimeInstance) -> GameUpdateStatus {
+        if instance.installation_state != "installed" {
+            return game_update_status_from_target(
+                instance,
+                None,
+                None,
+                GameUpdateState::NotInstalled,
+            );
+        }
+        match self.resolve_game_update_target(instance).await {
+            Ok((available_version, available_build)) => {
+                let state = if !game_update_comparable(
+                    instance,
+                    available_version.as_deref(),
+                    available_build.as_deref(),
+                ) {
+                    // Sans référence installée comparable — un manifeste Steam
+                    // introuvable laisse `installed_build` vide — annoncer
+                    // « à jour » masquerait indéfiniment une mise à jour réelle.
+                    tracing::warn!(
+                        instance_id = %instance.id,
+                        profile_id = %instance.profile_id,
+                        "no installed reference to compare the available game version against"
+                    );
+                    GameUpdateState::CheckFailed
+                } else if has_game_update(
+                    instance,
+                    available_version.as_deref(),
+                    available_build.as_deref(),
+                ) {
+                    GameUpdateState::UpdateAvailable
+                } else {
+                    GameUpdateState::UpToDate
+                };
+                game_update_status_from_target(instance, available_version, available_build, state)
+            }
+            Err(error) => {
+                tracing::warn!(
+                    instance_id = %instance.id,
+                    code = error.code,
+                    detail = ?error.internal,
+                    "game update check failed"
+                );
+                game_update_status_from_target(instance, None, None, GameUpdateState::CheckFailed)
+            }
+        }
     }
 
     async fn resolve_game_update_target(
@@ -5352,6 +5364,202 @@ fn game_update_fingerprint(instance: &RuntimeInstance) -> String {
     )
 }
 
+/// Vérifie périodiquement les mises à jour de jeu de toutes les instances.
+///
+/// Sans elle, le verdict n'était calculé qu'à l'ouverture d'une page : celui qui
+/// n'ouvrait pas l'instance ne savait rien, et celui qui l'ouvrait attendait le
+/// lancement de SteamCMD ou du téléchargeur officiel. Les vérifications sont
+/// espacées pour ne pas lancer six processus externes d'un coup.
+pub struct GameUpdateWorker {
+    shutdown: Option<oneshot::Sender<()>>,
+    task: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl GameUpdateWorker {
+    pub fn start(runtime: RuntimeManager) -> Self {
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+        let task = tokio::spawn(async move {
+            // Un premier passage rapide après le démarrage, puis le rythme de
+            // croisière : au redémarrage le verdict conservé peut être périmé.
+            let mut interval = tokio::time::interval(GAME_UPDATE_SWEEP_INTERVAL);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => runtime.sweep_game_updates().await,
+                    _ = &mut shutdown_rx => break,
+                }
+            }
+        });
+        Self {
+            shutdown: Some(shutdown_tx),
+            task: Some(task),
+        }
+    }
+
+    pub async fn shutdown(&mut self) {
+        if let Some(shutdown) = self.shutdown.take() {
+            let _ = shutdown.send(());
+        }
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+    }
+}
+
+/// Ligne conservée du dernier verdict, telle qu'elle vit en base.
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct StoredUpdateCheck {
+    state: String,
+    installed_version: Option<String>,
+    installed_build: Option<String>,
+    available_version: Option<String>,
+    available_build: Option<String>,
+    fingerprint: String,
+    checked_at: String,
+}
+
+impl StoredUpdateCheck {
+    fn into_status(self) -> Option<GameUpdateStatus> {
+        Some(GameUpdateStatus {
+            state: parse_update_state(&self.state)?,
+            installed_version: self.installed_version,
+            installed_build: self.installed_build,
+            available_version: self.available_version,
+            available_build: self.available_build,
+            checked_at: self.checked_at,
+        })
+    }
+}
+
+fn parse_update_state(value: &str) -> Option<GameUpdateState> {
+    match value {
+        "not_installed" => Some(GameUpdateState::NotInstalled),
+        "up_to_date" => Some(GameUpdateState::UpToDate),
+        "update_available" => Some(GameUpdateState::UpdateAvailable),
+        "check_failed" => Some(GameUpdateState::CheckFailed),
+        _ => None,
+    }
+}
+
+fn update_state_name(state: GameUpdateState) -> &'static str {
+    match state {
+        GameUpdateState::NotInstalled => "not_installed",
+        GameUpdateState::UpToDate => "up_to_date",
+        GameUpdateState::UpdateAvailable => "update_available",
+        GameUpdateState::CheckFailed => "check_failed",
+    }
+}
+
+/// Un verdict d'échec est réessayé bien plus tôt qu'un verdict établi.
+fn update_check_is_fresh(state: GameUpdateState, checked_at: &str) -> bool {
+    let Ok(checked_at) = chrono::DateTime::parse_from_rfc3339(checked_at) else {
+        return false;
+    };
+    let age = chrono::Utc::now().signed_duration_since(checked_at.with_timezone(&chrono::Utc));
+    if age < chrono::Duration::zero() {
+        return false;
+    }
+    let ttl = if state == GameUpdateState::CheckFailed {
+        GAME_UPDATE_CHECK_FAILURE_TTL
+    } else {
+        GAME_UPDATE_CHECK_TTL
+    };
+    age.to_std().is_ok_and(|age| age < ttl)
+}
+
+async fn load_stored_update_check_any(
+    pool: &DbPool,
+    instance_id: &str,
+) -> Result<Option<GameUpdateStatus>, AppError> {
+    let row: Option<StoredUpdateCheck> = sqlx::query_as(
+        "SELECT state, installed_version, installed_build, available_version, available_build, \
+         fingerprint, checked_at FROM instance_update_checks WHERE instance_id = ?",
+    )
+    .bind(instance_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.and_then(StoredUpdateCheck::into_status))
+}
+
+/// Verdict conservé, à condition qu'il porte sur la même chose et qu'il ne soit
+/// pas périmé. Un changement de profil, de réglages ou de version installée
+/// modifie l'empreinte et invalide donc la ligne immédiatement.
+async fn load_stored_update_check(
+    pool: &DbPool,
+    instance_id: &str,
+    fingerprint: &str,
+) -> Result<Option<GameUpdateStatus>, AppError> {
+    let row: Option<StoredUpdateCheck> = sqlx::query_as(
+        "SELECT state, installed_version, installed_build, available_version, available_build, \
+         fingerprint, checked_at FROM instance_update_checks WHERE instance_id = ?",
+    )
+    .bind(instance_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row.filter(|row| row.fingerprint == fingerprint) else {
+        return Ok(None);
+    };
+    let checked_at = row.checked_at.clone();
+    let status = row.into_status();
+    Ok(status.filter(|status| update_check_is_fresh(status.state, &checked_at)))
+}
+
+async fn store_update_check(
+    pool: &DbPool,
+    instance_id: &str,
+    fingerprint: &str,
+    status: &GameUpdateStatus,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO instance_update_checks (instance_id, state, installed_version, \
+         installed_build, available_version, available_build, fingerprint, checked_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+         ON CONFLICT(instance_id) DO UPDATE SET state = excluded.state, \
+         installed_version = excluded.installed_version, \
+         installed_build = excluded.installed_build, \
+         available_version = excluded.available_version, \
+         available_build = excluded.available_build, \
+         fingerprint = excluded.fingerprint, checked_at = excluded.checked_at",
+    )
+    .bind(instance_id)
+    .bind(update_state_name(status.state))
+    .bind(&status.installed_version)
+    .bind(&status.installed_build)
+    .bind(&status.available_version)
+    .bind(&status.available_build)
+    .bind(fingerprint)
+    .bind(&status.checked_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct StoredUpdateCheckRow {
+    instance_id: String,
+    #[sqlx(flatten)]
+    check: StoredUpdateCheck,
+}
+
+/// Tous les verdicts conservés, sans déclencher la moindre vérification.
+pub async fn stored_update_checks(
+    pool: &DbPool,
+) -> Result<Vec<(String, GameUpdateStatus)>, AppError> {
+    let rows: Vec<StoredUpdateCheckRow> = sqlx::query_as(
+        "SELECT instance_id, state, installed_version, installed_build, available_version, \
+         available_build, fingerprint, checked_at FROM instance_update_checks",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let id = row.instance_id;
+            row.check.into_status().map(|status| (id, status))
+        })
+        .collect())
+}
+
 fn game_update_status_from_target(
     instance: &RuntimeInstance,
     available_version: Option<String>,
@@ -7833,7 +8041,6 @@ fn spawn_hytale_runtime_version_observer(
             .await;
             match update {
                 Ok(result) if result.rows_affected() > 0 => {
-                    inner.game_update_checks.lock().await.remove(&instance_id);
                     inner.events.publish(
                         "server.updated",
                         Some(instance_id.clone()),
@@ -8735,6 +8942,51 @@ mod tests {
     }
 
     #[test]
+    fn stored_update_states_round_trip_through_their_database_name() {
+        for state in [
+            GameUpdateState::NotInstalled,
+            GameUpdateState::UpToDate,
+            GameUpdateState::UpdateAvailable,
+            GameUpdateState::CheckFailed,
+        ] {
+            assert_eq!(parse_update_state(update_state_name(state)), Some(state));
+        }
+        assert_eq!(parse_update_state("something_else"), None);
+    }
+
+    #[test]
+    fn a_failed_verdict_expires_far_sooner_than_an_established_one() {
+        let ago =
+            |seconds: i64| (chrono::Utc::now() - chrono::Duration::seconds(seconds)).to_rfc3339();
+
+        assert!(update_check_is_fresh(GameUpdateState::UpToDate, &ago(60)));
+        assert!(!update_check_is_fresh(
+            GameUpdateState::UpToDate,
+            &ago(GAME_UPDATE_CHECK_TTL.as_secs() as i64 + 60)
+        ));
+
+        // Un échec est réessayé sans attendre la validité d'un verdict établi.
+        assert!(!update_check_is_fresh(
+            GameUpdateState::CheckFailed,
+            &ago(120)
+        ));
+        assert!(update_check_is_fresh(
+            GameUpdateState::CheckFailed,
+            &ago(10)
+        ));
+
+        // Une horloge qui recule ou un horodatage illisible forcent un contrôle.
+        assert!(!update_check_is_fresh(
+            GameUpdateState::UpToDate,
+            &ago(-600)
+        ));
+        assert!(!update_check_is_fresh(
+            GameUpdateState::UpToDate,
+            "pas une date"
+        ));
+    }
+
+    #[test]
     fn game_update_status_reports_only_a_real_target_difference() {
         let instance = RuntimeInstance {
             id: uuid::Uuid::new_v4().to_string(),
@@ -8930,7 +9182,6 @@ mod tests {
             actors: Mutex::new(HashMap::new()),
             actor_crash_restarts: Mutex::new(HashMap::new()),
             install_cancellations: Mutex::new(HashMap::new()),
-            game_update_checks: Mutex::new(HashMap::new()),
             game_update_locks: Mutex::new(HashMap::new()),
         });
         let (sender, _receiver) = mpsc::channel(ACTOR_QUEUE_SIZE);

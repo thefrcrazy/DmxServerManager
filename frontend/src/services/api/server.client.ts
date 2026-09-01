@@ -6,6 +6,8 @@ import {
     ConnectionInfoSchema,
     GameUpdateStatus,
     GameUpdateStatusSchema,
+    UpdateStatusList,
+    UpdateStatusListSchema,
     Job,
     JobSchema,
     SecretStatusListSchema,
@@ -60,7 +62,15 @@ export class ServerClient extends BaseClient {
         return this.request(`/servers/${encodeURIComponent(id)}/connection`, ConnectionInfoSchema);
     }
 
-    /** `refresh` ignore le verdict mis en cache et réinterroge le fournisseur. */
+    /**
+     * Verdicts déjà conservés pour toutes les instances visibles. Ne déclenche
+     * aucune vérification : un seul appel suffit à la liste et au tableau de bord.
+     */
+    async listUpdateStatus(): Promise<ClientResponse<UpdateStatusList>> {
+        return this.request("/servers/update-status", UpdateStatusListSchema);
+    }
+
+    /** `refresh` ignore le verdict conservé et réinterroge le fournisseur. */
     async getUpdateStatus(id: string, refresh = false): Promise<ClientResponse<GameUpdateStatus>> {
         return this.request(
             `/servers/${encodeURIComponent(id)}/update-status${refresh ? "?refresh=true" : ""}`,

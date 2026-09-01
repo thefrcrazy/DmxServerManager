@@ -1,5 +1,6 @@
 export * from "./useAsync";
 export * from "./useFocusTrap";
+export * from "./useUpdateStatuses";
 export * from "./useFilteredServers";
 export * from "./useServers";
 export * from "./useServerEvents";

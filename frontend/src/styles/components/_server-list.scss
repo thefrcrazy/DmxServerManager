@@ -228,6 +228,25 @@
     gap: var(--spacing-6);
 }
 
+// Pastille « mise à jour disponible », commune à la carte et à la ligne.
+.update-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+    color: color-mix(in srgb, var(--color-warning) 65%, var(--color-text-primary));
+    font-size: var(--font-size-2xs);
+    font-weight: 650;
+    white-space: nowrap;
+
+    > svg { flex: 0 0 auto; }
+}
+
+.server-list-table__identity .update-pill { margin-left: var(--spacing-2); }
+
 .server-card {
     position: relative;
     min-height: 23rem;
@@ -281,6 +300,19 @@
             height: 100%;
             object-fit: cover;
         }
+    }
+
+    // Posée sur l'illustration : le fond translucide de la pastille disparaît
+    // sur un ciel clair, il lui faut donc une surface opaque.
+    &__update {
+        position: absolute;
+        top: var(--spacing-3);
+        left: var(--spacing-3);
+        z-index: 1;
+        border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+        background: color-mix(in srgb, var(--color-bg-primary) 82%, var(--color-warning));
+        color: var(--color-warning);
+        box-shadow: var(--shadow-sm);
     }
 
     &__state {

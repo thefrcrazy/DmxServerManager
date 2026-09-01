@@ -82,12 +82,39 @@ export function parseAnsi(input: string): AnsiSegment[] {
 
 interface SafeAnsiProps {
     children: ReactNode;
+    /** Sous-chaîne à surligner, comparée sans tenir compte de la casse. */
+    highlight?: string;
+}
+
+/** Découpe un texte autour d'une sous-chaîne, sans jamais interpréter de HTML. */
+function splitOnHighlight(text: string, needle: string): Array<{ text: string; match: boolean }> {
+    const parts: Array<{ text: string; match: boolean }> = [];
+    const haystack = text.toLowerCase();
+    const target = needle.toLowerCase();
+    let cursor = 0;
+    for (;;) {
+        const found = haystack.indexOf(target, cursor);
+        if (found < 0) break;
+        if (found > cursor) parts.push({ text: text.slice(cursor, found), match: false });
+        parts.push({ text: text.slice(found, found + needle.length), match: true });
+        cursor = found + needle.length;
+    }
+    if (cursor < text.length) parts.push({ text: text.slice(cursor), match: false });
+    return parts;
 }
 
 /** Renders a closed subset of ANSI SGR as React text nodes, never HTML or links. */
-export default function SafeAnsi({ children }: SafeAnsiProps) {
+export default function SafeAnsi({ children, highlight }: SafeAnsiProps) {
     const text = typeof children === "string" || typeof children === "number" ? String(children) : "";
-    return <>{parseAnsi(text).map((segment, index) => (
-        <span key={index} style={segment.style}>{segment.text}</span>
-    ))}</>;
+    const needle = highlight?.trim() ?? "";
+    return <>{parseAnsi(text).map((segment, index) => {
+        if (!needle) return <span key={index} style={segment.style}>{segment.text}</span>;
+        return (
+            <span key={index} style={segment.style}>
+                {splitOnHighlight(segment.text, needle).map((part, partIndex) => part.match
+                    ? <mark key={partIndex} className="console-match">{part.text}</mark>
+                    : part.text)}
+            </span>
+        );
+    })}</>;
 }

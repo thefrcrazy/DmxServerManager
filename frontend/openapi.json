@@ -1780,6 +1780,57 @@
         ],
         "type": "object"
       },
+      "InstanceUpdateStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "available_build": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "available_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "installed_build": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "installed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "not_installed",
+              "up_to_date",
+              "update_available",
+              "check_failed"
+            ]
+          }
+        },
+        "required": [
+          "instance_id",
+          "state",
+          "checked_at"
+        ],
+        "type": "object"
+      },
       "Job": {
         "additionalProperties": false,
         "properties": {
@@ -3799,6 +3850,21 @@
           "trigger",
           "action",
           "enabled"
+        ],
+        "type": "object"
+      },
+      "UpdateStatusList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InstanceUpdateStatus"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       },
@@ -7521,6 +7587,40 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/servers/update-status": {
+      "get": {
+        "operationId": "listServerUpdateStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatusList"
+                }
+              }
+            },
+            "description": "Stored update verdicts for every visible instance. Triggers no provider check."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "default": {
             "$ref": "#/components/responses/Problem"

@@ -150,6 +150,17 @@ export const GameUpdateStatusSchema = z.object({
 
 export type GameUpdateStatus = z.infer<typeof GameUpdateStatusSchema>;
 
+export const InstanceUpdateStatusSchema = GameUpdateStatusSchema.extend({
+    instance_id: z.string(),
+}).strict();
+
+export const UpdateStatusListSchema = z.object({
+    items: z.array(InstanceUpdateStatusSchema),
+}).strict();
+
+export type InstanceUpdateStatus = z.infer<typeof InstanceUpdateStatusSchema>;
+export type UpdateStatusList = z.infer<typeof UpdateStatusListSchema>;
+
 export const InstallationStateSchema = z.enum([
     "not_installed",
     "installing",

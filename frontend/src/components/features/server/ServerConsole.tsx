@@ -1,6 +1,6 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SafeAnsi from "@/components/shared/SafeAnsi";
-import { Check, ChevronUp, Clipboard, Send, Terminal } from "lucide-react";
+import { Check, ChevronUp, Clipboard, Clock, Download, Search, Send, Terminal, X } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Tooltip, Button } from "@/components/ui";
 
@@ -22,13 +22,29 @@ function levelOf(line: string): string | null {
     return LEVEL_PATTERNS.find(([, pattern]) => pattern.test(line))?.[0] ?? null;
 }
 
+const FILTER_LEVELS = ["error", "warning", "info"] as const;
+type FilterLevel = (typeof FILTER_LEVELS)[number];
+
+// Horodatage en tête de ligne, tel que l'émettent Hytale, Minecraft et la
+// plupart des serveurs dédiés : « [2026/09/01 08:16:51 INFO] » ou « [08:16:51] ».
+const LEADING_TIMESTAMP = /^\[\d{2,4}[/\-:]\d{2}[/\-:]\d{2}[T ]?[\d:.]*\s*/;
+
+function withoutTimestamp(line: string): string {
+    const stripped = line.replace(LEADING_TIMESTAMP, "");
+    // Une ligne entièrement consommée n'apportait rien : on garde l'originale.
+    return stripped.trim().length > 0 ? stripped : line;
+}
+
 // Mémoïsé : une ligne inchangée n'est ni reclassée ni re-rendue quand de
 // nouvelles lignes arrivent en fin de journal.
-const ConsoleLine = memo(function ConsoleLine({ line }: { line: string }) {
+const ConsoleLine = memo(function ConsoleLine(
+    { line, highlight, showTimestamps }: { line: string; highlight: string; showTimestamps: boolean },
+) {
     const level = levelOf(line);
+    const text = showTimestamps ? line : withoutTimestamp(line);
     return (
         <div className={level ? `console-line console-line--${level}` : "console-line"}>
-            <SafeAnsi>{line}</SafeAnsi>
+            <SafeAnsi highlight={highlight}>{text}</SafeAnsi>
         </div>
     );
 });
@@ -41,7 +57,27 @@ interface ServerConsoleProps {
     onSendCommand: (command: string) => void;
 }
 
-const commandHistories = new Map<string, string[]>();
+const COMMAND_HISTORY_PREFIX = "dmx_console_history:";
+const MAX_COMMAND_HISTORY = 100;
+
+// L'historique vivait dans une `Map` de module, perdue au moindre rechargement
+// et jamais purgée à mesure que l'on visitait des instances.
+function loadCommandHistory(key: string): string[] {
+    try {
+        const stored = JSON.parse(localStorage.getItem(`${COMMAND_HISTORY_PREFIX}${key}`) ?? "[]");
+        return Array.isArray(stored) ? stored.filter((entry): entry is string => typeof entry === "string") : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveCommandHistory(key: string, history: string[]): void {
+    try {
+        localStorage.setItem(`${COMMAND_HISTORY_PREFIX}${key}`, JSON.stringify(history.slice(-MAX_COMMAND_HISTORY)));
+    } catch {
+        // Navigation privée : l'historique reste valable pour la session.
+    }
+}
 
 async function copyTextToClipboard(value: string): Promise<boolean> {
     if (navigator.clipboard?.writeText) {
@@ -85,13 +121,16 @@ export default function ServerConsole({
     const [command, setCommand] = React.useState("");
     const [logsCopied, setLogsCopied] = React.useState(false);
     const [showFullHistory, setShowFullHistory] = useState(false);
+    const [search, setSearch] = useState("");
+    const [levels, setLevels] = useState<ReadonlySet<FilterLevel>>(new Set());
+    const [showTimestamps, setShowTimestamps] = useState(true);
     const isAtBottomRef = useRef(true);
     const commandHistoryRef = useRef<string[]>([]);
     const commandHistoryIndexRef = useRef<number | null>(null);
     const commandDraftRef = useRef("");
 
     useEffect(() => {
-        commandHistoryRef.current = commandHistories.get(historyKey) ?? [];
+        commandHistoryRef.current = loadCommandHistory(historyKey);
         commandHistoryIndexRef.current = null;
         commandDraftRef.current = "";
         setCommand("");
@@ -126,8 +165,8 @@ export default function ServerConsole({
         onSendCommand(normalized);
         const history = commandHistoryRef.current;
         if (history.at(-1) !== normalized) {
-            commandHistoryRef.current = [...history, normalized].slice(-100);
-            commandHistories.set(historyKey, commandHistoryRef.current);
+            commandHistoryRef.current = [...history, normalized].slice(-MAX_COMMAND_HISTORY);
+            saveCommandHistory(historyKey, commandHistoryRef.current);
         }
         commandHistoryIndexRef.current = null;
         commandDraftRef.current = "";
@@ -135,6 +174,19 @@ export default function ServerConsole({
     };
 
     const handleCommandHistory = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        // Tabulation : complète depuis l'historique. Les profils ne publient
+        // aucun catalogue de commandes — seule la commande d'arrêt est déclarée —
+        // donc la suggestion vient de ce qui a déjà été saisi sur cette instance.
+        if (event.key === "Tab" && command.trim().length > 0) {
+            const match = [...commandHistoryRef.current]
+                .reverse()
+                .find((entry) => entry.startsWith(command) && entry !== command);
+            if (match) {
+                event.preventDefault();
+                setCommand(match);
+            }
+            return;
+        }
         if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
         const history = commandHistoryRef.current;
         if (history.length === 0) return;
@@ -161,11 +213,45 @@ export default function ServerConsole({
         }
     };
 
-    const hiddenCount = showFullHistory ? 0 : Math.max(0, logs.length - TAIL_WINDOW);
+    // Le filtrage précède la fenêtre de queue : chercher dans les mille dernières
+    // lignes affichées plutôt que dans le journal entier n'aurait servi à rien.
+    const matchingLogs = useMemo(() => {
+        const needle = search.trim().toLowerCase();
+        if (needle.length === 0 && levels.size === 0) return logs;
+        return logs.filter((line) => {
+            if (needle.length > 0 && !line.toLowerCase().includes(needle)) return false;
+            if (levels.size === 0) return true;
+            const level = levelOf(line);
+            return level !== null && levels.has(level as FilterLevel);
+        });
+    }, [levels, logs, search]);
+
+    const hiddenCount = showFullHistory ? 0 : Math.max(0, matchingLogs.length - TAIL_WINDOW);
     const visibleLogs = useMemo(
-        () => hiddenCount > 0 ? logs.slice(hiddenCount) : logs,
-        [hiddenCount, logs],
+        () => hiddenCount > 0 ? matchingLogs.slice(hiddenCount) : matchingLogs,
+        [hiddenCount, matchingLogs],
     );
+    const filtering = search.trim().length > 0 || levels.size > 0;
+
+    const toggleLevel = useCallback((level: FilterLevel) => {
+        setLevels((current) => {
+            const next = new Set(current);
+            if (next.has(level)) next.delete(level); else next.add(level);
+            return next;
+        });
+    }, []);
+
+    const downloadLogs = useCallback(() => {
+        const body = (filtering ? matchingLogs : logs).join("\n");
+        const url = URL.createObjectURL(new Blob([body], { type: "text/plain;charset=utf-8" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${historyKey.replaceAll(/[^a-z0-9._-]/gi, "-")}.log`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    }, [filtering, historyKey, logs, matchingLogs]);
 
     const copyLogs = async () => {
         if (logs.length === 0) return;
@@ -187,6 +273,30 @@ export default function ServerConsole({
                         <span>{isInstalling ? "installer@local:~/install" : "server@local:~/console"}</span>
                     </div>
                     <div className="console-header__actions">
+                        <Tooltip content={t(showTimestamps ? "server_detail.console.hide_timestamps" : "server_detail.console.show_timestamps")} position="bottom">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={t(showTimestamps ? "server_detail.console.hide_timestamps" : "server_detail.console.show_timestamps")}
+                                aria-pressed={showTimestamps}
+                                onClick={() => setShowTimestamps((value) => !value)}
+                            >
+                                <Clock size={15} />
+                            </Button>
+                        </Tooltip>
+                        <Tooltip content={t("server_detail.console.download_logs")} position="bottom">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={t("server_detail.console.download_logs")}
+                                disabled={logs.length === 0}
+                                onClick={downloadLogs}
+                            >
+                                <Download size={15} />
+                            </Button>
+                        </Tooltip>
                         <Tooltip content={t(logsCopied ? "server_detail.console.logs_copied" : "server_detail.console.copy_logs")} position="left">
                             <Button
                                 type="button"
@@ -200,6 +310,44 @@ export default function ServerConsole({
                             </Button>
                         </Tooltip>
                     </div>
+                </div>
+
+                <div className="console-filters">
+                    <span className="console-filters__search">
+                        <Search size={15} aria-hidden="true" />
+                        <input
+                            type="search"
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder={t("server_detail.console.search_placeholder")}
+                            aria-label={t("server_detail.console.search_placeholder")}
+                        />
+                        {search.length > 0 && (
+                            <button type="button" aria-label={t("common.clear")} onClick={() => setSearch("")}>
+                                <X size={14} aria-hidden="true" />
+                            </button>
+                        )}
+                    </span>
+                    <span className="console-filters__levels" role="group" aria-label={t("server_detail.console.filter_levels")}>
+                        {FILTER_LEVELS.map((level) => (
+                            <button
+                                key={level}
+                                type="button"
+                                className={`console-filters__level console-filters__level--${level} ${levels.has(level) ? "is-active" : ""}`}
+                                aria-pressed={levels.has(level)}
+                                onClick={() => toggleLevel(level)}
+                            >
+                                {t(`server_detail.console.levels.${level}`)}
+                            </button>
+                        ))}
+                    </span>
+                    {filtering && (
+                        <span className="console-filters__count" aria-live="polite">
+                            {t("server_detail.console.match_count")
+                                .replace("{{shown}}", String(matchingLogs.length))
+                                .replace("{{total}}", String(logs.length))}
+                        </span>
+                    )}
                 </div>
 
                 {/* Console Viewport */}
@@ -240,7 +388,12 @@ export default function ServerConsole({
                                 </button>
                             )}
                             {visibleLogs.map((log, index) => (
-                                <ConsoleLine key={hiddenCount + index} line={log} />
+                                <ConsoleLine
+                                    key={hiddenCount + index}
+                                    line={log}
+                                    highlight={search}
+                                    showTimestamps={showTimestamps}
+                                />
                             ))}
                         </>
                     )}
@@ -252,6 +405,7 @@ export default function ServerConsole({
                         <span className="prompt-char">{">"}</span>
                         <input
                             type="text"
+                            list={undefined}
                             value={command}
                             onChange={(e) => setCommand(e.target.value)}
                             onKeyDown={handleCommandHistory}

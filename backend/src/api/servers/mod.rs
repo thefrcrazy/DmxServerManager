@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     api::{
         SuccessResponse,
-        auth::{AuthUser, authorize_instance},
+        auth::{AuthUser, authorize_instance, instance_grant_scope},
     },
     core::{AppState, database, error::AppError},
     domain::v1::{
@@ -24,7 +24,7 @@ use crate::{
     services::{
         backups,
         instance_storage::{self, StorageMode},
-        runtime::GameUpdateStatus,
+        runtime::{self, GameUpdateStatus},
         secrets::{
             allowed_secret_names, required_secret_names, validate_profile_secret,
             validate_profile_secret_value,
@@ -125,6 +125,7 @@ pub fn routes() -> Router<AppState> {
         .route("/servers", get(list).post(create))
         .route("/servers/{id}", get(get_one).patch(update).delete(remove))
         .route("/servers/{id}/connection", get(get_connection))
+        .route("/servers/update-status", get(list_update_status))
         .route("/servers/{id}/update-status", get(get_update_status))
         .route("/servers/{id}/profile-revision", put(set_profile_revision))
         .route("/servers/{id}/secrets", get(list_secrets))
@@ -142,6 +143,39 @@ struct UpdateStatusQuery {
     /// Ignore le résultat mis en cache et réinterroge le fournisseur.
     #[serde(default)]
     refresh: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct InstanceUpdateStatus {
+    instance_id: String,
+    #[serde(flatten)]
+    status: GameUpdateStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateStatusList {
+    items: Vec<InstanceUpdateStatus>,
+}
+
+/// Verdicts déjà conservés, pour toutes les instances visibles.
+///
+/// Ne déclenche aucune vérification : la liste des serveurs et le tableau de
+/// bord affichent l'état sans lancer un processus externe par instance.
+async fn list_update_status(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<UpdateStatusList>, AppError> {
+    let scope = instance_grant_scope(&state, &auth).await?;
+    let items = runtime::stored_update_checks(&state.pool)
+        .await?
+        .into_iter()
+        .filter(|(instance_id, _)| scope.allows(&auth, instance_id, "server.read"))
+        .map(|(instance_id, status)| InstanceUpdateStatus {
+            instance_id,
+            status,
+        })
+        .collect();
+    Ok(Json(UpdateStatusList { items }))
 }
 
 async fn get_update_status(

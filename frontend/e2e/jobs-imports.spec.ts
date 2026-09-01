@@ -260,3 +260,24 @@ test("« à jour » reste visible et rejouable", async ({ page }) => {
         && request.path === `/servers/${INSTANCES[0]!.id}/update-status`
         && request.search?.includes("refresh=true"))).toBe(true);
 });
+
+test("la mise à jour se voit depuis la liste et le tableau de bord", async ({ page }) => {
+    // Il fallait auparavant ouvrir chaque instance une par une pour savoir
+    // laquelle était en retard.
+    const api = new ApiMock({ updateAvailable: true });
+    await api.install(page);
+
+    await page.goto("/servers");
+    await expect(page.getByText("Mise à jour", { exact: true }).first()).toBeVisible();
+
+    await page.goto("/dashboard");
+    const counter = page.getByRole("region", { name: "Vue d’ensemble opérationnelle" })
+        .or(page.locator(".dashboard-header-stats"));
+    await expect(counter.getByText("Mises à jour disponibles")).toBeVisible();
+
+    // Le décompte vient d'un seul appel servi depuis les verdicts conservés,
+    // sans déclencher une vérification par instance.
+    await expect.poll(() => api.requests.filter((request) =>
+        request.path === "/servers/update-status").length).toBeGreaterThan(0);
+    expect(api.requests.filter((request) => /\/servers\/[0-9a-f-]+\/update-status/.test(request.path))).toHaveLength(0);
+});

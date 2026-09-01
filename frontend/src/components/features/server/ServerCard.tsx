@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, Play, RotateCw, Skull, Square } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Download, Play, RotateCw, Skull, Square } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ConnectionInfo, Instance } from "@/schemas/api";
 import type { CurrentServerMetric } from "@/schemas/operations";
@@ -16,6 +16,7 @@ interface ServerCardProps {
     playerCount?: number;
     connection?: ConnectionInfo;
     metric?: CurrentServerMetric;
+    updateAvailable?: boolean;
     onAction: (id: string, action: ServerAction) => void;
 }
 
@@ -24,7 +25,7 @@ function stateLabel(server: Instance, t: (key: string) => string): string {
     return t(`servers.runtime_states.${server.runtime_state}`);
 }
 
-export default function ServerCard({ server, capabilities, playerCount, connection, metric, onAction }: ServerCardProps) {
+export default function ServerCard({ server, capabilities, playerCount, connection, metric, updateAvailable = false, onAction }: ServerCardProps) {
     const { t } = useLanguage();
     const { hasPermission } = usePermission();
     const running = server.runtime_state === "running";
@@ -57,6 +58,12 @@ export default function ServerCard({ server, capabilities, playerCount, connecti
                     style={{ objectPosition: visual.artworkPosition }}
                     onError={(event) => fallbackGameArtwork(event, visual.fallbackArtwork)}
                 />
+                {updateAvailable && (
+                    <span className="server-card__update update-pill" title={t("servers.update_available")}>
+                        <ArrowUpCircle size={13} aria-hidden="true" />
+                        {t("servers.update_available")}
+                    </span>
+                )}
                 <span className={`server-card__state badge badge--${running ? "success" : needsInstall ? "warning" : "info"}`}>
                     {transitioning && <RotateCw size={13} className="spin" aria-hidden="true" />}
                     {(server.runtime_state === "crashed" || server.installation_state === "failed")

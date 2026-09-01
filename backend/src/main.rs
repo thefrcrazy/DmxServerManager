@@ -34,7 +34,7 @@ use services::{
     backups, catalog, instance_storage,
     profiles::ProfileRegistry,
     releases::{ReleaseMonitor, ReleaseMonitorWorker},
-    runtime::RuntimeManager,
+    runtime::{GameUpdateWorker, RuntimeManager},
     schedules::SchedulerService,
     secrets::SecretStore,
     webhooks::WebhookDispatcher,
@@ -107,6 +107,7 @@ struct Panel {
     scheduler: SchedulerService,
     webhooks: WebhookDispatcher,
     releases: ReleaseMonitorWorker,
+    game_updates: GameUpdateWorker,
 }
 
 impl Panel {
@@ -160,6 +161,7 @@ impl Panel {
         let webhooks = WebhookDispatcher::start(state.clone())?;
         let scheduler = SchedulerService::start(state);
         let releases = ReleaseMonitorWorker::start(releases);
+        let game_updates = GameUpdateWorker::start(runtime.clone());
 
         info!(
             version = env!("CARGO_PKG_VERSION"),
@@ -176,6 +178,7 @@ impl Panel {
             scheduler,
             webhooks,
             releases,
+            game_updates,
         })
     }
 
@@ -190,6 +193,7 @@ impl Panel {
             mut scheduler,
             mut webhooks,
             mut releases,
+            mut game_updates,
         } = self;
         let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel();
         let server = axum::serve(
@@ -205,6 +209,7 @@ impl Panel {
         tokio::select! {
             result = &mut server => {
                 scheduler.shutdown().await;
+                game_updates.shutdown().await;
                 releases.shutdown().await;
                 runtime.shutdown().await;
                 webhooks.shutdown().await;
@@ -214,6 +219,7 @@ impl Panel {
                 info!("panel shutdown requested");
                 let _ = http_shutdown_tx.send(());
                 scheduler.shutdown().await;
+                game_updates.shutdown().await;
                 releases.shutdown().await;
                 let (http_result, ()) = tokio::join!(
                     tokio::time::timeout(HTTP_SHUTDOWN_TIMEOUT, &mut server),
