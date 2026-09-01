@@ -1126,6 +1126,7 @@ export const en: TranslationType = {
             installation_running: "Installation in progress…",
             installation_hint: "Installer output appears here. Any required human action is shown above and in Activity.",
             copy_logs: "Copy all visible logs",
+            show_earlier: "Show the {{count}} earlier lines",
             logs_copied: "Logs copied",
             command_placeholder: "Enter a command..."
         },

@@ -1095,6 +1095,7 @@ export const fr = {
             installation_running: "Installation en cours…",
             installation_hint: "Les sorties de l’installateur apparaissent ici. Toute action humaine requise est affichée au-dessus et dans Activité.",
             copy_logs: "Copier tous les logs visibles",
+            show_earlier: "Afficher les {{count}} lignes précédentes",
             logs_copied: "Logs copiés",
             command_placeholder: "Entrez une commande..."
         },

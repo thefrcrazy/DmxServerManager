@@ -1,8 +1,37 @@
-import React, { useEffect, useRef } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import SafeAnsi from "@/components/shared/SafeAnsi";
-import { Check, Clipboard, Send, Terminal } from "lucide-react";
+import { Check, ChevronUp, Clipboard, Send, Terminal } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Tooltip, Button } from "@/components/ui";
+
+// Le DOM est borné : au-delà, une installation qui rejoue 10 000 lignes créait
+// autant de nœuds, chacun avec un span par segment ANSI.
+const TAIL_WINDOW = 1_500;
+
+// Motifs ancrés et mutuellement exclusifs. La classification précédente reposait
+// sur `log.includes("ERROR")`, qui marquait en erreur tout pseudonyme ou chemin
+// contenant la sous-chaîne, et pouvait appliquer les quatre styles à la fois.
+const LEVEL_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+    ["command", /^>/],
+    ["error", /\[(ERROR|SEVERE|FATAL)\]|\bException\b/],
+    ["warning", /\[WARN(ING)?\]/],
+    ["info", /\[INFO\]/],
+];
+
+function levelOf(line: string): string | null {
+    return LEVEL_PATTERNS.find(([, pattern]) => pattern.test(line))?.[0] ?? null;
+}
+
+// Mémoïsé : une ligne inchangée n'est ni reclassée ni re-rendue quand de
+// nouvelles lignes arrivent en fin de journal.
+const ConsoleLine = memo(function ConsoleLine({ line }: { line: string }) {
+    const level = levelOf(line);
+    return (
+        <div className={level ? `console-line console-line--${level}` : "console-line"}>
+            <SafeAnsi>{line}</SafeAnsi>
+        </div>
+    );
+});
 
 interface ServerConsoleProps {
     historyKey: string;
@@ -55,6 +84,7 @@ export default function ServerConsole({
     const consoleContentRef = useRef<HTMLDivElement>(null);
     const [command, setCommand] = React.useState("");
     const [logsCopied, setLogsCopied] = React.useState(false);
+    const [showFullHistory, setShowFullHistory] = useState(false);
     const isAtBottomRef = useRef(true);
     const commandHistoryRef = useRef<string[]>([]);
     const commandHistoryIndexRef = useRef<number | null>(null);
@@ -131,6 +161,12 @@ export default function ServerConsole({
         }
     };
 
+    const hiddenCount = showFullHistory ? 0 : Math.max(0, logs.length - TAIL_WINDOW);
+    const visibleLogs = useMemo(
+        () => hiddenCount > 0 ? logs.slice(hiddenCount) : logs,
+        [hiddenCount, logs],
+    );
+
     const copyLogs = async () => {
         if (logs.length === 0) return;
         if (await copyTextToClipboard(logs.join("\n"))) {
@@ -196,28 +232,17 @@ export default function ServerConsole({
                             </div>
                         </div>
                     ) : (
-                        logs.map((log, i) => {
-                            const isError = log.includes("[ERROR]") || log.includes("ERROR") || log.includes("Exception");
-                            const isWarn = log.includes("[WARN]") || log.includes("WARN");
-                            const isInfo = log.includes("[INFO]") || log.includes("INFO");
-                            const isCommand = log.startsWith(">");
-
-                            return (
-                                <div
-                                    key={i}
-                                    className={`console-line
-                                        ${isError ? "console-line--error" : ""}
-                                        ${isWarn ? "console-line--warning" : ""}
-                                        ${isInfo ? "console-line--info" : ""}
-                                        ${isCommand ? "console-line--command" : ""}
-                                    `}
-                                >
-                                    <SafeAnsi useClasses={false}>
-                                        {log}
-                                    </SafeAnsi>
-                                </div>
-                            );
-                        })
+                        <>
+                            {hiddenCount > 0 && (
+                                <button type="button" className="console-output__earlier" onClick={() => setShowFullHistory(true)}>
+                                    <ChevronUp size={14} aria-hidden="true" />
+                                    {t("server_detail.console.show_earlier").replace("{{count}}", String(hiddenCount))}
+                                </button>
+                            )}
+                            {visibleLogs.map((log, index) => (
+                                <ConsoleLine key={hiddenCount + index} line={log} />
+                            ))}
+                        </>
                     )}
                 </div>
 

@@ -226,6 +226,24 @@
 }
 
 
+.console-output__earlier {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-2);
+    padding: var(--spacing-2);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    cursor: pointer;
+
+    &:hover { color: var(--color-text-primary); border-color: var(--color-border-hover); }
+}
+
 .console-output {
     flex: 1;
     min-height: 0;
@@ -256,6 +274,9 @@
     word-break: break-all;
     white-space: pre-wrap;
     margin-bottom: 2px;
+    // Les lignes hors du cadre ne sont ni mises en page ni peintes.
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1.4em;
 
     &--error {
         color: color-mix(in srgb, var(--color-danger) 70%, var(--color-text-primary));

@@ -393,6 +393,8 @@ export default function CreateServer() {
                                                 <img
                                                     src={visual.artwork}
                                                     alt=""
+                                                    width={640}
+                                                    height={360}
                                                     loading="lazy"
                                                     referrerPolicy="no-referrer"
                                                     style={{ objectPosition: visual.artworkPosition }}

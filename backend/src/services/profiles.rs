@@ -20,6 +20,14 @@ pub struct ProfileRegistry {
     profiles: Arc<RwLock<BTreeMap<(String, u32), GameProfile>>>,
 }
 
+/// Le registre est un cache reconstruit au démarrage : une panique survenue
+/// pendant la détention du verrou n'y laisse pas d'état incohérent. Propager
+/// l'empoisonnement condamnait en revanche toutes les requêtes de profil
+/// jusqu'au redémarrage du service.
+fn unpoison<T>(result: Result<T, std::sync::PoisonError<T>>) -> T {
+    result.unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 impl ProfileRegistry {
     pub fn builtins() -> Self {
         let profiles = [
@@ -51,7 +59,7 @@ impl ProfileRegistry {
     }
 
     pub fn all(&self) -> Vec<GameProfile> {
-        let profiles = self.profiles.read().expect("profile registry poisoned");
+        let profiles = unpoison(self.profiles.read());
         let mut latest = BTreeMap::<String, GameProfile>::new();
         for profile in profiles.values() {
             latest.insert(profile.id.clone(), profile.clone());
@@ -60,9 +68,7 @@ impl ProfileRegistry {
     }
 
     pub fn get(&self, id: &str) -> Option<GameProfile> {
-        self.profiles
-            .read()
-            .expect("profile registry poisoned")
+        unpoison(self.profiles.read())
             .values()
             .filter(|profile| profile.id == id)
             .max_by_key(|profile| profile.revision)
@@ -70,17 +76,13 @@ impl ProfileRegistry {
     }
 
     pub fn get_revision(&self, id: &str, revision: u32) -> Option<GameProfile> {
-        self.profiles
-            .read()
-            .expect("profile registry poisoned")
+        unpoison(self.profiles.read())
             .get(&(id.to_string(), revision))
             .cloned()
     }
 
     pub fn revisions(&self, id: &str) -> Vec<GameProfile> {
-        self.profiles
-            .read()
-            .expect("profile registry poisoned")
+        unpoison(self.profiles.read())
             .values()
             .filter(|profile| profile.id == id)
             .cloned()
@@ -88,30 +90,21 @@ impl ProfileRegistry {
     }
 
     pub fn register(&self, profile: GameProfile) {
-        self.profiles
-            .write()
-            .expect("profile registry poisoned")
-            .insert((profile.id.clone(), profile.revision), profile);
+        unpoison(self.profiles.write()).insert((profile.id.clone(), profile.revision), profile);
     }
 
     pub fn unregister_custom(&self, id: &str) {
-        self.profiles
-            .write()
-            .expect("profile registry poisoned")
-            .retain(|(profile_id, _), profile| {
-                profile_id != id || profile.kind != ProfileKind::SteamCustom
-            });
+        unpoison(self.profiles.write()).retain(|(profile_id, _), profile| {
+            profile_id != id || profile.kind != ProfileKind::SteamCustom
+        });
     }
 
     pub fn unregister_custom_revision(&self, id: &str, revision: u32) {
-        self.profiles
-            .write()
-            .expect("profile registry poisoned")
-            .retain(|(profile_id, profile_revision), profile| {
-                profile_id != id
-                    || *profile_revision != revision
-                    || profile.kind != ProfileKind::SteamCustom
-            });
+        unpoison(self.profiles.write()).retain(|(profile_id, profile_revision), profile| {
+            profile_id != id
+                || *profile_revision != revision
+                || profile.kind != ProfileKind::SteamCustom
+        });
     }
 
     pub fn validate_settings(&self, profile_id: &str, settings: &Value) -> Result<(), AppError> {
@@ -135,7 +128,7 @@ impl ProfileRegistry {
 
     pub async fn load_persisted(&self, pool: &DbPool) -> Result<(), AppError> {
         let compiled_builtin_revisions = {
-            let profiles = self.profiles.read().expect("profile registry poisoned");
+            let profiles = unpoison(self.profiles.read());
             profiles
                 .values()
                 .filter(|profile| profile.kind == ProfileKind::Builtin)
@@ -194,7 +187,7 @@ impl ProfileRegistry {
 
     pub async fn persist_builtins(&self, pool: &DbPool) -> Result<(), AppError> {
         let builtins = {
-            let profiles = self.profiles.read().expect("profile registry poisoned");
+            let profiles = unpoison(self.profiles.read());
             profiles
                 .values()
                 .filter(|profile| profile.kind == ProfileKind::Builtin)

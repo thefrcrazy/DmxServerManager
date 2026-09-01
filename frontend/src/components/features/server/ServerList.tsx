@@ -104,6 +104,8 @@ export default function ServerList({ servers, profiles, viewMode, onAction, metr
                                     className="server-game-thumb"
                                     src={visual.artwork}
                                     alt=""
+                                    width={70}
+                                    height={44}
                                     loading="lazy"
                                     referrerPolicy="no-referrer"
                                     style={{ objectPosition: visual.artworkPosition }}

@@ -4,8 +4,10 @@ const SGR_PATTERN = /(?:\u001b\[|\u009b)([\d;:]*)m/g;
 const OSC_PATTERN = /(?:\u001b\]|\u009d)[\s\S]*?(?:\u0007|\u001b\\)/g;
 const CONTROL_SEQUENCE_PATTERN = /[\u001b\u009b][[\]()#;?]*(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]+)*)?\u0007|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
 
+// Le noir ANSI était rendu en #161b22, indiscernable du fond de la console.
+// Il prend la teinte « estompée » du thème, qui reste lisible.
 const COLORS = [
-    "#161b22", "#f85149", "#3fb950", "#d29922",
+    "var(--color-text-muted)", "#f85149", "#3fb950", "#d29922",
     "#58a6ff", "#bc8cff", "#39c5cf", "#c9d1d9",
 ] as const;
 
@@ -80,7 +82,6 @@ export function parseAnsi(input: string): AnsiSegment[] {
 
 interface SafeAnsiProps {
     children: ReactNode;
-    useClasses?: boolean;
 }
 
 /** Renders a closed subset of ANSI SGR as React text nodes, never HTML or links. */
