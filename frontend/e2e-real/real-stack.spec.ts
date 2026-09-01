@@ -145,3 +145,41 @@ test("le vrai Axum, SQLite et la SPA appliquent setup, session, CSRF et RBAC", a
         await viewerApi.dispose();
     }
 });
+
+test("la CSP réelle sert les ressources statiques sans origine externe", async ({ page }) => {
+    // Le seul test qui s'exécute derrière les en-têtes du backend. La suite
+    // ordinaire vise le serveur de développement Vite, qui n'émet aucune CSP :
+    // c'est pour cela que le chargement de Monaco depuis cdn.jsdelivr.net,
+    // pourtant bloqué en production, passait inaperçu.
+    const forbidden: string[] = [];
+    const blocked: string[] = [];
+    const origin = new URL(REAL_E2E_BASE_URL).origin;
+    page.on("request", (request) => {
+        const url = request.url();
+        if (url.startsWith("data:") || url.startsWith("blob:")) return;
+        if (new URL(url).origin !== origin) forbidden.push(`${request.resourceType()} ${url}`);
+    });
+    page.on("console", (message) => {
+        if (message.type() === "error" && /Content Security Policy/i.test(message.text())) {
+            blocked.push(message.text());
+        }
+    });
+
+    const response = await page.goto("/login");
+    expect(response?.headers()["content-security-policy"]).toContain("script-src 'self'");
+    expect(response?.headers()["x-frame-options"]).toBe("DENY");
+    await expect(page.getByRole("heading", { name: "DmxServerManager" })).toBeVisible();
+
+    // Politique de cache : les ressources empreintées sont immuables, la page
+    // d'entrée doit être revalidée sous peine de pointer vers des ressources
+    // supprimées après une mise à jour.
+    expect(response?.headers()["cache-control"]).toBe("no-cache");
+    const bundle = await page.evaluate(() => document.querySelector<HTMLScriptElement>('script[src^="/assets/"]')?.src);
+    expect(bundle, "aucun bundle empreinté trouvé").toBeTruthy();
+    const asset = await page.request.get(bundle!);
+    expect(asset.status()).toBe(200);
+    expect(asset.headers()["cache-control"]).toBe("public, max-age=31536000, immutable");
+
+    expect(forbidden, `origines externes : ${forbidden.join(", ")}`).toEqual([]);
+    expect(blocked, `ressources bloquées par la CSP : ${blocked.join(", ")}`).toEqual([]);
+});
