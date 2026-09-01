@@ -4,6 +4,14 @@
 .btn {
     @include button-base;
 
+    // Un <a> n'a pas d'état désactivé natif : la variante lien s'appuie sur
+    // `aria-disabled`, qu'il faut refléter visuellement.
+    &--disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
     // Plancher tactile WCAG 2.5.5 / Apple HIG. L'audit relevait jusqu'à 17 px de
     // haut sur « Révoquer les autres » et 26 px sur les boutons icône.
     @include touch {

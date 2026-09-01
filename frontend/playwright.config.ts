@@ -23,9 +23,29 @@ export default defineConfig({
         video: "retain-on-failure",
     },
     projects: [
+        // La suite complète tourne sur un seul moteur ; les projets appareil ne
+        // rejouent que les garde-fous, pour ne pas quadrupler la durée de CI.
         {
             name: "chromium",
             use: { ...devices["Desktop Chrome"] },
+            testIgnore: /device-guardrails\.spec\.ts/,
+        },
+        {
+            // WebKit : le moteur où se manifestent le zoom iOS sur les champs
+            // sous 16 px, `dvh` face à la barre d'URL et les zones de sécurité.
+            name: "mobile-safari",
+            use: { ...devices["iPhone 13"] },
+            testMatch: /device-guardrails\.spec\.ts/,
+        },
+        {
+            name: "mobile-chrome",
+            use: { ...devices["Pixel 5"] },
+            testMatch: /device-guardrails\.spec\.ts/,
+        },
+        {
+            name: "tablet",
+            use: { ...devices["iPad (gen 7)"] },
+            testMatch: /device-guardrails\.spec\.ts/,
         },
     ],
     outputDir: "test-results",

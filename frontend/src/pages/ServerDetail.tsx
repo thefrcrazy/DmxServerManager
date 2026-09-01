@@ -363,7 +363,7 @@ export default function ServerDetail() {
         setSecretDrafts({});
         const statuses = await apiService.servers.getSecrets(id);
         if (statuses.success) setSecretStatuses(statuses.data.items);
-        toast.success(t("server_detail.messages.save_success"));
+        toast.success(t("server_detail.save_success"));
         setSaving(false);
     };
 

@@ -213,7 +213,7 @@ export default function ServerConsole({
                     role="log"
                     aria-label={isInstalling
                         ? t("server_detail.console.installation_running")
-                        : t("server_detail.tabs.console")}
+                        : t("server_detail.tabs.terminal")}
                 >
                     {logs.length === 0 ? (
                         <div className="console-output__empty">
