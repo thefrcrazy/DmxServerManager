@@ -471,6 +471,8 @@ export interface ApiMockOptions {
     webhooks?: DiscordWebhook[];
     releaseStatus?: PanelReleaseStatus;
     hytaleDeviceAuthorization?: boolean;
+    /** Nombre de lignes servies par l'historique de console. */
+    logHistoryLines?: number;
     jobs?: Job[];
     catalogPackages?: CatalogPackage[];
     activeTheme?: ActiveTheme;
@@ -516,12 +518,14 @@ export class ApiMock {
     needsSetup: boolean;
     authenticated: boolean;
     readonly hytaleDeviceAuthorization: boolean;
+    readonly logHistoryLines: number;
     readonly updateAvailable: boolean;
 
     constructor(options: ApiMockOptions = {}) {
         this.authenticated = options.authenticated ?? true;
         this.needsSetup = options.needsSetup ?? false;
         this.hytaleDeviceAuthorization = options.hytaleDeviceAuthorization ?? false;
+        this.logHistoryLines = options.logHistoryLines ?? 0;
         this.updateAvailable = options.updateAvailable ?? false;
         this.user = UserInfoSchema.parse(options.user ?? OWNER);
         this.profiles = (options.profiles ?? GAME_PROFILES).map((profile) => GameProfileSchema.parse(profile));
@@ -1491,6 +1495,19 @@ export class ApiMock {
         }
         if (configTextMatch && request.method() === "DELETE") {
             return this.json(route, 200, { success: true, message: "config_files.cancelled" });
+        }
+
+        // Historique de console : la route n'était pas simulée, si bien que
+        // chaque test de terminal démarrait sur un échec de chargement et une
+        // console d'une seule ligne.
+        const logsMatch = path.match(/^\/servers\/([0-9a-f-]+)\/logs$/i);
+        if (logsMatch && request.method() === "GET") {
+            const source = url.searchParams.get("source") === "install" ? "install" : "console";
+            const items = Array.from({ length: this.logHistoryLines }, (_, index) => ({
+                stream: source,
+                message: `[2026/09/05 08:0${index % 10}:00 INFO] [Fixture] ligne ${index + 1}`,
+            }));
+            return this.json(route, 200, { source, items });
         }
 
         const consoleMatch = path.match(/^\/servers\/([0-9a-f-]+)\/console$/i);

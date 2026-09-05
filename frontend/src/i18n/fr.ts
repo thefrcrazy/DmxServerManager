@@ -754,6 +754,7 @@ export const fr = {
         update_check_failed_title: "Impossible de vérifier les mises à jour",
         update_check_failed_detail: "Le fournisseur n’a pas répondu ou la réponse était inexploitable. Le détail figure dans les journaux du panneau.",
         update_check_now: "Vérifier maintenant",
+        update_checked_at: "Vérifié à {{time}}",
         update_up_to_date: "Jeu à jour d’après le fournisseur.",
         view_jobs: "Voir l’activité",
         job_queued: "Le job a été ajouté à la file.",
@@ -1110,6 +1111,8 @@ export const fr = {
             match_count: "{{shown}} lignes sur {{total}}",
             levels: { error: "Erreurs", warning: "Avertissements", info: "Infos" },
             show_earlier: "Afficher les {{count}} lignes précédentes",
+            jump_to_latest: "Revenir en bas",
+            new_lines: "{{count}} nouvelles lignes",
             logs_copied: "Logs copiés",
             command_placeholder: "Entrez une commande..."
         },

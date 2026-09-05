@@ -13,7 +13,11 @@ export default defineConfig({
         ? [["line"], ["html", { open: "never", outputFolder: "playwright-report" }]]
         : "list",
     timeout: 30_000,
-    expect: { timeout: 5_000 },
+    // 5 s suffisaient tant que la suite tournait à un worker. En local, où
+    // Playwright ouvre autant de workers que de cœurs, le premier rendu d'une
+    // vue qui charge un chunk paresseux de plusieurs mégaoctets dépasse ce
+    // délai sous charge — un échec qui ne dit rien du code testé.
+    expect: { timeout: 10_000 },
     use: {
         baseURL,
         locale: "fr-FR",

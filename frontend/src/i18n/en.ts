@@ -786,6 +786,7 @@ export const en: TranslationType = {
         update_check_failed_title: "Cannot check for updates",
         update_check_failed_detail: "The provider did not answer, or its answer could not be used. Details are in the panel logs.",
         update_check_now: "Check now",
+        update_checked_at: "Checked at {{time}}",
         update_up_to_date: "Game up to date according to the provider.",
         view_jobs: "View activity",
         job_queued: "The job was added to the queue.",
@@ -1141,6 +1142,8 @@ export const en: TranslationType = {
             match_count: "{{shown}} of {{total}} lines",
             levels: { error: "Errors", warning: "Warnings", info: "Info" },
             show_earlier: "Show the {{count}} earlier lines",
+            jump_to_latest: "Back to latest",
+            new_lines: "{{count}} new lines",
             logs_copied: "Logs copied",
             command_placeholder: "Enter a command..."
         },

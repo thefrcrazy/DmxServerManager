@@ -302,7 +302,10 @@ test("l’onglet Joueurs affiche la présence et met les droits natifs en file",
     await expect(page.getByText("Modification chiffrée et mise en file.")).toBeVisible();
     await page.getByRole("button", { name: "Ouvrir l’éditeur avancé" }).click();
     const editorDialog = page.getByRole("dialog", { name: "adminlist.txt" });
-    await expect(editorDialog.locator(".monaco-editor")).toBeVisible();
+    // Monaco vit dans un chunk paresseux de plusieurs mégaoctets : sur une
+    // machine chargée, son premier rendu dépasse le délai par défaut de 5 s, ce
+    // qui rendait ce test intermittent sans rien dire du code testé.
+    await expect(editorDialog.locator(".monaco-editor")).toBeVisible({ timeout: 20_000 });
 
     const request = api.findRequest("PUT", `/servers/${serverId}/config-files/text`);
     expect(request?.body).toEqual({

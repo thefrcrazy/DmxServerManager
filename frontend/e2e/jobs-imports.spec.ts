@@ -138,8 +138,11 @@ test("la mise à jour manuelle affiche la version installée et crée un job", a
     await api.install(page);
 
     await page.goto("/servers/22222222-2222-4222-8222-222222222222");
-    await expect(page.getByText("Version installée")).toBeVisible();
-    await expect(page.getByText("1.21.8", { exact: true })).toBeVisible();
+    // Ciblé sur la vignette : l'avis de mise à jour affiche lui aussi la version
+    // installée, en tête de l'écart avec la version disponible.
+    const installedPill = page.locator(".stat-pill").filter({ hasText: "Version installée" });
+    await expect(installedPill).toBeVisible();
+    await expect(installedPill.locator(".stat-pill__value")).toHaveText("1.21.8");
     // Le terminal est désormais l'onglet par défaut ; les diagnostics vivent
     // dans la configuration.
     await page.getByRole("tab", { name: "Config" }).click();
@@ -210,7 +213,11 @@ test("une instance en marche signale quand même une mise à jour disponible", a
     await page.goto(`/servers/${INSTANCES[0]!.id}`);
 
     await expect(page.getByText("Mise à jour du jeu disponible")).toBeVisible();
-    await expect(page.getByText(/0\.219\.16 installée · .+ disponible\./)).toBeVisible();
+    // Les deux références sont désormais confrontées côte à côte plutôt que
+    // noyées dans une phrase à trous.
+    const versions = page.locator(".update-notice__versions");
+    await expect(versions).toContainText("0.219.16");
+    await expect(versions.locator(".update-notice__version--next")).not.toBeEmpty();
     await expect(page.getByText("Arrêtez complètement l’instance pour appliquer la mise à jour.")).toBeVisible();
 });
 

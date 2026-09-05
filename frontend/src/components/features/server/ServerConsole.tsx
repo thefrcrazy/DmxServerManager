@@ -1,6 +1,7 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import SafeAnsi from "@/components/shared/SafeAnsi";
-import { Check, ChevronUp, Clipboard, Clock, Download, Search, Send, Terminal, X } from "lucide-react";
+import { ArrowDown, Check, ChevronUp, Clipboard, Clock, Download, Search, Send, Terminal, X } from "lucide-react";
+import { gameCommands } from "@/constants/gameCommands";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Tooltip, Button } from "@/components/ui";
 
@@ -51,6 +52,8 @@ const ConsoleLine = memo(function ConsoleLine(
 
 interface ServerConsoleProps {
     historyKey: string;
+    /** Profil du jeu, qui détermine les commandes proposées à la saisie. */
+    profileId: string;
     logs: string[];
     isRunning: boolean;
     isInstalling?: boolean;
@@ -111,6 +114,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
 
 export default function ServerConsole({
     historyKey,
+    profileId,
     logs,
     isRunning,
     isInstalling = false,
@@ -124,7 +128,13 @@ export default function ServerConsole({
     const [search, setSearch] = useState("");
     const [levels, setLevels] = useState<ReadonlySet<FilterLevel>>(new Set());
     const [showTimestamps, setShowTimestamps] = useState(true);
-    const isAtBottomRef = useRef(true);
+    // « Collé au bas » : l'état pilote à la fois le suivi automatique et le
+    // bouton de retour. Un `ref` double la valeur pour les effets de mise en
+    // page, qui s'exécutent avant que le rendu suivant ait lieu.
+    const [pinned, setPinned] = useState(true);
+    const pinnedRef = useRef(true);
+    const frozenStartRef = useRef(0);
+    const unreadFromRef = useRef(0);
     const commandHistoryRef = useRef<string[]>([]);
     const commandHistoryIndexRef = useRef<number | null>(null);
     const commandDraftRef = useRef("");
@@ -136,27 +146,48 @@ export default function ServerConsole({
         setCommand("");
     }, [historyKey]);
 
-    // Track scroll position
-    const handleScroll = () => {
-        if (!consoleContentRef.current) return;
-        const { scrollTop, scrollHeight, clientHeight } = consoleContentRef.current;
-        
-        // Check if user is at the bottom (with small 5px tolerance for rounding)
-        // If they are at the bottom, we enable auto-scroll
-        const isAtBottom = scrollHeight - scrollTop - clientHeight < 5;
-        isAtBottomRef.current = isAtBottom;
-    };
+    // La tolérance couvre l'arrondi du sous-pixel et une ligne partiellement
+    // visible : à 5 px, une ligne haute suffisait à décrocher le suivi sans que
+    // l'utilisateur ait rien fait.
+    const BOTTOM_TOLERANCE = 32;
 
-    // Auto-scroll logic
-    useEffect(() => {
-        if (logs.length > 0 && isAtBottomRef.current && consoleContentRef.current) {
-            // Force scroll to bottom without smooth behavior
-            consoleContentRef.current.scrollTo({
-                top: consoleContentRef.current.scrollHeight,
-                behavior: "auto"
-            });
-        }
-    }, [logs]);
+    const handleScroll = useCallback(() => {
+        const element = consoleContentRef.current;
+        if (!element) return;
+        const atBottom =
+            element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_TOLERANCE;
+        if (atBottom === pinnedRef.current) return;
+        pinnedRef.current = atBottom;
+        setPinned(atBottom);
+    }, []);
+
+    const scrollToBottom = useCallback(() => {
+        const element = consoleContentRef.current;
+        if (!element) return;
+        pinnedRef.current = true;
+        setPinned(true);
+        element.scrollTop = element.scrollHeight;
+    }, []);
+
+    // Recollage après chaque rendu, sans liste de dépendances : la hauteur ne
+    // dépend pas que des lignes reçues, mais aussi des filtres, de l'affichage
+    // des horodatages et du retour sur l'onglet. L'ancienne version n'écoutait
+    // que `logs` et laissait la console figée à mi-hauteur dans tous les autres
+    // cas.
+    useLayoutEffect(() => {
+        if (!pinnedRef.current) return;
+        const element = consoleContentRef.current;
+        if (!element) return;
+        element.scrollTop = element.scrollHeight;
+        // `content-visibility: auto` ne donne qu'une hauteur estimée tant que
+        // les lignes entrées dans le viewport ne sont pas rendues : la première
+        // passe visait donc un bas de page qui n'était pas encore le bon.
+        const frame = requestAnimationFrame(() => {
+            const current = consoleContentRef.current;
+            if (pinnedRef.current && current) current.scrollTop = current.scrollHeight;
+        });
+        return () => cancelAnimationFrame(frame);
+    });
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -174,12 +205,15 @@ export default function ServerConsole({
     };
 
     const handleCommandHistory = (event: React.KeyboardEvent<HTMLInputElement>) => {
-        // Tabulation : complète depuis l'historique. Les profils ne publient
-        // aucun catalogue de commandes — seule la commande d'arrêt est déclarée —
-        // donc la suggestion vient de ce qui a déjà été saisi sur cette instance.
+        // Tabulation : complète depuis les commandes documentées du jeu, puis
+        // depuis ce qui a déjà été saisi sur cette instance.
         if (event.key === "Tab" && command.trim().length > 0) {
-            const match = [...commandHistoryRef.current]
-                .reverse()
+            // Ce que l'utilisateur a déjà tapé passe devant : c'est sa formulation
+            // exacte, arguments compris. Le catalogue prend le relais quand
+            // l'historique ne répond pas — au premier usage, notamment, où il
+            // était vide et ne proposait donc rien.
+            const match = [...commandHistoryRef.current].reverse()
+                .concat(suggestions.map(({ command: entry }) => entry))
                 .find((entry) => entry.startsWith(command) && entry !== command);
             if (match) {
                 event.preventDefault();
@@ -213,6 +247,9 @@ export default function ServerConsole({
         }
     };
 
+    const suggestions = useMemo(() => gameCommands(profileId), [profileId]);
+    const suggestionListId = `console-commands-${useId()}`;
+
     // Le filtrage précède la fenêtre de queue : chercher dans les mille dernières
     // lignes affichées plutôt que dans le journal entier n'aurait servi à rien.
     const matchingLogs = useMemo(() => {
@@ -226,11 +263,32 @@ export default function ServerConsole({
         });
     }, [levels, logs, search]);
 
-    const hiddenCount = showFullHistory ? 0 : Math.max(0, matchingLogs.length - TAIL_WINDOW);
+    // Tant que la vue est décrochée, le début de la fenêtre reste fixe.
+    // Auparavant la fenêtre de queue glissait à chaque ligne reçue : les lignes
+    // retirées en haut faisaient remonter tout le contenu sous les yeux du
+    // lecteur, qui perdait sa place sans avoir touché à rien.
+    const hiddenCount = useMemo(() => {
+        const tailStart = showFullHistory ? 0 : Math.max(0, matchingLogs.length - TAIL_WINDOW);
+        if (pinned) {
+            frozenStartRef.current = tailStart;
+            unreadFromRef.current = matchingLogs.length;
+            return tailStart;
+        }
+        // Garde-fou : une installation bavarde lue depuis le haut ferait sinon
+        // croître le DOM sans limite. Passé ce seuil, la fenêtre reprend sa
+        // course — un saut vaut mieux qu'un onglet qui se fige.
+        if (matchingLogs.length - frozenStartRef.current > TAIL_WINDOW * 4) {
+            frozenStartRef.current = tailStart;
+            return tailStart;
+        }
+        return Math.min(frozenStartRef.current, tailStart);
+    }, [matchingLogs.length, pinned, showFullHistory]);
+
     const visibleLogs = useMemo(
         () => hiddenCount > 0 ? matchingLogs.slice(hiddenCount) : matchingLogs,
         [hiddenCount, matchingLogs],
     );
+    const unreadCount = pinned ? 0 : Math.max(0, matchingLogs.length - unreadFromRef.current);
     const filtering = search.trim().length > 0 || levels.size > 0;
 
     const toggleLevel = useCallback((level: FilterLevel) => {
@@ -353,6 +411,7 @@ export default function ServerConsole({
                 {/* Console Viewport */}
                 {/* Conteneur défilant : sans point de tabulation ni rôle, son
                     contenu était inatteignable au clavier (axe scrollable-region-focusable). */}
+                <div className="console-viewport">
                 <div
                     className="console-output"
                     ref={consoleContentRef}
@@ -399,13 +458,30 @@ export default function ServerConsole({
                     )}
                 </div>
 
+                {/* Retour au flux : visible dès que la vue décroche, avec le
+                    nombre de lignes arrivées depuis. Sans lui, rejoindre le bas
+                    d'une console bavarde demandait de courser le défilement. */}
+                {!pinned && logs.length > 0 && (
+                    <button
+                        type="button"
+                        className="console-viewport__jump"
+                        onClick={scrollToBottom}
+                    >
+                        <ArrowDown size={14} aria-hidden="true" />
+                        {unreadCount > 0
+                            ? t("server_detail.console.new_lines").replace("{{count}}", String(unreadCount))
+                            : t("server_detail.console.jump_to_latest")}
+                    </button>
+                )}
+                </div>
+
                 {/* Command Input Area */}
                 <form onSubmit={handleSubmit} className="command-form">
                     <div className="input-wrapper">
                         <span className="prompt-char">{">"}</span>
                         <input
                             type="text"
-                            list={undefined}
+                            list={suggestions.length > 0 ? suggestionListId : undefined}
                             value={command}
                             onChange={(e) => setCommand(e.target.value)}
                             onKeyDown={handleCommandHistory}
@@ -415,6 +491,15 @@ export default function ServerConsole({
                             autoComplete="off"
                         />
                     </div>
+                    {/* Suggestions natives : navigables au clavier et annoncées
+                        par les lecteurs d'écran sans code d'accessibilité maison. */}
+                    {suggestions.length > 0 && (
+                        <datalist id={suggestionListId}>
+                            {suggestions.map(({ command: entry, hint }) => (
+                                <option key={entry} value={entry} label={hint} />
+                            ))}
+                        </datalist>
+                    )}
                     <Tooltip content={t("common.send")} position="top">
                         <Button
                             type="submit"

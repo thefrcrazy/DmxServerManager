@@ -1,7 +1,7 @@
-import { Activity, Archive, CalendarClock, Copy, Download, Eye, EyeOff, FolderOpen, Globe2, ListChecks, PackageCheck, Play, Puzzle, RefreshCw, RotateCw, Save, Server as ServerIcon, Skull, Square, Terminal, TriangleAlert, Trash2, Users, Wrench } from "lucide-react";
+import { Activity, Archive, CalendarClock, Copy, Download, Eye, EyeOff, FolderOpen, Globe2, ListChecks, PackageCheck, Play, Puzzle, RotateCw, Save, Server as ServerIcon, Skull, Square, Terminal, TriangleAlert, Trash2, Users, Wrench } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { BedrockArchiveUploadNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConfigFiles, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerPlayers, ServerSchedules, profileSettingTitle } from "@/components/features/server";
+import { BedrockArchiveUploadNotice, GameUpdateNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConfigFiles, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerPlayers, ServerSchedules, profileSettingTitle } from "@/components/features/server";
 import { EmptyState, LoadingScreen } from "@/components/shared";
 import { Button, StatPill, Tabs } from "@/components/ui";
 import { useDialog } from "@/contexts/DialogContext";
@@ -505,58 +505,20 @@ export default function ServerDetail() {
                 serveur en marche, rien n'indiquait qu'une version plus récente
                 existait. L'avis est désormais affiché dès l'arrivée sur la page,
                 quel que soit l'état d'exécution. */}
-            {installed && updateStatus?.state === "check_failed" && (
-                <div className="update-notice update-notice--failed" role="status">
-                    <TriangleAlert size={18} aria-hidden="true" />
-                    <div className="update-notice__body">
-                        <strong>{t("server_detail.update_check_failed_title")}</strong>
-                        <span>{t("server_detail.update_check_failed_detail")}</span>
-                    </div>
-                    {hasPermission("server.update_game") && (
-                        <Button variant="secondary" size="sm" isLoading={updateChecking} onClick={() => void loadUpdateStatus(true)} icon={<RefreshCw size={16} />}>
-                            {t("server_detail.update_check_now")}
-                        </Button>
-                    )}
-                </div>
-            )}
-
-            {installed && updateStatus?.state === "update_available" && (
-                <div className="update-notice" role="status">
-                    <PackageCheck size={18} aria-hidden="true" />
-                    <div className="update-notice__body">
-                        <strong>{t("server_detail.update_available_title")}</strong>
-                        <span>
-                            {t("server_detail.update_available_detail")
-                                .replace("{{installed}}", updateStatus.installed_version ?? updateStatus.installed_build ?? "—")
-                                .replace("{{available}}", updateStatus.available_version ?? updateStatus.available_build ?? "—")}
-                        </span>
-                        {running && <small>{t("server_detail.update_requires_stop")}</small>}
-                    </div>
-                    {canInstall && hasPermission("server.update_game") && !running && instance.desired_state === "stopped" && (
-                        <Button variant="primary" size="sm" onClick={() => void runAction("install")} disabled={busy} icon={<RefreshCw size={16} />}>
-                            {t("server_detail.update_game")}
-                        </Button>
-                    )}
-                    {canInstall && hasPermission("server.update_game") && running && hasPermission("server.stop") && (
-                        <Button variant="secondary" size="sm" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={16} />}>
-                            {t("server_detail.update_stop_to_apply")}
-                        </Button>
-                    )}
-                </div>
-            )}
-
-            {/* Même « à jour » doit être visible et rejouable : sans cela, un verdict
-                erroné restait indiscernable d'une absence de vérification. */}
-            {installed && updateStatus?.state === "up_to_date" && (
-                <p className="update-status-line">
-                    <PackageCheck size={15} aria-hidden="true" />
-                    <span>{t("server_detail.update_up_to_date")}</span>
-                    {hasPermission("server.update_game") && (
-                        <Button variant="ghost" size="sm" isLoading={updateChecking} onClick={() => void loadUpdateStatus(true)}>
-                            {t("server_detail.update_check_now")}
-                        </Button>
-                    )}
-                </p>
+            {installed && updateStatus && (
+                <GameUpdateNotice
+                    status={updateStatus}
+                    running={running}
+                    busy={busy}
+                    checking={updateChecking}
+                    canInstall={canInstall}
+                    canUpdateGame={hasPermission("server.update_game")}
+                    canStop={hasPermission("server.stop")}
+                    stoppedOnPurpose={instance.desired_state === "stopped"}
+                    onCheck={() => void loadUpdateStatus(true)}
+                    onUpdate={() => void runAction("install")}
+                    onStop={() => void runAction("stop")}
+                />
             )}
 
             {!connection?.configured && hasPermission("panel.network.manage") && <div className="connection-notice"><Globe2 size={18} /><span>{t("server_detail.connection.configure_hint")}</span><Button as="link" to="/administration?tab=network" variant="ghost" size="sm">{t("server_detail.connection.configure")}</Button></div>}
@@ -597,6 +559,7 @@ export default function ServerDetail() {
                 {activeTab === "console" ? (
                     <ServerConsole
                         historyKey={instance.id}
+                        profileId={instance.profile_id}
                         logs={events.logs}
                         isRunning={running}
                         isInstalling={["installing", "updating"].includes(instance.installation_state)}

@@ -283,4 +283,46 @@ test("le terminal filtre, surligne, masque les horodatages et complète les comm
     await page.locator(".console-input").fill("say");
     await page.locator(".console-input").press("Tab");
     await expect(page.locator(".console-input")).toHaveValue("say bonjour");
+
+    // Les commandes documentées du jeu prennent le relais quand l'historique ne
+    // répond pas : sans elles, la complétion ne servait à rien au premier usage.
+    await page.locator(".console-input").fill("shut");
+    await page.locator(".console-input").press("Tab");
+    await expect(page.locator(".console-input")).toHaveValue("shutdown");
+    const suggestions = page.locator(`datalist#${await page.locator(".console-input").getAttribute("list")} option`);
+    await expect(suggestions.filter({ has: page.locator("[value='banned']") })).toHaveCount(0);
+    await expect(suggestions).not.toHaveCount(0);
+});
+
+test("le terminal suit le flux, se fige quand on remonte et sait redescendre", async ({ page }) => {
+    // Assez de lignes pour que la console déborde : sans débordement, il n'y a
+    // rien à faire défiler et le test ne prouverait rien.
+    const api = new ApiMock({ logHistoryLines: 400 });
+    await api.install(page);
+    await page.goto(`/servers/${INSTANCES[0]!.id}?tab=console`);
+
+    const output = page.locator(".console-output");
+    await expect(output).toContainText("Serveur prêt");
+
+    const distanceFromBottom = () => output.evaluate(
+        (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
+    );
+
+    // Sans intervention, la console se cale en bas. Elle s'en tenait à une seule
+    // passe, avant que `content-visibility` n'ait donné la hauteur réelle, et
+    // s'arrêtait donc à mi-course.
+    await expect.poll(distanceFromBottom).toBeLessThanOrEqual(32);
+    await expect(page.locator(".console-viewport__jump")).toHaveCount(0);
+
+    // Remonter décroche le suivi et fait apparaître le retour au flux.
+    await output.evaluate((element) => { element.scrollTop = 0; });
+    const jump = page.locator(".console-viewport__jump");
+    await expect(jump).toBeVisible();
+    const parked = await output.evaluate((element) => element.scrollTop);
+    expect(parked).toBe(0);
+
+    // Le bouton recolle la vue au bas du journal et disparaît.
+    await jump.click();
+    await expect.poll(distanceFromBottom).toBeLessThanOrEqual(32);
+    await expect(jump).toHaveCount(0);
 });
