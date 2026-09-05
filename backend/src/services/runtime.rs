@@ -408,6 +408,24 @@ impl RuntimeManager {
                 GameUpdateState::NotInstalled,
             );
         }
+        // Les instances Steam installées avant que le panneau ne conserve la
+        // build n'ont aucune référence à confronter, et restaient bloquées sur
+        // « impossible de vérifier ». Le manifeste que SteamCMD dépose dans
+        // l'arborescence du jeu porte pourtant l'information : la relire coûte
+        // une lecture de fichier locale et répare l'existant sans réinstallation.
+        let backfilled;
+        let instance = if instance.installed_build.is_none()
+            && instance.installed_version.is_none()
+            && instance.profile_id != "hytale"
+            && !installers::native_install_supported(&instance.profile_id)
+        {
+            let mut repaired = instance.clone();
+            repaired.installed_build = self.installed_steam_build_on_disk(instance).await;
+            backfilled = repaired;
+            &backfilled
+        } else {
+            instance
+        };
         match self.resolve_game_update_target(instance).await {
             Ok((available_version, available_build)) => {
                 let state = if !game_update_comparable(
@@ -445,6 +463,30 @@ impl RuntimeManager {
                 game_update_status_from_target(instance, None, None, GameUpdateState::CheckFailed)
             }
         }
+    }
+
+    /// Build Steam lue dans le manifeste déposé auprès du jeu installé.
+    ///
+    /// Silencieuse par construction : elle ne sert qu'à réparer une référence
+    /// absente, et son échec laisse simplement le verdict en « impossible de
+    /// vérifier », comme avant.
+    async fn installed_steam_build_on_disk(&self, instance: &RuntimeInstance) -> Option<String> {
+        let steam_profile = steam_profile_for_instance(&self.inner.pool, instance)
+            .await
+            .ok()?;
+        let (app_id, _) = steam_install_target(instance, steam_profile.as_ref()).ok()?;
+        let root = instance_storage::resolve(&self.inner.pool, &self.inner.settings, &instance.id)
+            .await
+            .ok()?
+            .root;
+        read_steam_build_id(
+            &root.join("game"),
+            self.inner.settings.steamcmd_path.parent(),
+            app_id,
+        )
+        .await
+        .ok()
+        .flatten()
     }
 
     async fn resolve_game_update_target(
@@ -508,9 +550,57 @@ impl RuntimeManager {
         }
     }
 
+    /// Version disponible côté Hytale, par requête HTTP quand c'est possible.
+    ///
+    /// L'API de compte officielle répond en une requête et sans que le serveur
+    /// de jeu tourne, mais elle est authentifiée. Le jeton déjà conservé pour
+    /// cette instance suffit tant qu'il n'a pas expiré ; sinon seul le
+    /// téléchargeur sait le renouveler, et c'est lui qui reprend la main — en
+    /// rafraîchissant du même coup le jeton pour la vérification suivante.
     async fn resolve_hytale_update_version(
         &self,
         instance_id: &str,
+    ) -> Result<String, OperationFailure> {
+        let credentials = self
+            .inner
+            .secrets
+            .get(
+                &self.inner.pool,
+                instance_id,
+                installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
+            )
+            .await
+            .map_err(OperationFailure::internal)?;
+        if let Some(token) = credentials
+            .as_deref()
+            .and_then(installers::hytale::parse_stored_access_token)
+            .filter(|token| token.usable_at(chrono::Utc::now()))
+        {
+            let context = InstallContext::official().map_err(installer_failure)?;
+            match installers::hytale::fetch_available_version(
+                &context,
+                &token,
+                installers::hytale::DEFAULT_PATCHLINE,
+            )
+            .await
+            {
+                Ok(version) => return Ok(version),
+                Err(error) => tracing::info!(
+                    instance_id = %instance_id,
+                    code = error.code,
+                    detail = ?error.internal,
+                    "hytale account API unavailable, falling back to the official downloader"
+                ),
+            }
+        }
+        self.resolve_hytale_update_version_via_downloader(instance_id, credentials)
+            .await
+    }
+
+    async fn resolve_hytale_update_version_via_downloader(
+        &self,
+        instance_id: &str,
+        credentials: Option<String>,
     ) -> Result<String, OperationFailure> {
         let checks_root = self
             .inner
@@ -537,23 +627,10 @@ impl RuntimeManager {
             let plan = installers::hytale::prepare_hytale_downloader(&session, &context)
                 .await
                 .map_err(installer_failure)?;
-            if let Some(credentials) = self
-                .inner
-                .secrets
-                .get(
-                    &self.inner.pool,
-                    instance_id,
-                    installers::hytale::DOWNLOADER_CREDENTIAL_SECRET,
-                )
-                .await
-                .map_err(OperationFailure::internal)?
-            {
-                installers::hytale::write_plaintext_credentials(
-                    &plan.credential_file,
-                    &credentials,
-                )
-                .await
-                .map_err(installer_failure)?;
+            if let Some(credentials) = credentials.as_deref() {
+                installers::hytale::write_plaintext_credentials(&plan.credential_file, credentials)
+                    .await
+                    .map_err(installer_failure)?;
             }
             let mut command = Command::new(&plan.executable);
             command
@@ -5320,7 +5397,7 @@ async fn expire_bedrock_upload_wait(sender: mpsc::Sender<ActorCommand>, job_id: 
     }
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, Clone, FromRow)]
 struct RuntimeInstance {
     #[allow(dead_code)]
     id: String,
@@ -6555,6 +6632,11 @@ async fn resolve_steam_available_build(
         .arg("anonymous")
         .arg("+app_info_update")
         .arg("1")
+        // Deux impressions : `app_info_update` ne bloque pas jusqu'à la fin du
+        // rafraîchissement PICS, si bien que la première sert encore le cache.
+        // `parse_steam_branch_build` retient la dernière section renseignée.
+        .arg("+app_info_print")
+        .arg(app_id.to_string())
         .arg("+app_info_print")
         .arg(app_id.to_string())
         .arg("+quit")
@@ -6581,18 +6663,39 @@ fn parse_steam_branch_build(output: &str, branch: &str) -> Option<String> {
     {
         return None;
     }
-    let branches = vdf_object(output, "branches")?;
-    let branch = vdf_object(branches, branch)?;
-    Regex::new(r#"(?m)^\s*"buildid"\s+"([0-9]{1,20})"\s*$"#)
-        .ok()?
-        .captures(branch)
-        .and_then(|captures| captures.get(1))
-        .map(|value| value.as_str().to_string())
+    let pattern = Regex::new(r#"(?m)^\s*"buildid"\s+"([0-9]{1,20})"\s*$"#).ok()?;
+    // La sortie peut contenir plusieurs sections `branches` : SteamCMD répond au
+    // premier `app_info_print` depuis son cache PICS, avant même que
+    // `app_info_update` ait abouti. Le premier bloc reflète alors l'état du
+    // dernier téléchargement — donc exactement la version installée, ce qui
+    // faisait conclure « à jour » quelle que soit la version publiée. Seul le
+    // dernier bloc effectivement renseigné fait foi ; un second passage à vide
+    // laisse le précédent en place.
+    let mut cursor = 0;
+    let mut newest = None;
+    while let Some((branches, next)) = vdf_object_from(output, "branches", cursor) {
+        cursor = next;
+        newest = vdf_object(branches, branch)
+            .and_then(|branch| pattern.captures(branch))
+            .and_then(|captures| captures.get(1))
+            .map(|value| value.as_str().to_string())
+            .or(newest);
+    }
+    newest
 }
 
 fn vdf_object<'a>(input: &'a str, key: &str) -> Option<&'a str> {
+    vdf_object_from(input, key, 0).map(|(body, _)| body)
+}
+
+/// Corps de l'objet `key` rencontré à partir de `from`, et l'indice où reprendre
+/// la recherche pour l'occurrence suivante.
+fn vdf_object_from<'a>(input: &'a str, key: &str, from: usize) -> Option<(&'a str, usize)> {
+    if from > input.len() || !input.is_char_boundary(from) {
+        return None;
+    }
     let key = format!("\"{key}\"");
-    let key_start = input.find(&key)?;
+    let key_start = input[from..].find(&key)? + from;
     let object_start = input[key_start + key.len()..].find('{')? + key_start + key.len();
     let bytes = input.as_bytes();
     let mut depth = 0_u32;
@@ -6616,7 +6719,9 @@ fn vdf_object<'a>(input: &'a str, key: &str) -> Option<&'a str> {
         } else if byte == b'}' {
             depth = depth.checked_sub(1)?;
             if depth == 0 {
-                return input.get(object_start + 1..index);
+                return input
+                    .get(object_start + 1..index)
+                    .map(|body| (body, index + 1));
             }
         }
     }
@@ -8939,6 +9044,56 @@ mod tests {
         );
         assert!(parse_steam_branch_build(output, "../public").is_none());
         assert!(parse_steam_branch_build(output, "missing").is_none());
+    }
+
+    #[test]
+    fn steam_update_parser_prefers_the_refreshed_appinfo_over_the_cached_one() {
+        // `app_info_update 1` rend la main avant la fin du rafraîchissement
+        // PICS : la première impression sert encore la build du dernier
+        // téléchargement, identique à celle installée. Retenir cette section
+        // faisait conclure « à jour » quelle que soit la version publiée.
+        let output = r#"
+            "branches"
+            {
+                "public"
+                {
+                    "buildid" "111111"
+                }
+            }
+            "branches"
+            {
+                "public"
+                {
+                    "buildid" "222222"
+                }
+            }
+        "#;
+        assert_eq!(
+            parse_steam_branch_build(output, "public").as_deref(),
+            Some("222222")
+        );
+    }
+
+    #[test]
+    fn steam_update_parser_keeps_the_populated_section_when_the_second_is_empty() {
+        // SteamCMD répond parfois par un objet vide au second passage : cette
+        // absence ne doit pas effacer la seule mesure disponible.
+        let output = r#"
+            "branches"
+            {
+                "public"
+                {
+                    "buildid" "333333"
+                }
+            }
+            "branches"
+            {
+            }
+        "#;
+        assert_eq!(
+            parse_steam_branch_build(output, "public").as_deref(),
+            Some("333333")
+        );
     }
 
     #[test]

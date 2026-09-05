@@ -59,14 +59,20 @@ pub struct HytaleDownloaderPlan {
 impl HytaleDownloaderPlan {
     /// Interroge le downloader officiel sur la version disponible.
     ///
-    /// `-print-version` rapporte la version de mise à jour disponible. Il était
-    /// accompagné de `-skip-update-check`, qui saute précisément la recherche
-    /// que le premier doit rapporter : la commande retombait alors sur la
-    /// version déjà installée et le panneau concluait « à jour » en permanence,
-    /// même quand le serveur de jeu annonçait lui-même une version plus récente.
-    /// Le drapeau garde tout son sens pour le téléchargement, pas ici.
+    /// Les deux drapeaux portent sur des objets distincts, ce que le
+    /// `QUICKSTART.md` livré dans l'archive officielle établit noir sur blanc :
+    /// `-print-version` affiche la version du **jeu**, tandis que
+    /// `-skip-update-check` saute la recherche de mise à jour **du
+    /// téléchargeur lui-même** — que la documentation recommande justement de
+    /// désactiver en automatisation. Les retirer ensemble n'ouvrait donc aucune
+    /// recherche supplémentaire : cela ajoutait un aller-retour réseau vers
+    /// `downloader.hytale.com` et une bannière d'auto-mise-à-jour au milieu de
+    /// la sortie à analyser, avant chaque vérification.
     pub fn version_args(&self) -> Vec<OsString> {
-        vec![OsString::from("-print-version")]
+        vec![
+            OsString::from("-print-version"),
+            OsString::from("-skip-update-check"),
+        ]
     }
 }
 
@@ -361,6 +367,154 @@ pub fn parse_printed_version(output: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Patchline interrogée par défaut, celle que le téléchargeur utilise sans
+/// `-patchline`.
+pub const DEFAULT_PATCHLINE: &str = "release";
+
+/// Jeton d'accès extrait du fichier d'identifiants du téléchargeur officiel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredAccessToken {
+    pub access_token: String,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl StoredAccessToken {
+    /// Une expiration inconnue est traitée comme utilisable : le pire cas est un
+    /// 401, que l'appelant rattrape en repassant par le téléchargeur.
+    pub fn usable_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        // Marge de sécurité : un jeton qui expire pendant la requête ne sert à rien.
+        self.expires_at
+            .is_none_or(|expiry| expiry > now + chrono::Duration::seconds(30))
+    }
+}
+
+/// Retrouve le jeton d'accès dans le document d'identifiants.
+///
+/// Le format exact n'est pas contractuel — c'est un fichier privé du
+/// téléchargeur — donc la recherche est structurelle plutôt que positionnelle :
+/// n'importe quel objet imbriqué portant `access_token` convient.
+pub fn parse_stored_access_token(credentials: &str) -> Option<StoredAccessToken> {
+    let value: Value = serde_json::from_str(credentials).ok()?;
+    find_access_token(&value)
+}
+
+fn find_access_token(value: &Value) -> Option<StoredAccessToken> {
+    let object = match value {
+        Value::Object(object) => object,
+        Value::Array(values) => return values.iter().find_map(find_access_token),
+        _ => return None,
+    };
+    let token = object
+        .get("access_token")
+        .and_then(Value::as_str)
+        .filter(|token| !token.is_empty() && token.len() <= 8192);
+    if let Some(token) = token {
+        let expires_at = ["expiry", "expires_at", "expiration"]
+            .iter()
+            .filter_map(|key| object.get(*key))
+            .filter_map(Value::as_str)
+            .find_map(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
+            .map(|expiry| expiry.with_timezone(&chrono::Utc));
+        return Some(StoredAccessToken {
+            access_token: token.to_string(),
+            expires_at,
+        });
+    }
+    object.values().find_map(find_access_token)
+}
+
+fn patchline_is_safe(patchline: &str) -> bool {
+    !patchline.is_empty()
+        && patchline.len() <= 64
+        && patchline
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        && patchline != "."
+        && patchline != ".."
+}
+
+/// Demande la version disponible à l'API de compte officielle.
+///
+/// Le point d'entrée du jeu est authentifié : `account-data.hytale.com` répond
+/// 403 sans jeton. Celui que le téléchargeur a déjà écrit suffit, ce qui évite
+/// de rapatrier ses 9 Mo et de lancer un processus à chaque vérification — et
+/// surtout n'exige pas que le serveur de jeu tourne.
+pub async fn fetch_available_version(
+    context: &InstallContext,
+    token: &StoredAccessToken,
+    patchline: &str,
+) -> Result<String, InstallerError> {
+    if !patchline_is_safe(patchline) {
+        return Err(InstallerError::new(
+            "hytale_patchline_invalid",
+            "servers.provider_response_invalid",
+        ));
+    }
+    let url = context
+        .sources
+        .hytale_account_api
+        .join(&format!("{patchline}.json"))
+        .map_err(|error| InstallerError::internal("provider_url_invalid", error))?;
+    context.sources.validate_url(&url)?;
+    let response = context
+        .client
+        .get(url)
+        .bearer_auth(&token.access_token)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|error| InstallerError::internal("provider_request_failed", error))?;
+    if !response.status().is_success() {
+        return Err(InstallerError::internal(
+            "hytale_version_request_failed",
+            format!("HTTP {}", response.status()),
+        ));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|error| InstallerError::internal("provider_request_failed", error))?;
+    parse_version_document(&body).ok_or_else(|| {
+        InstallerError::new(
+            "hytale_version_invalid",
+            "servers.provider_response_invalid",
+        )
+    })
+}
+
+/// Extrait la version d'une réponse dont le contour n'est pas documenté.
+///
+/// Accepte l'objet nommé, la chaîne nue et le texte brut : la réponse n'a pas pu
+/// être observée depuis un poste sans compte Hytale, donc la lecture reste
+/// tolérante et c'est `valid_version` qui tranche.
+pub fn parse_version_document(body: &str) -> Option<String> {
+    const KEYS: [&str; 5] = ["version", "latest", "gameVersion", "game_version", "build"];
+    match serde_json::from_str::<Value>(body) {
+        Ok(Value::String(value)) if valid_version(value.trim()) => Some(value.trim().to_string()),
+        Ok(value @ Value::Object(_)) => {
+            let mut queue = vec![&value];
+            while let Some(current) = queue.pop() {
+                let Value::Object(object) = current else {
+                    continue;
+                };
+                for key in KEYS {
+                    if let Some(found) = object.get(key).and_then(Value::as_str)
+                        && valid_version(found.trim())
+                    {
+                        return Some(found.trim().to_string());
+                    }
+                }
+                queue.extend(object.values().filter(|value| value.is_object()));
+            }
+            None
+        }
+        _ => {
+            let trimmed = body.trim();
+            valid_version(trimmed).then(|| trimmed.to_string())
+        }
+    }
 }
 
 pub fn credential_redactions(document: &str) -> Result<Vec<String>, InstallerError> {
@@ -1010,13 +1164,67 @@ mod tests {
             .collect();
 
         assert!(args.contains(&"-print-version".to_string()));
-        // `-skip-update-check` annulait la recherche que `-print-version` doit
-        // rapporter : la commande retombait sur la version installée et le
-        // panneau concluait « à jour » en permanence.
+        // Les deux drapeaux ne portent pas sur le même objet : `-print-version`
+        // affiche la version du jeu, `-skip-update-check` saute l'auto-mise à
+        // jour du téléchargeur. Le `QUICKSTART.md` de l'archive officielle
+        // recommande explicitement le second en automatisation ; le retirer
+        // n'ouvrait aucune recherche, mais ajoutait un appel réseau et une
+        // bannière au milieu de la sortie à analyser.
         assert!(
-            !args.contains(&"-skip-update-check".to_string()),
-            "la vérification de version ne doit pas sauter la recherche de mise à jour : {args:?}"
+            args.contains(&"-skip-update-check".to_string()),
+            "la vérification de version ne doit pas déclencher l'auto-mise à jour de l'outil : {args:?}"
         );
+    }
+
+    #[test]
+    fn stored_access_token_is_found_however_the_document_nests_it() {
+        let token = parse_stored_access_token(
+            r#"{"token":{"access_token":"abc.def","expiry":"2099-01-01T00:00:00Z"}}"#,
+        )
+        .expect("le jeton imbriqué doit être retrouvé");
+        assert_eq!(token.access_token, "abc.def");
+        assert!(token.usable_at(chrono::Utc::now()));
+
+        let expired =
+            parse_stored_access_token(r#"{"access_token":"x","expiry":"2000-01-01T00:00:00Z"}"#)
+                .expect("jeton présent");
+        assert!(!expired.usable_at(chrono::Utc::now()));
+
+        // Sans expiration lisible, l'essai reste permis : un 401 est rattrapé
+        // par le repli sur le téléchargeur, un renoncement ne l'est pas.
+        let undated = parse_stored_access_token(r#"{"access_token":"x"}"#).expect("jeton présent");
+        assert!(undated.usable_at(chrono::Utc::now()));
+
+        assert!(parse_stored_access_token(r#"{"refresh_token":"only"}"#).is_none());
+    }
+
+    #[test]
+    fn version_document_is_read_whatever_shape_the_provider_returns() {
+        assert_eq!(
+            parse_version_document(r#"{"version":"0.6.3"}"#).as_deref(),
+            Some("0.6.3")
+        );
+        assert_eq!(
+            parse_version_document(r#"{"game":{"latest":"0.6.3"}}"#).as_deref(),
+            Some("0.6.3")
+        );
+        assert_eq!(
+            parse_version_document(r#""0.6.3""#).as_deref(),
+            Some("0.6.3")
+        );
+        assert_eq!(parse_version_document("0.6.3\n").as_deref(), Some("0.6.3"));
+        assert_eq!(parse_version_document(r#"{"version":""}"#), None);
+        assert_eq!(parse_version_document("<html>nope</html>"), None);
+    }
+
+    #[test]
+    fn patchline_cannot_escape_the_version_path() {
+        assert!(patchline_is_safe("release"));
+        assert!(patchline_is_safe("pre-release"));
+        assert!(!patchline_is_safe("../secrets"));
+        assert!(!patchline_is_safe(".."));
+        assert!(!patchline_is_safe("a/b"));
+        assert!(!patchline_is_safe(""));
     }
 
     #[test]

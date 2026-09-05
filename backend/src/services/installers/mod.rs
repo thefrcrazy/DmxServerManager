@@ -79,6 +79,9 @@ pub struct InstallerSources {
     pub quilt_maven_base: Url,
     pub buildtools: VerifiedSource,
     pub hytale_downloader: Url,
+    /// Base authentifiée des versions de jeu, interrogée avec le jeton que le
+    /// téléchargeur officiel a déjà obtenu.
+    pub hytale_account_api: Url,
     pub adoptium_api_base: Url,
     pub bedrock_download_api: Url,
     pub bedrock_download_fallback_api: Option<Url>,
@@ -128,6 +131,10 @@ impl InstallerSources {
             },
             hytale_downloader: Url::parse("https://downloader.hytale.com/hytale-downloader.zip")
                 .expect("constant Hytale downloader URL is valid"),
+            hytale_account_api: Url::parse(
+                "https://account-data.hytale.com/game-assets/version/",
+            )
+            .expect("constant Hytale account API URL is valid"),
             adoptium_api_base: Url::parse("https://api.adoptium.net/v3/")
                 .expect("constant Adoptium API URL is valid"),
             bedrock_download_api: Url::parse(
@@ -157,6 +164,7 @@ impl InstallerSources {
                 "maven.quiltmc.org",
                 "hub.spigotmc.org",
                 "downloader.hytale.com",
+                "account-data.hytale.com",
                 "api.adoptium.net",
                 "net.web.minecraft-services.net",
                 "net-secondary.web.minecraft-services.net",
@@ -195,6 +203,7 @@ impl InstallerSources {
                 version: "fixture".to_string(),
             },
             hytale_downloader: base.join("hytale/downloader.zip").unwrap(),
+            hytale_account_api: base.join("hytale/version/").unwrap(),
             adoptium_api_base: base.join("adoptium/").unwrap(),
             bedrock_download_api: base.join("bedrock/downloads.json").unwrap(),
             bedrock_download_fallback_api: None,
