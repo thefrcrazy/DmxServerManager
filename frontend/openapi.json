@@ -1487,7 +1487,8 @@
               "not_installed",
               "up_to_date",
               "update_available",
-              "check_failed"
+              "check_failed",
+              "version_pinned"
             ]
           }
         },
@@ -1820,7 +1821,8 @@
               "not_installed",
               "up_to_date",
               "update_available",
-              "check_failed"
+              "check_failed",
+              "version_pinned"
             ]
           }
         },

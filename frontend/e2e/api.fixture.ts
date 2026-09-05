@@ -570,6 +570,10 @@ export class ApiMock {
     }
 
     private updateStatusFor(instance: Instance): Record<string, unknown> {
+        // Miroir de la règle du backend : sur les profils Minecraft, la version
+        // est arrêtée par l'utilisateur pour la compatibilité des mods, donc
+        // aucun verdict de mise à jour n'est produit.
+        const pinned = instance.profile_id.startsWith("minecraft-");
         const availableVersion = this.updateAvailable && instance.installed_version
             ? `${instance.installed_version}.next`
             : instance.installed_version;
@@ -579,11 +583,13 @@ export class ApiMock {
         return {
             state: instance.installation_state !== "installed"
                 ? "not_installed"
+                : pinned
+                ? "version_pinned"
                 : this.updateAvailable ? "update_available" : "up_to_date",
             installed_version: instance.installed_version,
             installed_build: instance.installed_build,
-            available_version: availableVersion,
-            available_build: availableBuild,
+            available_version: pinned ? null : availableVersion,
+            available_build: pinned ? null : availableBuild,
             checked_at: NOW,
         };
     }

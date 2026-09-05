@@ -48,7 +48,11 @@ export default function GameUpdateNotice({
     onStop,
 }: GameUpdateNoticeProps) {
     const { t } = useLanguage();
-    if (status.state === "not_installed") return null;
+    // Rien à afficher quand rien n'est installé, ni quand la version relève d'un
+    // choix de l'utilisateur : sur les profils Minecraft, la version est arrêtée
+    // délibérément pour garder les mods compatibles, et parler de « mise à jour »
+    // y désigne comme un retard ce qui est une décision.
+    if (status.state === "not_installed" || status.state === "version_pinned") return null;
 
     const installed = reference(status, "installed");
     const available = reference(status, "available");

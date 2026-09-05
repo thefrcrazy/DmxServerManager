@@ -443,6 +443,9 @@ export default function ServerDetail() {
 
     const running = instance.runtime_state === "running";
     const installed = instance.installation_state === "installed";
+    // Version arrêtée par l'utilisateur : le backend ne produit alors aucun
+    // verdict de mise à jour, et l'interface n'en annonce aucun.
+    const versionPinned = updateStatus?.state === "version_pinned";
     const canInstall = profile?.capabilities.includes("install") ?? false;
     const canStartStop = profile?.capabilities.includes("lifecycle") ?? false;
     const busy = action !== null || ["starting", "stopping"].includes(instance.runtime_state)
@@ -526,6 +529,12 @@ export default function ServerDetail() {
             <div className="server-actions server-detail-actions">
                 {hasPermission("job.read") && <Button as="link" to={`/activity?tab=operations&instance=${encodeURIComponent(instance.id)}`} variant="ghost" icon={<ListChecks size={17} aria-hidden="true" />}>{t("server_detail.view_jobs")}</Button>}
                 {!installed && canInstall && hasPermission("server.update_game") && <Button onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.install")}</Button>}
+                {/* Sur un profil dont la version est choisie par l'utilisateur, aucun
+                    avis de mise à jour n'est rendu — mais l'action doit rester
+                    joignable : c'est elle qui applique la version retenue en
+                    configuration. Sans cela, changer de version Minecraft n'aurait
+                    plus aucun point d'entrée une fois l'instance installée. */}
+                {installed && versionPinned && canInstall && hasPermission("server.update_game") && !running && instance.desired_state === "stopped" && <Button variant="secondary" onClick={() => void runAction("install")} disabled={busy} icon={<Download size={17} />}>{t("server_detail.update_game")}</Button>}
                 {installed && canStartStop && !running && instance.desired_state === "stopped" && hasPermission("server.start") && <Button variant="success" onClick={() => void runAction("start")} disabled={busy} icon={<Play size={17} />}>{t("servers.start")}</Button>}
                 {canCancelDesiredRun && hasPermission("server.stop") && <Button variant="secondary" onClick={() => void runAction("stop")} disabled={busy} icon={<Square size={17} />}>{t("server_detail.cancel_watchdog")}</Button>}
                 {running && canStartStop && <>

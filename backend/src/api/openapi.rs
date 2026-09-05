@@ -1794,7 +1794,7 @@ fn server_schemas() -> Value {
             "required": ["instance_id", "state", "checked_at"],
             "properties": {
                 "instance_id": {"type": "string", "format": "uuid"},
-                "state": {"enum": ["not_installed", "up_to_date", "update_available", "check_failed"]},
+                "state": {"enum": ["not_installed", "up_to_date", "update_available", "check_failed", "version_pinned"]},
                 "installed_version": {"type": ["string", "null"]},
                 "installed_build": {"type": ["string", "null"]},
                 "available_version": {"type": ["string", "null"]},
@@ -1806,7 +1806,7 @@ fn server_schemas() -> Value {
             "type": "object", "additionalProperties": false,
             "required": ["state", "installed_version", "installed_build", "available_version", "available_build", "checked_at"],
             "properties": {
-                "state": {"enum": ["not_installed", "up_to_date", "update_available", "check_failed"]},
+                "state": {"enum": ["not_installed", "up_to_date", "update_available", "check_failed", "version_pinned"]},
                 "installed_version": {"type": ["string", "null"]},
                 "installed_build": {"type": ["string", "null"]},
                 "available_version": {"type": ["string", "null"]},

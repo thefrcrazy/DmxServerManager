@@ -155,6 +155,35 @@ test("la mise à jour manuelle affiche la version installée et crée un job", a
 });
 
 test("le bouton de mise à jour reste absent quand le jeu est à jour", async ({ page }) => {
+    // Sur un profil dont le fournisseur impose la version — ici Valheim. Le cas
+    // Minecraft est différent et couvert par le test suivant : sa version étant
+    // choisie, l'action reste offerte alors qu'aucun avis n'est rendu.
+    const valheim = GAME_PROFILES.find((profile) => profile.id === "valheim")!;
+    const profile = GameProfileSchema.parse({
+        ...valheim,
+        capabilities: ["settings", "install", "lifecycle", "console", "files", "backups", "metrics"],
+    });
+    const api = new ApiMock({
+        profiles: GAME_PROFILES.map((candidate) => candidate.id === profile.id ? profile : candidate),
+        updateAvailable: false,
+    });
+    await api.install(page);
+
+    await page.goto(`/servers/${INSTANCES[0]!.id}`);
+
+    await expect.poll(() => api.findRequest(
+        "GET",
+        `/servers/${INSTANCES[0]!.id}/update-status`,
+    )).toBeDefined();
+    await expect(page.getByText("Jeu à jour d’après le fournisseur.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mettre à jour le jeu" })).toHaveCount(0);
+});
+
+test("un profil Minecraft n’annonce aucune mise à jour mais garde l’action", async ({ page }) => {
+    // La version d'un serveur Minecraft est choisie délibérément, pour la
+    // compatibilité des mods : l'annoncer en retard désignait comme un retard ce
+    // qui est une décision. L'action, elle, doit rester joignable — c'est elle
+    // qui applique la version retenue en configuration.
     const minecraft = GAME_PROFILES.find((profile) => profile.id === "minecraft-java-vanilla")!;
     const profile = GameProfileSchema.parse({
         ...minecraft,
@@ -162,7 +191,7 @@ test("le bouton de mise à jour reste absent quand le jeu est à jour", async ({
     });
     const api = new ApiMock({
         profiles: GAME_PROFILES.map((candidate) => candidate.id === profile.id ? profile : candidate),
-        updateAvailable: false,
+        updateAvailable: true,
     });
     await api.install(page);
 
@@ -172,7 +201,10 @@ test("le bouton de mise à jour reste absent quand le jeu est à jour", async ({
         "GET",
         "/servers/22222222-2222-4222-8222-222222222222/update-status",
     )).toBeDefined();
-    await expect(page.getByRole("button", { name: "Mettre à jour le jeu" })).toHaveCount(0);
+    await expect(page.locator(".update-notice")).toHaveCount(0);
+    await expect(page.getByText("Mise à jour du jeu disponible")).toHaveCount(0);
+    await expect(page.getByText("Jeu à jour d’après le fournisseur.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mettre à jour le jeu" })).toBeVisible();
 });
 
 test("un refresh restaure l’interaction Bedrock persistée puis reprend le même job avec SHA-256", async ({ page }) => {
@@ -276,6 +308,14 @@ test("la mise à jour se voit depuis la liste et le tableau de bord", async ({ p
 
     await page.goto("/servers");
     await expect(page.getByText("Mise à jour", { exact: true }).first()).toBeVisible();
+
+    // Les profils Minecraft n'en portent jamais : leur version est arrêtée par
+    // l'utilisateur pour garder les mods compatibles. Les y annoncer en retard
+    // noyait les instances qui attendaient réellement une mise à jour.
+    const rows = page.locator(".server-list-table tbody tr, .server-card");
+    const minecraftRow = rows.filter({ hasText: "Minecraft" });
+    await expect(minecraftRow).not.toHaveCount(0);
+    await expect(minecraftRow.locator(".update-pill")).toHaveCount(0);
 
     await page.goto("/dashboard");
     const counter = page.getByRole("region", { name: "Vue d’ensemble opérationnelle" })

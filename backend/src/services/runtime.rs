@@ -117,6 +117,8 @@ pub enum GameUpdateState {
     UpToDate,
     UpdateAvailable,
     CheckFailed,
+    /// Version arrêtée par l'utilisateur, pas par le fournisseur.
+    VersionPinned,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -379,8 +381,9 @@ impl RuntimeManager {
     /// Rafraîchit le verdict des instances installées dont la ligne conservée a
     /// expiré. Les instances à jour depuis peu ne relancent aucun processus.
     pub async fn sweep_game_updates(&self) {
-        let installed: Vec<String> = match sqlx::query_scalar(
-            "SELECT id FROM instances WHERE installation_state = 'installed' ORDER BY id",
+        let installed: Vec<(String, String)> = match sqlx::query_as(
+            "SELECT id, profile_id FROM instances WHERE installation_state = 'installed' \
+             ORDER BY id",
         )
         .fetch_all(&self.inner.pool)
         .await
@@ -391,11 +394,18 @@ impl RuntimeManager {
                 return;
             }
         };
-        for instance_id in installed {
-            if let Err(error) = self.game_update_status(&instance_id, false).await {
+        for (instance_id, profile_id) in installed {
+            // Un profil épinglé se tranche sans appeler personne : forcer le
+            // recalcul y est gratuit, et c'est ce qui remplace tout de suite un
+            // verdict « mise à jour disponible » conservé avant que ces profils
+            // ne soient exclus, au lieu d'attendre l'expiration de la ligne.
+            let pinned = game_version_is_user_pinned(&profile_id);
+            if let Err(error) = self.game_update_status(&instance_id, pinned).await {
                 tracing::warn!(instance_id, %error, "background game update check failed");
             }
-            tokio::time::sleep(GAME_UPDATE_SWEEP_SPACING).await;
+            if !pinned {
+                tokio::time::sleep(GAME_UPDATE_SWEEP_SPACING).await;
+            }
         }
     }
 
@@ -406,6 +416,14 @@ impl RuntimeManager {
                 None,
                 None,
                 GameUpdateState::NotInstalled,
+            );
+        }
+        if game_version_is_user_pinned(&instance.profile_id) {
+            return game_update_status_from_target(
+                instance,
+                None,
+                None,
+                GameUpdateState::VersionPinned,
             );
         }
         // Les instances Steam installées avant que le panneau ne conserve la
@@ -5430,6 +5448,16 @@ async fn load_runtime_instance(
     .ok_or_else(|| OperationFailure::new("server_not_found", "servers.not_found"))
 }
 
+/// Indique si la version installée relève d'un choix de l'utilisateur.
+///
+/// Les profils Minecraft laissent choisir la version, et ce choix est
+/// délibéré : il conditionne la compatibilité des mods. Annoncer une « mise à
+/// jour disponible » y désigne comme un retard ce qui est une décision, et
+/// noyait les deux instances qui, elles, en attendaient vraiment une.
+fn game_version_is_user_pinned(profile_id: &str) -> bool {
+    profile_id.starts_with("minecraft-")
+}
+
 fn game_update_fingerprint(instance: &RuntimeInstance) -> String {
     format!(
         "{}\0{}\0{}\0{}\0{}",
@@ -5514,6 +5542,7 @@ fn parse_update_state(value: &str) -> Option<GameUpdateState> {
         "up_to_date" => Some(GameUpdateState::UpToDate),
         "update_available" => Some(GameUpdateState::UpdateAvailable),
         "check_failed" => Some(GameUpdateState::CheckFailed),
+        "version_pinned" => Some(GameUpdateState::VersionPinned),
         _ => None,
     }
 }
@@ -5524,6 +5553,7 @@ fn update_state_name(state: GameUpdateState) -> &'static str {
         GameUpdateState::UpToDate => "up_to_date",
         GameUpdateState::UpdateAvailable => "update_available",
         GameUpdateState::CheckFailed => "check_failed",
+        GameUpdateState::VersionPinned => "version_pinned",
     }
 }
 
@@ -9097,12 +9127,39 @@ mod tests {
     }
 
     #[test]
+    fn minecraft_versions_are_user_pinned_and_never_reported_as_outdated() {
+        // La version d'un serveur Minecraft est choisie délibérément, pour la
+        // compatibilité des mods. Annoncer une mise à jour y désigne comme un
+        // retard ce qui est une décision, et noyait les profils qui en
+        // attendaient réellement une.
+        for profile in [
+            "minecraft-java",
+            "minecraft-java-vanilla",
+            "minecraft-java-fabric",
+            "minecraft-java-paper",
+            "minecraft-bedrock",
+        ] {
+            assert!(
+                game_version_is_user_pinned(profile),
+                "{profile} doit rester sur la version choisie"
+            );
+        }
+        for profile in ["hytale", "valheim", "palworld", "steam", "steam_custom"] {
+            assert!(
+                !game_version_is_user_pinned(profile),
+                "{profile} suit la version du fournisseur"
+            );
+        }
+    }
+
+    #[test]
     fn stored_update_states_round_trip_through_their_database_name() {
         for state in [
             GameUpdateState::NotInstalled,
             GameUpdateState::UpToDate,
             GameUpdateState::UpdateAvailable,
             GameUpdateState::CheckFailed,
+            GameUpdateState::VersionPinned,
         ] {
             assert_eq!(parse_update_state(update_state_name(state)), Some(state));
         }

@@ -1669,7 +1669,7 @@ export interface components {
             installed_build: string | null;
             installed_version: string | null;
             /** @enum {unknown} */
-            state: "not_installed" | "up_to_date" | "update_available" | "check_failed";
+            state: "not_installed" | "up_to_date" | "update_available" | "check_failed" | "version_pinned";
         };
         HealthResponse: {
             /** @constant */
@@ -1751,7 +1751,7 @@ export interface components {
             /** Format: uuid */
             instance_id: string;
             /** @enum {unknown} */
-            state: "not_installed" | "up_to_date" | "update_available" | "check_failed";
+            state: "not_installed" | "up_to_date" | "update_available" | "check_failed" | "version_pinned";
         };
         Job: {
             /** Format: date-time */
