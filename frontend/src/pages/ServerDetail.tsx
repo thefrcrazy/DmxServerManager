@@ -133,14 +133,6 @@ export default function ServerDetail() {
     }, [loadConnection, loadInstance]);
 
     useEffect(() => {
-        if (instance?.installation_state !== "installed") {
-            setUpdateStatus(null);
-            return;
-        }
-        void loadUpdateStatus();
-    }, [instance?.installation_state, instance?.installed_build, instance?.installed_version, loadUpdateStatus]);
-
-    useEffect(() => {
         if (!instance) return;
         setPageTitle(instance.name, gameProfileVisual(instance.profile_id).label, { to: "/servers" });
         let active = true;
@@ -240,6 +232,24 @@ export default function ServerDetail() {
         onServerUpdate: loadInstance,
         onStatusChange,
     });
+
+    useEffect(() => {
+        if (instance?.installation_state !== "installed") {
+            setUpdateStatus(null);
+            return;
+        }
+        void loadUpdateStatus();
+        // `events.updateRevision` couvre le cas où rien ne bouge côté instance :
+        // un serveur en marche qui annonce lui-même une version plus récente ne
+        // change ni son état d'installation ni sa version installée, et l'avis
+        // serait resté sur le verdict précédent jusqu'au prochain chargement.
+    }, [
+        events.updateRevision,
+        instance?.installation_state,
+        instance?.installed_build,
+        instance?.installed_version,
+        loadUpdateStatus,
+    ]);
 
     useEffect(() => {
         setPlayersLoading(true);

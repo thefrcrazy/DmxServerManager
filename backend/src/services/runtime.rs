@@ -361,13 +361,33 @@ impl RuntimeManager {
             return Ok(stored);
         }
 
-        let status = self.compute_game_update_status(&instance).await;
+        let mut status = self.compute_game_update_status(&instance).await;
         let previous = load_stored_update_check_any(&self.inner.pool, instance_id).await?;
+
+        // Un fournisseur momentanément injoignable n'efface pas une mise à jour
+        // déjà établie. L'empreinte identique signifie que rien n'a bougé côté
+        // installation : la mise à jour constatée auparavant est donc toujours
+        // en attente, et la remplacer par « impossible de vérifier » ferait
+        // disparaître le seul signal utile — en particulier celui qu'un serveur
+        // en marche a annoncé lui-même, que ce contrôle-ci ne sait pas refaire.
+        if status.state == GameUpdateState::CheckFailed
+            && let Some((kept, _)) = previous.as_ref().filter(|(entry, stored_fingerprint)| {
+                entry.state == GameUpdateState::UpdateAvailable
+                    && *stored_fingerprint == fingerprint
+            })
+        {
+            tracing::info!(
+                instance_id,
+                "keeping the previously established update verdict over a failed check"
+            );
+            status = kept.clone();
+        }
         store_update_check(&self.inner.pool, instance_id, &fingerprint, &status).await?;
 
         // Une mise à jour qui apparaît doit se voir sans recharger la page.
         if status.state == GameUpdateState::UpdateAvailable
-            && previous.as_ref().map(|entry| entry.state) != Some(GameUpdateState::UpdateAvailable)
+            && previous.as_ref().map(|(entry, _)| entry.state)
+                != Some(GameUpdateState::UpdateAvailable)
         {
             self.inner.events.publish(
                 "server.update_available",
@@ -5450,12 +5470,16 @@ async fn load_runtime_instance(
 
 /// Indique si la version installée relève d'un choix de l'utilisateur.
 ///
-/// Les profils Minecraft laissent choisir la version, et ce choix est
-/// délibéré : il conditionne la compatibilité des mods. Annoncer une « mise à
-/// jour disponible » y désigne comme un retard ce qui est une décision, et
-/// noyait les deux instances qui, elles, en attendaient vraiment une.
+/// Minecraft Java laisse retenir n'importe quelle version, et ce choix est
+/// délibéré : c'est lui qui conditionne la compatibilité des mods, chargeurs
+/// compris. Annoncer une « mise à jour disponible » y désigne comme un retard
+/// ce qui est une décision.
+///
+/// Bedrock est exclu de cette règle : son serveur dédié suit la version que
+/// Mojang publie, les clients ne se connectent qu'à celle-ci, et rester en
+/// arrière y est un vrai retard — pas un choix.
 fn game_version_is_user_pinned(profile_id: &str) -> bool {
-    profile_id.starts_with("minecraft-")
+    profile_id.starts_with("minecraft-java")
 }
 
 fn game_update_fingerprint(instance: &RuntimeInstance) -> String {
@@ -5574,10 +5598,11 @@ fn update_check_is_fresh(state: GameUpdateState, checked_at: &str) -> bool {
     age.to_std().is_ok_and(|age| age < ttl)
 }
 
+/// Verdict conservé et l'empreinte sur laquelle il portait, périmé ou non.
 async fn load_stored_update_check_any(
     pool: &DbPool,
     instance_id: &str,
-) -> Result<Option<GameUpdateStatus>, AppError> {
+) -> Result<Option<(GameUpdateStatus, String)>, AppError> {
     let row: Option<StoredUpdateCheck> = sqlx::query_as(
         "SELECT state, installed_version, installed_build, available_version, available_build, \
          fingerprint, checked_at FROM instance_update_checks WHERE instance_id = ?",
@@ -5585,7 +5610,10 @@ async fn load_stored_update_check_any(
     .bind(instance_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.and_then(StoredUpdateCheck::into_status))
+    Ok(row.and_then(|row| {
+        let fingerprint = row.fingerprint.clone();
+        row.into_status().map(|status| (status, fingerprint))
+    }))
 }
 
 /// Verdict conservé, à condition qu'il porte sur la même chose et qu'il ne soit
@@ -8102,20 +8130,47 @@ struct HytaleRuntimeVersionDetector {
     pending_version: Option<(String, u8)>,
 }
 
+/// Ce que la console du serveur vient d'apprendre sur les versions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HytaleRuntimeObservation {
+    /// La version que le serveur exécute réellement.
+    Installed(String),
+    /// Le serveur a lui-même constaté qu'une version plus récente existe.
+    UpdateAvailable {
+        available: String,
+        current: Option<String>,
+    },
+}
+
 impl HytaleRuntimeVersionDetector {
-    fn observe(&mut self, line: &str) -> Option<String> {
+    fn observe(&mut self, line: &str) -> Option<HytaleRuntimeObservation> {
+        // Le serveur annonce lui-même le résultat de sa propre recherche. C'est
+        // la source la plus sûre dont dispose le panneau : elle ne dépend ni
+        // d'un jeton, ni d'un processus externe, et elle est publiée par le jeu
+        // au moment où il la constate. Elle était pourtant ignorée — seule la
+        // version installée était lue, et cette ligne-ci passait sans effet.
+        if let Some(captures) = HYTALE_UPDATE_AVAILABLE_PATTERN.captures(line) {
+            self.pending_version = None;
+            return Some(HytaleRuntimeObservation::UpdateAvailable {
+                available: captures.get(1)?.as_str().to_string(),
+                current: captures.get(2).map(|value| value.as_str().to_string()),
+            });
+        }
         if let Some(version) = regex_version_capture(&HYTALE_LIVE_CONFIG_VERSION_PATTERN, line)
             .or_else(|| regex_version_capture(&HYTALE_LATEST_VERSION_PATTERN, line))
         {
             self.pending_version = None;
-            return Some(version);
+            return Some(HytaleRuntimeObservation::Installed(version));
         }
         if let Some(version) = regex_version_capture(&HYTALE_FOUND_VERSION_PATTERN, line) {
             self.pending_version = Some((version, 6));
             return None;
         }
         if HYTALE_ALREADY_LATEST_PATTERN.is_match(line) {
-            return self.pending_version.take().map(|(version, _)| version);
+            return self
+                .pending_version
+                .take()
+                .map(|(version, _)| HytaleRuntimeObservation::Installed(version));
         }
         if let Some((_, remaining)) = self.pending_version.as_mut() {
             *remaining = remaining.saturating_sub(1);
@@ -8146,10 +8201,65 @@ static HYTALE_FOUND_VERSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\bfound version\s*:\s*([0-9][0-9a-z._+-]{0,63})(?:\s|$)")
         .expect("constant Hytale found version regex is valid")
 });
+/// « Update available: 0.6.3 (current: 0.5.7) », tel que le module de mise à
+/// jour du serveur l'imprime. La version courante est facultative : seule la
+/// version disponible fait le verdict.
+static HYTALE_UPDATE_AVAILABLE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\bupdate available\s*:\s*([0-9][0-9a-z._+-]{0,63})\s*(?:\(\s*current\s*:\s*([0-9][0-9a-z._+-]{0,63})\s*\))?",
+    )
+    .expect("constant Hytale update-available regex is valid")
+});
 static HYTALE_ALREADY_LATEST_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\balready running the latest version(?:\.|\s*$)")
         .expect("constant Hytale already-latest regex is valid")
 });
+
+/// Conserve le verdict qu'un serveur en marche vient d'annoncer lui-même.
+///
+/// Écrit dans la même table que les vérifications auprès du fournisseur, avec
+/// l'empreinte courante de l'instance : la pastille de la liste, le décompte du
+/// tableau de bord et l'avis de la page d'instance s'appuient tous dessus, et
+/// n'ont donc rien de particulier à connaître de cette provenance.
+async fn record_runtime_update_announcement(
+    inner: &RuntimeInner,
+    instance_id: &str,
+    available: &str,
+    current: Option<String>,
+) {
+    let instance = match load_runtime_instance(&inner.pool, instance_id).await {
+        Ok(instance) => instance,
+        Err(error) => {
+            tracing::warn!(%instance_id, code = error.code, "could not load the instance announcing an update");
+            return;
+        }
+    };
+    if instance.installation_state != "installed" {
+        return;
+    }
+    let status = GameUpdateStatus {
+        state: GameUpdateState::UpdateAvailable,
+        // La version que le jeu dit exécuter prime sur celle enregistrée : elle
+        // vient du processus en cours, l'autre d'une installation passée.
+        installed_version: current.or_else(|| instance.installed_version.clone()),
+        installed_build: instance.installed_build.clone(),
+        available_version: Some(available.to_string()),
+        available_build: None,
+        checked_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let fingerprint = game_update_fingerprint(&instance);
+    if let Err(error) = store_update_check(&inner.pool, instance_id, &fingerprint, &status).await {
+        tracing::warn!(%instance_id, %error, "could not persist the announced game update");
+        return;
+    }
+    // Même événement que la vérification auprès du fournisseur : la liste et la
+    // page d'instance y réagissent déjà, sans rien savoir de la provenance.
+    inner.events.publish(
+        "server.update_available",
+        Some(instance_id.to_string()),
+        serde_json::to_value(&status).unwrap_or(Value::Null),
+    );
+}
 
 fn spawn_hytale_runtime_version_observer(
     inner: Arc<RuntimeInner>,
@@ -8159,8 +8269,14 @@ fn spawn_hytale_runtime_version_observer(
     tokio::spawn(async move {
         let mut detector = HytaleRuntimeVersionDetector::default();
         while let Some(line) = receiver.recv().await {
-            let Some(version) = detector.observe(&line) else {
-                continue;
+            let version = match detector.observe(&line) {
+                Some(HytaleRuntimeObservation::Installed(version)) => version,
+                Some(HytaleRuntimeObservation::UpdateAvailable { available, current }) => {
+                    record_runtime_update_announcement(&inner, &instance_id, &available, current)
+                        .await;
+                    continue;
+                }
+                None => continue,
             };
             let now = chrono::Utc::now().to_rfc3339();
             let update = sqlx::query(
@@ -9183,15 +9299,28 @@ mod tests {
             "minecraft-java",
             "minecraft-java-vanilla",
             "minecraft-java-fabric",
+            "minecraft-java-forge",
+            "minecraft-java-neoforge",
             "minecraft-java-paper",
-            "minecraft-bedrock",
+            "minecraft-java-purpur",
+            "minecraft-java-quilt",
+            "minecraft-java-spigot",
         ] {
             assert!(
                 game_version_is_user_pinned(profile),
                 "{profile} doit rester sur la version choisie"
             );
         }
-        for profile in ["hytale", "valheim", "palworld", "steam", "steam_custom"] {
+        // Bedrock suit la version publiée par Mojang : les clients ne se
+        // connectent qu'à celle-ci, donc un retard y est un vrai retard.
+        for profile in [
+            "minecraft-bedrock",
+            "hytale",
+            "valheim",
+            "palworld",
+            "steam",
+            "steam_custom",
+        ] {
             assert!(
                 !game_version_is_user_pinned(profile),
                 "{profile} suit la version du fournisseur"
@@ -11213,12 +11342,14 @@ mod tests {
 
     #[test]
     fn hytale_runtime_version_detector_requires_an_authoritative_confirmation() {
+        let installed =
+            |version: &str| Some(HytaleRuntimeObservation::Installed(version.to_string()));
         let mut detector = HytaleRuntimeVersionDetector::default();
         assert_eq!(
             detector.observe(
                 "[LiveConfigModule] LiveConfig updated: version=9addd45d:v=0.5.7, 5 flag(s)"
             ),
-            Some("0.5.7".to_string())
+            installed("0.5.7")
         );
         assert_eq!(
             detector.observe("[UpdateService] Found version: 0.5.8"),
@@ -11226,13 +11357,57 @@ mod tests {
         );
         assert_eq!(
             detector.observe("Already running the latest version."),
-            Some("0.5.8".to_string())
+            installed("0.5.8")
         );
         assert_eq!(
             detector.observe("Already running the latest version: 0.5.9"),
-            Some("0.5.9".to_string())
+            installed("0.5.9")
         );
         assert_eq!(detector.observe("Found version: ../../escape"), None);
+    }
+
+    #[test]
+    fn a_running_server_announcing_an_update_is_believed_over_its_own_boot_version() {
+        // Le serveur publie le résultat de sa propre recherche. Rien ne le
+        // consommait : « Found version » n'était retenu que comme candidat à la
+        // version installée, puis abandonné faute de confirmation « already
+        // latest » — si bien que la seule source sûre passait sans effet.
+        let mut detector = HytaleRuntimeVersionDetector::default();
+        assert_eq!(
+            detector.observe(
+                "[LiveConfigModule] LiveConfig updated: version=c3e5c8e9:v=0.5.7, 6 flag(s)"
+            ),
+            Some(HytaleRuntimeObservation::Installed("0.5.7".to_string()))
+        );
+        assert_eq!(
+            detector.observe("[UpdateService] Found version: 0.6.3"),
+            None
+        );
+        assert_eq!(
+            detector.observe("[UpdateModule] Update available: 0.6.3 (current: 0.5.7)"),
+            Some(HytaleRuntimeObservation::UpdateAvailable {
+                available: "0.6.3".to_string(),
+                current: Some("0.5.7".to_string()),
+            })
+        );
+
+        // La version courante est facultative, et une ligne suivante ne doit pas
+        // être prise pour la confirmation du candidat abandonné.
+        assert_eq!(
+            detector.observe("[UpdateModule] Update available: 0.6.4"),
+            Some(HytaleRuntimeObservation::UpdateAvailable {
+                available: "0.6.4".to_string(),
+                current: None,
+            })
+        );
+        assert_eq!(
+            detector.observe("Already running the latest version."),
+            None
+        );
+        assert_eq!(
+            detector.observe("[UpdateModule] Update available: soon"),
+            None
+        );
     }
 
     #[tokio::test]

@@ -570,10 +570,11 @@ export class ApiMock {
     }
 
     private updateStatusFor(instance: Instance): Record<string, unknown> {
-        // Miroir de la règle du backend : sur les profils Minecraft, la version
-        // est arrêtée par l'utilisateur pour la compatibilité des mods, donc
-        // aucun verdict de mise à jour n'est produit.
-        const pinned = instance.profile_id.startsWith("minecraft-");
+        // Miroir de la règle du backend : sur Minecraft Java, la version est
+        // arrêtée par l'utilisateur pour la compatibilité des mods, donc aucun
+        // verdict n'est produit. Bedrock en est exclu — son serveur suit la
+        // version publiée par Mojang, seule à laquelle les clients se connectent.
+        const pinned = instance.profile_id.startsWith("minecraft-java");
         const availableVersion = this.updateAvailable && instance.installed_version
             ? `${instance.installed_version}.next`
             : instance.installed_version;

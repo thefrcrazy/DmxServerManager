@@ -31,6 +31,8 @@ interface UseServerEventsReturn {
     clearLogs: () => void;
     operationRevision: number;
     playerRevision: number;
+    /** Incrémenté quand le verdict de mise à jour du jeu change. */
+    updateRevision: number;
     scheduleRevision: number;
     pendingDeviceAuthorization: HytaleDeviceAuthorization | null;
     pendingBedrockArchive: BedrockArchiveAuthorization | null;
@@ -84,6 +86,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
     const [isConnected, setIsConnected] = useState(false);
     const [operationRevision, setOperationRevision] = useState(0);
     const [playerRevision, setPlayerRevision] = useState(0);
+    const [updateRevision, setUpdateRevision] = useState(0);
     const [scheduleRevision, setScheduleRevision] = useState(0);
     const [pendingDeviceAuthorization, setPendingDeviceAuthorization] = useState<HytaleDeviceAuthorization | null>(null);
     const [pendingBedrockArchive, setPendingBedrockArchive] = useState<BedrockArchiveAuthorization | null>(null);
@@ -166,6 +169,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
             setOperationRevision((revision) => revision + 1);
         }
         if (type === "server.players") setPlayerRevision((revision) => revision + 1);
+        if (type === "server.update_available") setUpdateRevision((revision) => revision + 1);
         if (type.startsWith("schedule.")) setScheduleRevision((revision) => revision + 1);
         if (type.startsWith("server.") || type.startsWith("job.")) onServerUpdate();
     }, [appendLog, logSource, onServerUpdate, onStatusChange, serverId]);
@@ -226,7 +230,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         source.onmessage = applyEvent;
         for (const type of [
             "server.log", "server.updated", "server.state", "server.started", "server.stopped", "server.crashed",
-            "server.metrics", "server.players", "server.update_applied", "server.update_failed", "server.update_rolled_back",
+            "server.metrics", "server.players", "server.update_available", "server.update_applied", "server.update_failed", "server.update_rolled_back",
             "job.updated", "job.waiting_for_user",
             "backup.created", "backup.deleted", "backup.restored", "backup.failed", "backup.restore_failed",
             "file.uploaded", "file.text_written", "file.directory_created", "file.deleted",
@@ -271,6 +275,7 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         clearLogs,
         operationRevision,
         playerRevision,
+        updateRevision,
         scheduleRevision,
         pendingDeviceAuthorization,
         pendingBedrockArchive,
@@ -286,5 +291,6 @@ export function useServerEvents({ serverId, serverStatus, logSource, onServerUpd
         playerRevision,
         scheduleRevision,
         sendCommand,
+        updateRevision,
     ]);
 }
