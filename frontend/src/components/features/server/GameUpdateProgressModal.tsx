@@ -14,15 +14,56 @@ import type { Job } from "@/schemas/api";
  * récupération, puis bascule du répertoire validé. Les bornes sont donc tenues
  * larges plutôt que nommées finement à tort.
  */
-const PHASES: ReadonlyArray<{ id: string; until: number }> = [
-    { id: "prepare", until: 10 },
-    { id: "download", until: 80 },
-    { id: "apply", until: 100 },
+const PHASES: ReadonlyArray<{ id: string; from: number; until: number }> = [
+    { id: "prepare", from: 0, until: 10 },
+    { id: "download", from: 10, until: 80 },
+    { id: "apply", from: 80, until: 100 },
 ];
 
 function phaseIndex(progress: number): number {
     const index = PHASES.findIndex((phase) => progress < phase.until);
     return index === -1 ? PHASES.length : index;
+}
+
+/** Barre de progression ASCII que les téléchargeurs impriment ligne à ligne. */
+const ASCII_BAR = /\[[=\-#>.\s]{6,}\]\s*/g;
+/** Pourcentage que la commande rapporte pour sa propre étape. */
+const REPORTED_PERCENT = /(\d{1,3}(?:[.,]\d+)?)\s*%/;
+
+/**
+ * Progression affichée, la plus fine dont on dispose.
+ *
+ * Les jalons du job sont grossiers — ils sautent de 10 à 80 — si bien que la
+ * barre restait plantée à 30 % pendant qu'une ligne juste en dessous annonçait
+ * « 95.0% ». Les deux disaient vrai sans se contredire : l'un mesure le job,
+ * l'autre l'étape en cours. On projette donc le second dans la plage du jalon
+ * courant, sans jamais reculer.
+ */
+function displayedProgress(jobProgress: number, reported: number | null): number {
+    const phase = PHASES[phaseIndex(jobProgress)];
+    if (reported === null || !phase) return jobProgress;
+    const projected = phase.from + (reported / 100) * (phase.until - phase.from);
+    return Math.min(100, Math.round(Math.max(jobProgress, projected)));
+}
+
+/** Pourcentage rapporté par la ligne, quand elle en porte un. */
+function reportedPercent(line: string | null): number | null {
+    const match = line?.match(REPORTED_PERCENT);
+    if (!match?.[1]) return null;
+    const value = Number.parseFloat(match[1].replace(",", "."));
+    return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+}
+
+/**
+ * La ligne débarrassée de sa barre ASCII.
+ *
+ * Elle occupait toute la largeur et poussait la seule information utile — le
+ * pourcentage et les tailles — hors du cadre, où l'ellipsis la coupait en
+ * plein milieu.
+ */
+function withoutAsciiBar(line: string): string {
+    const stripped = line.replace(ASCII_BAR, "").trim();
+    return stripped.length > 0 ? stripped : line.trim();
 }
 
 interface GameUpdateProgressModalProps {
@@ -50,9 +91,10 @@ export default function GameUpdateProgressModal({
     const { t } = useLanguage();
     const { containerRef, onKeyDown } = useFocusTrap<HTMLDivElement>({ onEscape: onClose });
 
-    const progress = job?.progress ?? 0;
+    const jobProgress = job?.progress ?? 0;
     const failed = job?.state === "failed" || job?.state === "cancelled";
-    const current = phaseIndex(progress);
+    const current = phaseIndex(jobProgress);
+    const progress = displayedProgress(jobProgress, reportedPercent(latestLine));
 
     return (
         <div className="dialog-overlay">
@@ -147,7 +189,7 @@ export default function GameUpdateProgressModal({
                     // séquences d'échappement, qui s'affichaient telles quelles
                     // (« [32mServeur prêt [0m »).
                     <p className="update-progress__line" aria-live="polite">
-                        <SafeAnsi>{latestLine}</SafeAnsi>
+                        <SafeAnsi>{withoutAsciiBar(latestLine)}</SafeAnsi>
                     </p>
                 )}
 

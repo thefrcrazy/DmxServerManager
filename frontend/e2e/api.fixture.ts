@@ -473,6 +473,8 @@ export interface ApiMockOptions {
     hytaleDeviceAuthorization?: boolean;
     /** Nombre de lignes servies par l'historique de console. */
     logHistoryLines?: number;
+    /** Dernière ligne de l'historique, pour les sorties à format particulier. */
+    logHistoryTail?: string;
     jobs?: Job[];
     catalogPackages?: CatalogPackage[];
     activeTheme?: ActiveTheme;
@@ -519,6 +521,7 @@ export class ApiMock {
     authenticated: boolean;
     readonly hytaleDeviceAuthorization: boolean;
     readonly logHistoryLines: number;
+    readonly logHistoryTail: string | null;
     readonly updateAvailable: boolean;
 
     constructor(options: ApiMockOptions = {}) {
@@ -526,6 +529,7 @@ export class ApiMock {
         this.needsSetup = options.needsSetup ?? false;
         this.hytaleDeviceAuthorization = options.hytaleDeviceAuthorization ?? false;
         this.logHistoryLines = options.logHistoryLines ?? 0;
+        this.logHistoryTail = options.logHistoryTail ?? null;
         this.updateAvailable = options.updateAvailable ?? false;
         this.user = UserInfoSchema.parse(options.user ?? OWNER);
         this.profiles = (options.profiles ?? GAME_PROFILES).map((profile) => GameProfileSchema.parse(profile));
@@ -1514,6 +1518,9 @@ export class ApiMock {
                 stream: source,
                 message: `[2026/09/05 08:0${index % 10}:00 INFO] [Fixture] ligne ${index + 1}`,
             }));
+            if (this.logHistoryTail !== null) {
+                items.push({ stream: source, message: this.logHistoryTail });
+            }
             return this.json(route, 200, { source, items });
         }
 

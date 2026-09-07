@@ -437,3 +437,45 @@ test("l’autorisation Hytale s’affiche au centre, code détaché de son libel
     await expect(modal).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Reprendre l’authentification" })).toBeVisible();
 });
+
+test("la progression suit le pourcentage rapporté par l’étape en cours", async ({ page }) => {
+    // Les jalons du job sautent de 10 à 80 : la barre restait plantée à 30 %
+    // pendant qu'une ligne juste en dessous annonçait « 95.0% ». Les deux
+    // disaient vrai — l'un mesure le job, l'autre l'étape — mais la fenêtre se
+    // contredisait à l'écran.
+    const updating = { ...INSTANCES[0]!, installation_state: "updating" as const };
+    const api = new ApiMock({
+        instances: [updating, INSTANCES[1]!],
+        updateAvailable: true,
+        logHistoryLines: 5,
+        logHistoryTail: "[========================================= ] 95.0% (1.4 GiB/1.5 GiB)",
+        jobs: [{
+            id: "77777777-7777-4777-8777-777777777777",
+            instance_id: updating.id,
+            kind: "server.install",
+            state: "running",
+            progress: 30,
+            requested_by: "owner",
+            error_code: null,
+            error_message: null,
+            created_at: "2026-09-07T08:00:00.000Z",
+            started_at: "2026-09-07T08:00:01.000Z",
+            finished_at: null,
+            interaction: null,
+        }],
+    });
+    await api.install(page);
+
+    await page.goto(`/servers/${updating.id}`);
+
+    const modal = page.getByRole("dialog", { name: /Mise à jour de/ });
+    await expect(modal).toBeVisible();
+    // 10 % + 95 % de la plage 10–80 : la phase reste la bonne, la position s'affine.
+    await expect(modal.locator("progress")).toHaveJSProperty("value", 77);
+    await expect(modal.getByText("Récupération et vérification")).toBeVisible();
+
+    // La barre ASCII occupait toute la largeur et poussait le pourcentage hors
+    // du cadre, où l'ellipsis le coupait en plein milieu.
+    const line = modal.locator(".update-progress__line");
+    await expect(line).toHaveText("95.0% (1.4 GiB/1.5 GiB)");
+});

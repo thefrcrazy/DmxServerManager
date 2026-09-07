@@ -184,13 +184,14 @@
 // des dialogues pour ne pas introduire une seconde grammaire de fenêtre.
 .update-progress {
     max-width: 30rem;
+    padding: var(--spacing-6);
 
     &__head {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: var(--spacing-3);
-        margin-bottom: var(--spacing-4);
+        margin-bottom: var(--spacing-5);
 
         h2 {
             margin: 0;
@@ -200,22 +201,29 @@
         }
     }
 
+    // L'écart de versions est le sujet de la fenêtre : il porte donc le poids
+    // typographique, sur une surface qui le détache du reste.
     &__versions {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: var(--spacing-3);
+        gap: var(--spacing-4);
         margin: 0 0 var(--spacing-5);
+        padding: var(--spacing-4);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-secondary);
         color: var(--color-text-muted);
     }
 
     &__version {
-        color: var(--color-text-secondary);
+        color: var(--color-text-muted);
         font-family: var(--font-family-mono);
-        font-size: var(--font-size-base);
+        font-size: 1.1rem;
 
         &--next {
             color: var(--color-accent);
+            font-size: 1.35rem;
             font-weight: 650;
         }
     }
@@ -223,35 +231,46 @@
     &__bar {
         display: flex;
         align-items: center;
-        gap: var(--spacing-3);
+        gap: var(--spacing-4);
         margin-bottom: var(--spacing-5);
 
         progress {
             flex: 1;
-            height: 8px;
+            height: 10px;
             appearance: none;
             border: 0;
             border-radius: var(--radius-full);
             overflow: hidden;
+            background: var(--color-bg-elevated);
 
             &::-webkit-progress-bar {
                 background: var(--color-bg-elevated);
                 border-radius: var(--radius-full);
             }
 
+            // Le remplissage porte un léger halo : sur une barre de 10 px posée
+            // sur un fond sombre, un aplat mat se lisait mal du premier coup.
             &::-webkit-progress-value {
-                background: var(--color-accent);
+                background: linear-gradient(
+                    90deg,
+                    color-mix(in srgb, var(--color-accent) 72%, var(--color-bg-primary)),
+                    var(--color-accent)
+                );
                 border-radius: var(--radius-full);
+                box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent) 45%, transparent);
                 transition: inline-size var(--transition-base);
             }
 
-            &::-moz-progress-bar { background: var(--color-accent); }
+            &::-moz-progress-bar {
+                background: var(--color-accent);
+                border-radius: var(--radius-full);
+            }
         }
 
         > span {
-            min-width: 3.25rem;
+            min-width: 3.5rem;
             color: var(--color-text-primary);
-            font-size: var(--font-size-sm);
+            font-size: 1.05rem;
             font-variant-numeric: tabular-nums;
             font-weight: 650;
             text-align: right;
@@ -271,6 +290,8 @@
         display: flex;
         align-items: center;
         gap: var(--spacing-3);
+        padding: var(--spacing-2) var(--spacing-3);
+        border-radius: var(--radius-md);
         color: var(--color-text-muted);
         font-size: var(--font-size-sm);
 
@@ -282,7 +303,10 @@
             > svg { color: var(--color-success); }
         }
 
+        // L'étape en cours est la seule à porter une surface : elle se repère
+        // sans avoir à comparer les trois libellés.
         &--active {
+            background: color-mix(in srgb, var(--color-accent) 12%, transparent);
             color: var(--color-text-primary);
             font-weight: 600;
 
@@ -313,7 +337,10 @@
     // fait grandir la fenêtre à chaque message reçu.
     &__line {
         margin: 0 0 var(--spacing-4);
+        padding: var(--spacing-2) var(--spacing-3);
         overflow: hidden;
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-primary);
         color: var(--color-text-muted);
         font-family: var(--font-family-mono);
         font-size: var(--font-size-2xs);
