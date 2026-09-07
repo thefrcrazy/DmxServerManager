@@ -562,7 +562,11 @@ export default function ServerDetail() {
             <div className="server-header-stats">
                 <StatPill icon={<ServerIcon size={18} />} label={t("server_detail.runtime_state")} value={t(`servers.runtime_states.${instance.runtime_state}`)} variant={running ? "success" : instance.runtime_state === "crashed" ? "danger" : "muted"} />
                 <StatPill icon={<Users size={18} />} label={t("server_detail.players.online")} value={playerSnapshot?.online_count ?? "—"} variant={playerSnapshot?.online_count ? "success" : "muted"} />
-                <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={updateStatus?.installed_version ?? updateStatus?.installed_build ?? instance.installed_version ?? instance.installed_build ?? "—"} variant="default" />
+                {/* L'instance fait foi sur ce qui est installé : le verdict de
+                    mise à jour n'en porte qu'un cliché, pris au moment du
+                    contrôle, qui affichait encore 0.5.7 sur un serveur passé en
+                    0.6.3. */}
+                <StatPill icon={<PackageCheck size={18} />} label={t("server_detail.installed_version")} value={instance.installed_version ?? instance.installed_build ?? updateStatus?.installed_version ?? updateStatus?.installed_build ?? "—"} variant="default" />
                 <div className="stat-pill connection-pill">
                     <div className="stat-pill__icon"><Globe2 size={18} /></div>
                     <div className="stat-pill__content">

@@ -364,11 +364,41 @@ impl RuntimeManager {
         let computed = self.compute_game_update_status(&instance, refresh).await;
         let previous = load_stored_update_check_any(&self.inner.pool, instance_id).await?;
         let Some(mut status) = computed else {
-            // Rien n'a été tenté : on rend ce qui est conservé, ou un échec si
-            // aucune vérification n'a jamais abouti sur cette instance.
-            return Ok(previous.map(|(status, _)| status).unwrap_or_else(|| {
-                game_update_status_from_target(&instance, None, None, GameUpdateState::CheckFailed)
-            }));
+            // Rien n'a été tenté auprès du fournisseur : reste à tirer le
+            // meilleur parti de ce qui est déjà connu.
+            return Ok(match previous {
+                // Même empreinte : le verdict porte toujours sur le même état
+                // installé, il est donc encore valable tel quel.
+                Some((status, stored)) if stored == fingerprint => status,
+                // L'installation a bougé depuis — c'est le cas après une mise à
+                // jour appliquée. Le verdict conservé décrit alors l'état
+                // précédent et le resservir affichait « 0.5.7 → 0.6.3 » sur un
+                // serveur déjà passé en 0.6.3. La version disponible relevée
+                // reste juste : la confronter à ce qui est désormais installé
+                // suffit à conclure, sans interroger personne.
+                Some((status, _)) => {
+                    let state = verdict_for_target(
+                        &instance,
+                        status.available_version.as_deref(),
+                        status.available_build.as_deref(),
+                    );
+                    let refreshed = game_update_status_from_target(
+                        &instance,
+                        status.available_version,
+                        status.available_build,
+                        state,
+                    );
+                    store_update_check(&self.inner.pool, instance_id, &fingerprint, &refreshed)
+                        .await?;
+                    refreshed
+                }
+                None => game_update_status_from_target(
+                    &instance,
+                    None,
+                    None,
+                    GameUpdateState::CheckFailed,
+                ),
+            });
         };
 
         // Un fournisseur momentanément injoignable n'efface pas une mise à jour
@@ -482,29 +512,18 @@ impl RuntimeManager {
             .await
         {
             Ok((available_version, available_build)) => {
-                let state = if !game_update_comparable(
+                let state = verdict_for_target(
                     instance,
                     available_version.as_deref(),
                     available_build.as_deref(),
-                ) {
-                    // Sans référence installée comparable — un manifeste Steam
-                    // introuvable laisse `installed_build` vide — annoncer
-                    // « à jour » masquerait indéfiniment une mise à jour réelle.
+                );
+                if state == GameUpdateState::CheckFailed {
                     tracing::warn!(
                         instance_id = %instance.id,
                         profile_id = %instance.profile_id,
                         "no installed reference to compare the available game version against"
                     );
-                    GameUpdateState::CheckFailed
-                } else if has_game_update(
-                    instance,
-                    available_version.as_deref(),
-                    available_build.as_deref(),
-                ) {
-                    GameUpdateState::UpdateAvailable
-                } else {
-                    GameUpdateState::UpToDate
-                };
+                }
                 Some(game_update_status_from_target(
                     instance,
                     available_version,
@@ -5515,6 +5534,29 @@ async fn load_runtime_instance(
     .ok_or_else(|| OperationFailure::new("server_not_found", "servers.not_found"))
 }
 
+/// Verdict tiré d'une version disponible confrontée à ce qui est installé.
+///
+/// Partagé entre la vérification auprès du fournisseur et le repli sans
+/// fournisseur : les deux confrontent les mêmes références, et les avoir écrits
+/// deux fois faisait diverger leurs conclusions.
+///
+/// Sans référence installée comparable — un manifeste Steam introuvable laisse
+/// `installed_build` vide — annoncer « à jour » masquerait indéfiniment une
+/// mise à jour réelle, d'où l'échec plutôt que le silence.
+fn verdict_for_target(
+    instance: &RuntimeInstance,
+    available_version: Option<&str>,
+    available_build: Option<&str>,
+) -> GameUpdateState {
+    if !game_update_comparable(instance, available_version, available_build) {
+        GameUpdateState::CheckFailed
+    } else if has_game_update(instance, available_version, available_build) {
+        GameUpdateState::UpdateAvailable
+    } else {
+        GameUpdateState::UpToDate
+    }
+}
+
 /// Indique si la version installée relève d'un choix de l'utilisateur.
 ///
 /// Minecraft Java laisse retenir n'importe quelle version, et ce choix est
@@ -9368,6 +9410,41 @@ mod tests {
         // l'administrateur peut désigner une application.
         let unknown = steam_instance_fixture("not-a-known-profile");
         assert!(steam_install_target(&unknown, None).is_err());
+    }
+
+    #[test]
+    fn a_version_that_caught_up_stops_being_reported_as_outdated() {
+        // Après une mise à jour appliquée, le verdict conservé décrit l'état
+        // précédent. Le resservir tel quel affichait « 0.5.7 → 0.6.3 » sur un
+        // serveur déjà passé en 0.6.3, indéfiniment puisque la vérification de
+        // fond ne repasse plus chez le fournisseur pour Hytale.
+        let mut instance = steam_instance_fixture("hytale");
+        instance.installed_build = None;
+        instance.installed_version = Some("0.5.7".to_string());
+        assert_eq!(
+            verdict_for_target(&instance, Some("0.6.3"), None),
+            GameUpdateState::UpdateAvailable
+        );
+
+        instance.installed_version = Some("0.6.3".to_string());
+        assert_eq!(
+            verdict_for_target(&instance, Some("0.6.3"), None),
+            GameUpdateState::UpToDate
+        );
+
+        // Une version installée qui dépasse la dernière connue reste à jour.
+        instance.installed_version = Some("0.6.4".to_string());
+        assert_eq!(
+            verdict_for_target(&instance, Some("0.6.3"), None),
+            GameUpdateState::UpToDate
+        );
+
+        // Sans référence comparable, l'échec plutôt qu'un « à jour » silencieux.
+        instance.installed_version = None;
+        assert_eq!(
+            verdict_for_target(&instance, Some("0.6.3"), None),
+            GameUpdateState::CheckFailed
+        );
     }
 
     #[test]
