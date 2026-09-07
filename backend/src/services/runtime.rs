@@ -9977,16 +9977,29 @@ mod tests {
         // for an unrelated process group and return EPERM instead of ESRCH.
         let mut trailing_output = Vec::new();
         // Ten seconds rather than two: the assertion is that the group dies, not
-        // that it dies quickly. Under a full-suite run — dozens of tests spawning
-        // and reaping their own processes — two seconds was short enough to fail
-        // on scheduling alone, which said nothing about the containment logic.
-        tokio::time::timeout(
+        // that it dies quickly.
+        //
+        // This has been seen to time out, rarely and only right after a rebuild,
+        // without reproducing in twenty-one subsequent runs. Ten seconds is far
+        // more than a SIGKILL needs, so "the machine was busy" does not explain
+        // it on its own and should not be assumed. The failure message therefore
+        // reports whether the process group is still alive, which separates the
+        // two candidate causes: a group that survives means the kill missed it,
+        // while a dead group means only the pipe EOF was late. Probing is safe
+        // here because it feeds a diagnostic rather than an assertion.
+        let timed_out = tokio::time::timeout(
             Duration::from_secs(10),
             stdout.read_to_end(&mut trailing_output),
         )
-        .await
-        .expect("a descendant kept the process-group pipe open")
-        .unwrap();
+        .await;
+        if timed_out.is_err() {
+            let group_alive = unsafe { libc::kill(-(pid as i32), 0) } == 0;
+            panic!(
+                "a descendant kept the process-group pipe open (pgid={pid}, \
+                 group still alive={group_alive})"
+            );
+        }
+        timed_out.unwrap().unwrap();
         assert!(trailing_output.is_empty());
     }
 
