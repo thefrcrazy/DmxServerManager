@@ -361,8 +361,15 @@ impl RuntimeManager {
             return Ok(stored);
         }
 
-        let mut status = self.compute_game_update_status(&instance).await;
+        let computed = self.compute_game_update_status(&instance, refresh).await;
         let previous = load_stored_update_check_any(&self.inner.pool, instance_id).await?;
+        let Some(mut status) = computed else {
+            // Rien n'a été tenté : on rend ce qui est conservé, ou un échec si
+            // aucune vérification n'a jamais abouti sur cette instance.
+            return Ok(previous.map(|(status, _)| status).unwrap_or_else(|| {
+                game_update_status_from_target(&instance, None, None, GameUpdateState::CheckFailed)
+            }));
+        };
 
         // Un fournisseur momentanément injoignable n'efface pas une mise à jour
         // déjà établie. L'empreinte identique signifie que rien n'a bougé côté
@@ -429,22 +436,28 @@ impl RuntimeManager {
         }
     }
 
-    async fn compute_game_update_status(&self, instance: &RuntimeInstance) -> GameUpdateStatus {
+    /// `None` signale une vérification volontairement sautée : l'appelant doit
+    /// alors conserver le verdict existant plutôt que d'écrire un échec.
+    async fn compute_game_update_status(
+        &self,
+        instance: &RuntimeInstance,
+        user_initiated: bool,
+    ) -> Option<GameUpdateStatus> {
         if instance.installation_state != "installed" {
-            return game_update_status_from_target(
+            return Some(game_update_status_from_target(
                 instance,
                 None,
                 None,
                 GameUpdateState::NotInstalled,
-            );
+            ));
         }
         if game_version_is_user_pinned(&instance.profile_id) {
-            return game_update_status_from_target(
+            return Some(game_update_status_from_target(
                 instance,
                 None,
                 None,
                 GameUpdateState::VersionPinned,
-            );
+            ));
         }
         // Les instances Steam installées avant que le panneau ne conserve la
         // build n'ont aucune référence à confronter, et restaient bloquées sur
@@ -464,7 +477,10 @@ impl RuntimeManager {
         } else {
             instance
         };
-        match self.resolve_game_update_target(instance).await {
+        match self
+            .resolve_game_update_target(instance, user_initiated)
+            .await
+        {
             Ok((available_version, available_build)) => {
                 let state = if !game_update_comparable(
                     instance,
@@ -489,8 +505,17 @@ impl RuntimeManager {
                 } else {
                     GameUpdateState::UpToDate
                 };
-                game_update_status_from_target(instance, available_version, available_build, state)
+                Some(game_update_status_from_target(
+                    instance,
+                    available_version,
+                    available_build,
+                    state,
+                ))
             }
+            // Vérification sautée pour préserver le jeton : le verdict conservé
+            // reste plus juste qu'un « impossible de vérifier » qu'on aurait
+            // écrit sans avoir rien tenté.
+            Err(error) if error.code == "hytale_token_preserved" => None,
             Err(error) => {
                 tracing::warn!(
                     instance_id = %instance.id,
@@ -498,7 +523,12 @@ impl RuntimeManager {
                     detail = ?error.internal,
                     "game update check failed"
                 );
-                game_update_status_from_target(instance, None, None, GameUpdateState::CheckFailed)
+                Some(game_update_status_from_target(
+                    instance,
+                    None,
+                    None,
+                    GameUpdateState::CheckFailed,
+                ))
             }
         }
     }
@@ -530,10 +560,11 @@ impl RuntimeManager {
     async fn resolve_game_update_target(
         &self,
         instance: &RuntimeInstance,
+        user_initiated: bool,
     ) -> Result<(Option<String>, Option<String>), OperationFailure> {
         if instance.profile_id == "hytale" {
             return self
-                .resolve_hytale_update_version(&instance.id)
+                .resolve_hytale_update_version(&instance.id, user_initiated)
                 .await
                 .map(|version| (Some(version), None));
         }
@@ -598,6 +629,7 @@ impl RuntimeManager {
     async fn resolve_hytale_update_version(
         &self,
         instance_id: &str,
+        user_initiated: bool,
     ) -> Result<String, OperationFailure> {
         let credentials = self
             .inner
@@ -630,6 +662,21 @@ impl RuntimeManager {
                     "hytale account API unavailable, falling back to the official downloader"
                 ),
             }
+        }
+        // Le téléchargeur consomme le jeton de rafraîchissement et en émet un
+        // nouveau, invalidant l'ancien côté fournisseur. Chaque appel est donc
+        // une occasion de rompre la chaîne — un arrêt du panneau entre la
+        // rotation et sa persistance suffit, et l'utilisateur doit refaire
+        // l'autorisation par appareil. Le laisser tourner toutes les quinze
+        // minutes en tâche de fond multipliait ce risque sans que personne ne
+        // soit là pour ré-autoriser. Il n'est plus lancé que sur demande
+        // explicite ; en fond, la requête HTTP — qui, elle, ne fait rien
+        // tourner — et l'annonce du serveur en marche suffisent.
+        if !user_initiated {
+            return Err(OperationFailure::new(
+                "hytale_token_preserved",
+                "servers.update_check_unavailable",
+            ));
         }
         self.resolve_hytale_update_version_via_downloader(instance_id, credentials)
             .await
@@ -8675,9 +8722,15 @@ impl HytaleDownloaderPhase {
         }
     }
 
+    /// Reflet des arguments réellement passés, à des fins de diagnostic.
+    ///
+    /// La chaîne était figée et a cessé de correspondre : elle annonçait
+    /// `-print-version` seul alors que la commande en portait deux, ce qui
+    /// laissait croire, en lisant un journal d'installation, que le panneau
+    /// tournait sur une version antérieure. Un test lie désormais les deux.
     fn safe_arguments(self) -> &'static str {
         match self {
-            Self::VersionCheck => "-print-version",
+            Self::VersionCheck => "-print-version -skip-update-check",
             Self::ServerDownload => {
                 "-download-path <ephemeral-session>/hytale-game.zip -skip-update-check"
             }
@@ -9256,6 +9309,34 @@ mod tests {
             runtime_state: "stopped".to_string(),
             auto_start: false,
             watchdog_enabled: true,
+        }
+    }
+
+    #[test]
+    fn the_downloader_diagnostic_lists_the_arguments_actually_passed() {
+        // La chaîne de diagnostic était figée et a cessé de correspondre : elle
+        // annonçait `-print-version` seul alors que la commande en portait deux,
+        // ce qui laissait croire, en lisant un journal d'installation, que le
+        // panneau tournait sur une version antérieure au correctif.
+        let plan = installers::hytale::HytaleDownloaderPlan {
+            executable: PathBuf::from("/tmp/hytale-downloader"),
+            cwd: PathBuf::from("/tmp"),
+            args: Vec::new(),
+            output_archive: PathBuf::from("/tmp/hytale-game.zip"),
+            credential_file: PathBuf::from("/tmp/.hytale-downloader-credentials.json"),
+            downloader_artifact: installers::InstalledArtifact {
+                name: "hytale-downloader".to_string(),
+                sha256: String::new(),
+                size: 0,
+            },
+        };
+        let announced = HytaleDownloaderPhase::VersionCheck.safe_arguments();
+        for argument in plan.version_args() {
+            let argument = argument.to_string_lossy().into_owned();
+            assert!(
+                announced.contains(&argument),
+                "le diagnostic « {announced} » omet {argument}"
+            );
         }
     }
 
