@@ -787,6 +787,12 @@ export const en: TranslationType = {
         update_check_failed_detail: "The provider did not answer, or its answer could not be used. Details are in the panel logs.",
         update_check_now: "Check now",
         update_checked_at: "Checked at {{time}}",
+        update_progress: {
+            title: "Updating {{name}}",
+            failed: "The operation failed. The terminal has the details.",
+            open_terminal: "Open the terminal",
+            steps: { prepare: "Preparing", download: "Fetching and verifying", apply: "Applying" },
+        },
         update_up_to_date: "Game up to date according to the provider.",
         view_jobs: "View activity",
         job_queued: "The job was added to the queue.",

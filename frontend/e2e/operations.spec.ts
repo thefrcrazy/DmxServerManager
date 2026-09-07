@@ -326,3 +326,79 @@ test("le terminal suit le flux, se fige quand on remonte et sait redescendre", a
     await expect.poll(distanceFromBottom).toBeLessThanOrEqual(32);
     await expect(jump).toHaveCount(0);
 });
+
+test("une mise à jour en cours s’affiche au centre avec son écart de versions", async ({ page }) => {
+    // La barre de progression ne vivait que dans la page Activité : suivre une
+    // mise à jour lancée depuis l'instance obligeait à changer de page.
+    const updating = { ...INSTANCES[0]!, installation_state: "updating" as const };
+    const api = new ApiMock({
+        instances: [updating, INSTANCES[1]!],
+        updateAvailable: true,
+        jobs: [{
+            id: "77777777-7777-4777-8777-777777777777",
+            instance_id: updating.id,
+            kind: "server.install",
+            state: "running",
+            progress: 42,
+            requested_by: "owner",
+            error_code: null,
+            error_message: null,
+            created_at: "2026-09-07T08:00:00.000Z",
+            started_at: "2026-09-07T08:00:01.000Z",
+            finished_at: null,
+            interaction: null,
+        }],
+    });
+    await api.install(page);
+
+    await page.goto(`/servers/${updating.id}`);
+
+    const modal = page.getByRole("dialog", { name: /Mise à jour de/ });
+    await expect(modal).toBeVisible();
+    // L'écart est figé au démarrage : la version installée change en cours de
+    // route, l'afficher en direct montrerait « 0.6.3 → 0.6.3 » avant la fin.
+    await expect(modal.locator(".update-progress__versions")).toContainText("0.219.16");
+    await expect(modal.locator("progress")).toHaveJSProperty("value", 42);
+    await expect(modal.getByText("Récupération et vérification")).toBeVisible();
+
+    // Elle se ferme sans bloquer le reste de la page, et une seule commande
+    // porte ce nom : deux boutons « Fermer » dans une même fenêtre rendaient la
+    // cible ambiguë au clavier comme au lecteur d'écran.
+    await expect(modal.getByRole("button", { name: "Fermer" })).toHaveCount(1);
+    await modal.getByRole("button", { name: "Fermer" }).click();
+    await expect(modal).toHaveCount(0);
+});
+
+test("la progression s’efface quand l’opération attend une action de l’utilisateur", async ({ page }) => {
+    // La modale recouvrait l'autorisation par appareil Hytale, c'est-à-dire
+    // exactement ce que le job réclamait pour avancer : la progression ne doit
+    // jamais passer devant ce qu'elle attend.
+    const installing = {
+        ...INSTANCES[0]!,
+        profile_id: "hytale",
+        installation_state: "installing" as const,
+    };
+    const api = new ApiMock({
+        instances: [installing, INSTANCES[1]!],
+        hytaleDeviceAuthorization: true,
+        jobs: [{
+            id: "56565656-5656-4565-8565-565656565656",
+            instance_id: installing.id,
+            kind: "server.install",
+            state: "waiting_for_user",
+            progress: 30,
+            requested_by: "owner",
+            error_code: null,
+            error_message: null,
+            created_at: "2026-09-07T08:00:00.000Z",
+            started_at: "2026-09-07T08:00:01.000Z",
+            finished_at: null,
+            interaction: null,
+        }],
+    });
+    await api.install(page);
+
+    await page.goto(`/servers/${installing.id}`);
+
+    await expect(page.getByRole("dialog", { name: /Mise à jour de/ })).toHaveCount(0);
+});

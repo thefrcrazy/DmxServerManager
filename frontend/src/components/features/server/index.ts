@@ -3,6 +3,7 @@ export { default as ServerList } from "./ServerList";
 export { default as ServerFilters } from "./ServerFilters";
 export { default as ServerConsole } from "./ServerConsole";
 export { default as GameUpdateNotice } from "./GameUpdateNotice";
+export { default as GameUpdateProgressModal } from "./GameUpdateProgressModal";
 export { default as ServerConfigFiles } from "./ServerConfigFiles";
 export { default as MaskedConnection } from "./MaskedConnection";
 export { default as NativeAccessListForm } from "./NativeAccessListForm";

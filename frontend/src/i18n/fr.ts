@@ -755,6 +755,12 @@ export const fr = {
         update_check_failed_detail: "Le fournisseur n’a pas répondu ou la réponse était inexploitable. Le détail figure dans les journaux du panneau.",
         update_check_now: "Vérifier maintenant",
         update_checked_at: "Vérifié à {{time}}",
+        update_progress: {
+            title: "Mise à jour de {{name}}",
+            failed: "L’opération a échoué. Le terminal en donne le détail.",
+            open_terminal: "Voir le terminal",
+            steps: { prepare: "Préparation", download: "Récupération et vérification", apply: "Mise en place" },
+        },
         update_up_to_date: "Jeu à jour d’après le fournisseur.",
         view_jobs: "Voir l’activité",
         job_queued: "Le job a été ajouté à la file.",

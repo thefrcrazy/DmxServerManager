@@ -1,7 +1,7 @@
 import { Activity, Archive, CalendarClock, Copy, Download, Eye, EyeOff, FolderOpen, Globe2, ListChecks, PackageCheck, Play, Puzzle, RotateCw, Save, Server as ServerIcon, Skull, Square, Terminal, TriangleAlert, Trash2, Users, Wrench } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { BedrockArchiveUploadNotice, GameUpdateNotice, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConfigFiles, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerPlayers, ServerSchedules, profileSettingTitle } from "@/components/features/server";
+import { BedrockArchiveUploadNotice, GameUpdateNotice, GameUpdateProgressModal, HytaleDeviceAuthorizationNotice, ProfileConfigurationOverview, ProfileSettingsFields, ServerBackups, ServerConfigFiles, ServerConsole, ServerFiles, ServerMetrics, ServerMods, ServerPlayers, ServerSchedules, profileSettingTitle } from "@/components/features/server";
 import { EmptyState, LoadingScreen } from "@/components/shared";
 import { Button, StatPill, Tabs } from "@/components/ui";
 import { useDialog } from "@/contexts/DialogContext";
@@ -11,7 +11,7 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useToast } from "@/contexts/ToastContext";
 import { usePermission, useServerEvents } from "@/hooks";
 import { SecretStatusSchema } from "@/schemas/api";
-import type { ConnectionInfo, GameProfile, GameUpdateStatus, Instance } from "@/schemas/api";
+import type { ConnectionInfo, GameProfile, GameUpdateStatus, Instance, Job } from "@/schemas/api";
 import { BedrockArchiveAuthorizationSchema, HytaleDeviceAuthorizationSchema } from "@/schemas/operations";
 import type { BedrockArchiveAuthorization, HytaleDeviceAuthorization, PlayerSnapshot } from "@/schemas/operations";
 import { apiService } from "@/services";
@@ -22,6 +22,9 @@ import { gameProfileVisual } from "@/constants/gameProfiles";
 type TabId = "configuration" | "console" | "players" | "files" | "backups" | "metrics" | "mods" | "schedules";
 
 const TAB_STORAGE_PREFIX = "dmx_server_tab:";
+
+// Un job dans l'un de ces états travaille encore : c'est lui que la modale suit.
+const ACTIVE_JOB_STATES = new Set(["queued", "running", "waiting_for_user"]);
 
 // Préférence purement locale, par instance : rouvrir une instance sur l'onglet
 // que l'on venait de quitter, et à défaut sur le terminal plutôt que sur la
@@ -78,6 +81,12 @@ export default function ServerDetail() {
     const [connectionError, setConnectionError] = useState<string | null>(null);
     const [connectionRevealed, setConnectionRevealed] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<GameUpdateStatus | null>(null);
+    const [activeJob, setActiveJob] = useState<Job | null>(null);
+    const [progressDismissed, setProgressDismissed] = useState(false);
+    // Le verdict est remis à zéro dès que l'instance passe en installation : il
+    // faut donc en garder une trace pour savoir de quelle version on part.
+    const lastUpdateStatus = useRef<GameUpdateStatus | null>(null);
+    const updateOrigin = useRef<{ from: string | null; to: string | null } | null>(null);
     const [updateChecking, setUpdateChecking] = useState(false);
 
     const loadInstance = useCallback(async () => {
@@ -250,6 +259,43 @@ export default function ServerDetail() {
         instance?.installed_version,
         loadUpdateStatus,
     ]);
+
+    useEffect(() => {
+        if (updateStatus) lastUpdateStatus.current = updateStatus;
+    }, [updateStatus]);
+
+    // Job en cours de cette instance, rafraîchi à chaque événement de tâche.
+    useEffect(() => {
+        if (!id || !installationInProgress) {
+            setActiveJob(null);
+            return;
+        }
+        let active = true;
+        void apiService.jobs.list().then((response) => {
+            if (!active || !response.success) return;
+            setActiveJob(response.data.find((job) =>
+                job.instance_id === id && ACTIVE_JOB_STATES.has(job.state)) ?? null);
+        });
+        return () => { active = false; };
+    }, [events.operationRevision, id, installationInProgress]);
+
+    // L'écart de versions est figé au démarrage de l'opération : la version
+    // installée change en cours de route, et l'afficher en direct montrerait
+    // « 0.6.3 → 0.6.3 » avant même la fin.
+    useEffect(() => {
+        if (!installationInProgress) {
+            updateOrigin.current = null;
+            setProgressDismissed(false);
+            return;
+        }
+        if (updateOrigin.current) return;
+        const previous = lastUpdateStatus.current;
+        updateOrigin.current = {
+            from: previous?.installed_version ?? previous?.installed_build
+                ?? instance?.installed_version ?? instance?.installed_build ?? null,
+            to: previous?.available_version ?? previous?.available_build ?? null,
+        };
+    }, [installationInProgress, instance?.installed_build, instance?.installed_version]);
 
     useEffect(() => {
         setPlayersLoading(true);
@@ -474,6 +520,12 @@ export default function ServerDetail() {
         || Object.values(secretDrafts).some((value) => value.length > 0);
     const bedrockArchive = events.pendingBedrockArchive ?? fallbackBedrockArchive;
     const deviceAuthorization = events.pendingDeviceAuthorization ?? fallbackDeviceAuthorization;
+    // La progression s'efface quand l'opération attend une action : elle
+    // recouvrait l'autorisation par appareil Hytale et le dépôt d'archive
+    // Bedrock, c'est-à-dire précisément ce que le job réclamait pour avancer.
+    const awaitingUserInteraction = Boolean(bedrockArchive)
+        || Boolean(deviceAuthorization)
+        || activeJob?.state === "waiting_for_user";
     const canUploadBedrockArchive = user?.role === "owner" && hasPermission("server.files.write");
     const primaryConnection = connection?.endpoints.find((endpoint) => endpoint.primary) ?? connection?.endpoints[0];
     const connectionHelpKey = connection?.help_key.replace(/^connection\.help\./, "") ?? "generic";
@@ -518,6 +570,24 @@ export default function ServerDetail() {
                 serveur en marche, rien n'indiquait qu'une version plus récente
                 existait. L'avis est désormais affiché dès l'arrivée sur la page,
                 quel que soit l'état d'exécution. */}
+            {/* Progression au centre de l'écran pendant l'opération : la barre
+                vivait dans la page Activité, donc suivre une mise à jour lancée
+                depuis ici demandait de changer de page. */}
+            {installationInProgress && !progressDismissed && !awaitingUserInteraction && (
+                <GameUpdateProgressModal
+                    serverName={instance.name}
+                    fromVersion={updateOrigin.current?.from ?? null}
+                    toVersion={updateOrigin.current?.to ?? null}
+                    job={activeJob}
+                    latestLine={events.logs.at(-1) ?? null}
+                    onClose={() => setProgressDismissed(true)}
+                    onOpenTerminal={() => {
+                        setProgressDismissed(true);
+                        setActiveTab("console");
+                    }}
+                />
+            )}
+
             {installed && updateStatus && (
                 <GameUpdateNotice
                     status={updateStatus}

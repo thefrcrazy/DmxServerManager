@@ -180,3 +180,154 @@
         gap: 0.75rem;
     }
 }
+// Progression d'une mise à jour, au centre de l'écran. Elle reprend le cadre
+// des dialogues pour ne pas introduire une seconde grammaire de fenêtre.
+.update-progress {
+    max-width: 30rem;
+
+    &__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-3);
+        margin-bottom: var(--spacing-4);
+
+        h2 {
+            margin: 0;
+            color: var(--color-text-primary);
+            font-size: 1.05rem;
+            font-weight: 650;
+        }
+    }
+
+    &__versions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-3);
+        margin: 0 0 var(--spacing-5);
+        color: var(--color-text-muted);
+    }
+
+    &__version {
+        color: var(--color-text-secondary);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-base);
+
+        &--next {
+            color: var(--color-accent);
+            font-weight: 650;
+        }
+    }
+
+    &__bar {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-3);
+        margin-bottom: var(--spacing-5);
+
+        progress {
+            flex: 1;
+            height: 8px;
+            appearance: none;
+            border: 0;
+            border-radius: var(--radius-full);
+            overflow: hidden;
+
+            &::-webkit-progress-bar {
+                background: var(--color-bg-elevated);
+                border-radius: var(--radius-full);
+            }
+
+            &::-webkit-progress-value {
+                background: var(--color-accent);
+                border-radius: var(--radius-full);
+                transition: inline-size var(--transition-base);
+            }
+
+            &::-moz-progress-bar { background: var(--color-accent); }
+        }
+
+        > span {
+            min-width: 3.25rem;
+            color: var(--color-text-primary);
+            font-size: var(--font-size-sm);
+            font-variant-numeric: tabular-nums;
+            font-weight: 650;
+            text-align: right;
+        }
+    }
+
+    &__steps {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-2);
+        margin: 0 0 var(--spacing-4);
+        padding: 0;
+        list-style: none;
+    }
+
+    &__step {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-3);
+        color: var(--color-text-muted);
+        font-size: var(--font-size-sm);
+
+        > svg { flex: 0 0 auto; }
+
+        &--done {
+            color: var(--color-text-secondary);
+
+            > svg { color: var(--color-success); }
+        }
+
+        &--active {
+            color: var(--color-text-primary);
+            font-weight: 600;
+
+            > svg { color: var(--color-accent); }
+        }
+    }
+
+    &__dot {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+        border: 1px solid var(--color-border-hover);
+        border-radius: var(--radius-full);
+    }
+
+    &__failed {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-2);
+        margin: 0 0 var(--spacing-4);
+        color: var(--color-warning);
+        font-size: var(--font-size-sm);
+
+        > svg { flex: 0 0 auto; margin-top: 1px; }
+    }
+
+    // Ligne de journal : bornée à une ligne, sinon une trace SteamCMD verbeuse
+    // fait grandir la fenêtre à chaque message reçu.
+    &__line {
+        margin: 0 0 var(--spacing-4);
+        overflow: hidden;
+        color: var(--color-text-muted);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-2xs);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--spacing-2);
+    }
+}
+
+// `spin` est déjà déclarée dans `_base.scss`, qui neutralise aussi les
+// animations sous `prefers-reduced-motion`.
+.spin { animation: spin 1s linear infinite; }
