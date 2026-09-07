@@ -636,7 +636,7 @@ export class ApiMock {
             return this.json(route, 200, { needs_setup: this.needsSetup });
         }
         if (path === "/health" && request.method() === "GET") {
-            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.2.2" });
+            return this.json(route, 200, { status: "ok", service: "dmx-server-manager", version: "1.2.3" });
         }
         if (path === "/auth/setup" && request.method() === "POST") {
             if (!this.needsSetup) return this.problem(route, 409, "Setup already completed");
