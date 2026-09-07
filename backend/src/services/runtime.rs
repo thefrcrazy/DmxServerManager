@@ -9126,6 +9126,53 @@ mod tests {
         );
     }
 
+    fn steam_instance_fixture(profile_id: &str) -> RuntimeInstance {
+        RuntimeInstance {
+            id: uuid::Uuid::new_v4().to_string(),
+            profile_id: profile_id.to_string(),
+            profile_revision: 1,
+            settings: "{}".to_string(),
+            config_version: 1,
+            installation_state: "installed".to_string(),
+            installed_version: None,
+            installed_build: Some("1".to_string()),
+            desired_state: "stopped".to_string(),
+            runtime_state: "stopped".to_string(),
+            auto_start: false,
+            watchdog_enabled: true,
+        }
+    }
+
+    #[test]
+    fn every_steam_profile_resolves_the_dedicated_server_application() {
+        // La même correspondance sert au téléchargement et à la vérification de
+        // version : une valeur fausse installerait la mauvaise application tout
+        // en la déclarant à jour. Elle est donc verrouillée ici plutôt que
+        // laissée à la relecture.
+        for (profile, app_id) in [
+            ("valheim", 896_660_u32),
+            ("palworld", 2_394_010),
+            ("satisfactory", 1_690_800),
+            ("seven-days-to-die", 294_420),
+            ("project-zomboid", 380_870),
+            ("rust", 258_550),
+        ] {
+            let instance = steam_instance_fixture(profile);
+            assert_eq!(
+                steam_install_target(&instance, None)
+                    .expect("profil Steam intégré")
+                    .0,
+                app_id,
+                "{profile} doit viser son application de serveur dédié"
+            );
+        }
+
+        // Hors de cette liste, seule une définition de profil Steam fournie par
+        // l'administrateur peut désigner une application.
+        let unknown = steam_instance_fixture("not-a-known-profile");
+        assert!(steam_install_target(&unknown, None).is_err());
+    }
+
     #[test]
     fn minecraft_versions_are_user_pinned_and_never_reported_as_outdated() {
         // La version d'un serveur Minecraft est choisie délibérément, pour la
