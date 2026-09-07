@@ -402,3 +402,38 @@ test("la progression s’efface quand l’opération attend une action de l’ut
 
     await expect(page.getByRole("dialog", { name: /Mise à jour de/ })).toHaveCount(0);
 });
+
+test("l’autorisation Hytale s’affiche au centre, code détaché de son libellé", async ({ page }) => {
+    // Le bloc ne portait aucune règle de style — la classe n'existait dans
+    // aucune feuille — et se rendait en pile brute en tête de page : le libellé
+    // et le code se touchaient (« Code utilisateuraEg77ciT »).
+    const installing = {
+        ...INSTANCES[0]!,
+        profile_id: "hytale",
+        installation_state: "installing" as const,
+    };
+    const api = new ApiMock({
+        instances: [installing, INSTANCES[1]!],
+        hytaleDeviceAuthorization: true,
+    });
+    await api.install(page);
+
+    await page.goto(`/servers/${installing.id}`);
+
+    const modal = page.getByRole("dialog", { name: "Authentification Hytale requise" });
+    await expect(modal).toBeVisible();
+    await expect(modal.getByText("Code utilisateur", { exact: true })).toBeVisible();
+    await expect(modal.locator("code")).toHaveText("x6nimECK");
+
+    // Le lien d'ouverture est joignable et ne pointe que vers le domaine officiel.
+    const open = modal.getByRole("link", { name: "Ouvrir Hytale" });
+    await expect(open).toBeVisible();
+    expect(new URL(await open.getAttribute("href") ?? "").origin)
+        .toBe("https://oauth.accounts.hytale.com");
+
+    // Réductible plutôt que fermable : l'installation attend toujours, la faire
+    // disparaître laisserait un job bloqué sans explication.
+    await modal.getByRole("button", { name: "Réduire" }).click();
+    await expect(modal).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reprendre l’authentification" })).toBeVisible();
+});

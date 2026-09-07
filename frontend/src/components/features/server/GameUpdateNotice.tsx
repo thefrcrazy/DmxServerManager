@@ -1,4 +1,4 @@
-import { PackageCheck, RefreshCw, Square, TriangleAlert } from "lucide-react";
+import { Download, PackageCheck, RefreshCw, Square, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -18,6 +18,12 @@ interface GameUpdateNoticeProps {
     onCheck: () => void;
     onUpdate: () => void;
     onStop: () => void;
+    /**
+     * Mise à jour sans arrêt préalable, quand le jeu expose une commande pour
+     * cela. Absente sur les profils où aucune commande n'est documentée : mieux
+     * vaut ne rien proposer que d'envoyer une commande inventée.
+     */
+    onStageInPlace?: () => void;
 }
 
 function reference(status: GameUpdateStatus, kind: "installed" | "available"): string | null {
@@ -46,6 +52,7 @@ export default function GameUpdateNotice({
     onCheck,
     onUpdate,
     onStop,
+    onStageInPlace,
 }: GameUpdateNoticeProps) {
     const { t } = useLanguage();
     // Rien à afficher quand rien n'est installé, ni quand la version relève d'un
@@ -131,8 +138,22 @@ export default function GameUpdateNotice({
                         {t("server_detail.update_game")}
                     </Button>
                 )}
+                {/* Serveur en marche : la commande du jeu évite le cycle d'arrêt
+                    et de réinstallation. L'arrêt reste offert en repli quand le
+                    profil n'expose aucune commande. */}
+                {status.state === "update_available" && canUpdateGame && running && onStageInPlace && (
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={onStageInPlace}
+                        disabled={busy}
+                        icon={<Download size={15} />}
+                    >
+                        {t("server_detail.update_stage_in_place")}
+                    </Button>
+                )}
                 {status.state === "update_available" && canInstall && canUpdateGame && running
-                    && canStop && (
+                    && canStop && !onStageInPlace && (
                     <Button
                         variant="secondary"
                         size="sm"

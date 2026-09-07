@@ -526,6 +526,14 @@ export default function ServerDetail() {
     const awaitingUserInteraction = Boolean(bedrockArchive)
         || Boolean(deviceAuthorization)
         || activeJob?.state === "waiting_for_user";
+    // Commande de mise à jour à chaud, uniquement là où le jeu la documente.
+    // Le serveur Hytale imprime lui-même « Run '/update download' to stage the
+    // update » : elle évite le cycle arrêt → réinstallation → démarrage. Aucun
+    // équivalent n'est déclaré ailleurs, et en inventer un enverrait une
+    // commande inconnue à un serveur en production.
+    const stageUpdateCommand = instance.profile_id === "hytale" && hasPermission("server.console.write")
+        ? "/update download"
+        : null;
     const canUploadBedrockArchive = user?.role === "owner" && hasPermission("server.files.write");
     const primaryConnection = connection?.endpoints.find((endpoint) => endpoint.primary) ?? connection?.endpoints[0];
     const connectionHelpKey = connection?.help_key.replace(/^connection\.help\./, "") ?? "generic";
@@ -601,6 +609,12 @@ export default function ServerDetail() {
                     onCheck={() => void loadUpdateStatus(true)}
                     onUpdate={() => void runAction("install")}
                     onStop={() => void runAction("stop")}
+                    onStageInPlace={stageUpdateCommand
+                        ? () => {
+                            events.sendCommand(stageUpdateCommand);
+                            setActiveTab("console");
+                        }
+                        : undefined}
                 />
             )}
 

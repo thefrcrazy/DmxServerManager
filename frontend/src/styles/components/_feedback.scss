@@ -331,3 +331,125 @@
 // `spin` est déjà déclarée dans `_base.scss`, qui neutralise aussi les
 // animations sous `prefers-reduced-motion`.
 .spin { animation: spin 1s linear infinite; }
+
+// Autorisation par appareil Hytale. La classe n'existait dans aucune feuille :
+// le bloc se rendait en pile brute, sans marge ni séparation — d'où un libellé
+// collé à son code (« Code utilisateuraEg77ciT ») et un lien d'ouverture perdu
+// en bout de ligne, alors que c'est l'écran qui bloque l'installation.
+.hytale-device-modal {
+    max-width: 32rem;
+    text-align: center;
+
+    &__icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 52px;
+        height: 52px;
+        margin-bottom: var(--spacing-4);
+        border-radius: var(--radius-full);
+        background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+        color: var(--color-accent);
+    }
+
+    h2 {
+        margin: 0 0 var(--spacing-3);
+        color: var(--color-text-primary);
+        font-size: 1.15rem;
+        font-weight: 650;
+    }
+
+    > p {
+        margin: 0 0 var(--spacing-5);
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-sm);
+        line-height: 1.55;
+    }
+
+    // Le code est la donnée à recopier à la main : espacé, lisible de loin, et
+    // nettement détaché de son libellé.
+    &__code {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-3);
+        margin-bottom: var(--spacing-5);
+        padding: var(--spacing-4);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-secondary);
+
+        > span {
+            color: var(--color-text-muted);
+            font-size: var(--font-size-xs);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        > code {
+            color: var(--color-text-primary);
+            font-family: var(--font-family-mono);
+            font-size: 1.35rem;
+            font-weight: 650;
+            letter-spacing: 0.18em;
+            user-select: all;
+        }
+    }
+
+    &__actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-3);
+        margin-bottom: var(--spacing-4);
+
+        .btn--primary { min-height: 44px; padding-inline: var(--spacing-6); }
+    }
+
+    .helper-text {
+        margin: 0;
+        color: var(--color-text-muted);
+        font-size: var(--font-size-2xs);
+        line-height: 1.5;
+    }
+
+    @include below(md) {
+        text-align: left;
+
+        &__actions { flex-direction: column; align-items: stretch; }
+    }
+}
+
+// Version réduite, qui garde la demande visible sans occuper l'écran entier.
+.hytale-device-auth {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    margin-bottom: var(--spacing-4);
+    padding: var(--spacing-3) var(--spacing-4);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+
+    &__icon {
+        display: inline-flex;
+        flex: 0 0 auto;
+        color: var(--color-accent);
+    }
+
+    > p {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        color: var(--color-text-primary);
+        font-size: var(--font-size-sm);
+        font-weight: 600;
+    }
+
+    @include below(md) {
+        flex-wrap: wrap;
+
+        > p { flex: 1 1 100%; }
+    }
+}

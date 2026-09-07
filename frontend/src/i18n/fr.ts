@@ -205,7 +205,8 @@ export const fr = {
         title: "Authentification Hytale requise",
         description: "Utilisez le bouton Ouvrir Hytale, vérifiez que le code correspond, puis validez aussi l’écran des permissions avant l’expiration de la demande.",
         content_blocker_hint: "Si le challenge Cloudflare ne s’affiche pas, désactivez temporairement le bloqueur de contenu pour les domaines accounts.hytale.com et oauth.accounts.hytale.com, puis rouvrez ce lien.",
-        user_code: "Code utilisateur", copy: "Copier", copied: "Copié", open: "Ouvrir Hytale"
+        user_code: "Code utilisateur", copy: "Copier", copied: "Copié", open: "Ouvrir Hytale",
+        collapse: "Réduire", reopen: "Reprendre l’authentification"
     },
     errors: {
         internal: "Une erreur interne est survenue. Veuillez consulter les logs serveur.",
@@ -751,6 +752,7 @@ export const fr = {
         update_available_detail: "{{installed}} installée · {{available}} disponible.",
         update_requires_stop: "Arrêtez complètement l’instance pour appliquer la mise à jour.",
         update_stop_to_apply: "Arrêter pour mettre à jour",
+        update_stage_in_place: "Mettre à jour sans arrêter",
         update_check_failed_title: "Impossible de vérifier les mises à jour",
         update_check_failed_detail: "Le fournisseur n’a pas répondu ou la réponse était inexploitable. Le détail figure dans les journaux du panneau.",
         update_check_now: "Vérifier maintenant",

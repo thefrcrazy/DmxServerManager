@@ -207,7 +207,8 @@ export const en: TranslationType = {
         title: "Hytale authentication required",
         description: "Use the Open Hytale button, verify that the code matches, then also approve the permissions screen before the request expires.",
         content_blocker_hint: "If the Cloudflare challenge does not appear, temporarily disable the content blocker for the accounts.hytale.com and oauth.accounts.hytale.com domains, then reopen this link.",
-        user_code: "User code", copy: "Copy", copied: "Copied", open: "Open Hytale"
+        user_code: "User code", copy: "Copy", copied: "Copied", open: "Open Hytale",
+        collapse: "Collapse", reopen: "Resume authorization"
     },
     errors: {
         internal: "Internal server error. Please check server logs.",
@@ -783,6 +784,7 @@ export const en: TranslationType = {
         update_available_detail: "{{installed}} installed · {{available}} available.",
         update_requires_stop: "Stop the instance completely to apply the update.",
         update_stop_to_apply: "Stop to update",
+        update_stage_in_place: "Update without stopping",
         update_check_failed_title: "Cannot check for updates",
         update_check_failed_detail: "The provider did not answer, or its answer could not be used. Details are in the panel logs.",
         update_check_now: "Check now",
