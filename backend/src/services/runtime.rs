@@ -9818,8 +9818,12 @@ mod tests {
         // root is reaped is racy because the kernel may immediately reuse it
         // for an unrelated process group and return EPERM instead of ESRCH.
         let mut trailing_output = Vec::new();
+        // Ten seconds rather than two: the assertion is that the group dies, not
+        // that it dies quickly. Under a full-suite run — dozens of tests spawning
+        // and reaping their own processes — two seconds was short enough to fail
+        // on scheduling alone, which said nothing about the containment logic.
         tokio::time::timeout(
-            Duration::from_secs(2),
+            Duration::from_secs(10),
             stdout.read_to_end(&mut trailing_output),
         )
         .await
