@@ -336,6 +336,21 @@ impl RuntimeManager {
             .await
             .map_err(operation_failure_to_app)?;
         let fingerprint = game_update_fingerprint(&instance);
+        // Avant toute lecture du cache : un verdict conservé ne peut pas
+        // contredire la règle, quelle que soit la version du panneau qui l'a
+        // écrit. Le calcul n'interroge personne, il ne coûte donc rien ici.
+        if instance.installation_state == "installed"
+            && game_version_is_user_pinned(&instance.profile_id)
+        {
+            let status = game_update_status_from_target(
+                &instance,
+                None,
+                None,
+                GameUpdateState::VersionPinned,
+            );
+            store_update_check(&self.inner.pool, instance_id, &fingerprint, &status).await?;
+            return Ok(status);
+        }
         if !refresh
             && let Some(stored) =
                 load_stored_update_check(&self.inner.pool, instance_id, &fingerprint).await?
@@ -5761,6 +5776,7 @@ async fn store_update_check(
 #[derive(Debug, Clone, sqlx::FromRow)]
 struct StoredUpdateCheckRow {
     instance_id: String,
+    profile_id: String,
     #[sqlx(flatten)]
     check: StoredUpdateCheck,
 }
@@ -5770,8 +5786,9 @@ pub async fn stored_update_checks(
     pool: &DbPool,
 ) -> Result<Vec<(String, GameUpdateStatus)>, AppError> {
     let rows: Vec<StoredUpdateCheckRow> = sqlx::query_as(
-        "SELECT instance_id, state, installed_version, installed_build, available_version, \
-         available_build, fingerprint, checked_at FROM instance_update_checks",
+        "SELECT c.instance_id, i.profile_id, c.state, c.installed_version, c.installed_build, \
+         c.available_version, c.available_build, c.fingerprint, c.checked_at \
+         FROM instance_update_checks c JOIN instances i ON i.id = c.instance_id",
     )
     .fetch_all(pool)
     .await?;
@@ -5779,7 +5796,21 @@ pub async fn stored_update_checks(
         .into_iter()
         .filter_map(|row| {
             let id = row.instance_id;
-            row.check.into_status().map(|status| (id, status))
+            let pinned = game_version_is_user_pinned(&row.profile_id);
+            row.check.into_status().map(|mut status| {
+                // La règle est appliquée ici, à la lecture, et pas seulement au
+                // moment d'écrire le verdict. Cette liste servait les lignes
+                // telles quelles : une ligne « mise à jour disponible » écrite
+                // avant que ces profils ne soient exclus survivait donc à la
+                // mise à jour du panneau, et continuait d'afficher la pastille
+                // tant que rien n'était venu la réécrire.
+                if pinned {
+                    status.state = GameUpdateState::VersionPinned;
+                    status.available_version = None;
+                    status.available_build = None;
+                }
+                (id, status)
+            })
         })
         .collect())
 }
@@ -9410,6 +9441,34 @@ mod tests {
         // l'administrateur peut désigner une application.
         let unknown = steam_instance_fixture("not-a-known-profile");
         assert!(steam_install_target(&unknown, None).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_stale_verdict_cannot_outlive_the_rule_that_excludes_its_profile() {
+        // La liste servait les verdicts conservés tels quels. Une ligne « mise à
+        // jour disponible » écrite avant que Minecraft Java ne soit exclu
+        // survivait donc à la mise à jour du panneau et gardait sa pastille tant
+        // que rien n'était venu la réécrire. La règle s'applique désormais à la
+        // lecture, pas seulement à l'écriture.
+        let (_root, actor, _user_id) =
+            runtime_actor_fixture("minecraft-java-fabric", "stopped").await;
+        let pool = actor.inner.pool.clone();
+        sqlx::query(
+            "INSERT INTO instance_update_checks (instance_id, state, installed_version,              installed_build, available_version, available_build, fingerprint, checked_at)              VALUES (?, 'update_available', '1.21.8', NULL, '1.21.9', NULL, 'stale', ?)",
+        )
+        .bind(&actor.instance_id)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let statuses = stored_update_checks(&pool).await.unwrap();
+        let (_, status) = statuses
+            .iter()
+            .find(|(id, _)| id == &actor.instance_id)
+            .expect("le verdict conservé doit être rendu");
+        assert_eq!(status.state, GameUpdateState::VersionPinned);
+        assert_eq!(status.available_version, None);
     }
 
     #[test]
